@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- VÁLTOZÓK ÉS DOM ELEMEK ---
   let penalCodeData = [];
+  let isFavoritesView = false;
 
   // DOM elemek gyors elérése
   const itemList = document.getElementById('item-list');
@@ -31,7 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
   async function initializeApp() {
     await loadPenalCode();
     prepareData();
-    renderItemList();
+    loadFavorites();
+    renderItemList(allItems);
 
     setupEventListeners();
   }
@@ -140,13 +142,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
 
         // Gombok (jobb oldal)
+        const isFavorite = favorites.includes(item.id);
+        const favoriteClass = isFavorite ? 'text-yellow-400' : 'text-gray-400';
+
         const gombokHtml = `
                     <div class="flex-shrink-0 flex flex-col items-end space-y-2 ml-4">
                         <button data-item-id="${item.id}" class="add-to-cart-btn px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors">
                             Hozzáadás
                         </button>
-                        <button data-item-id="${item.id}" class="toggle-favorite-btn p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
+                        <button data-item-id="${item.id}" class="toggle-favorite-btn p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 ${favoriteClass}">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
                         </button>
                     </div>
                 `;
@@ -164,24 +169,28 @@ document.addEventListener('DOMContentLoaded', () => {
   function setupEventListeners() {
 
     // Kereső eseménykezelője
-    searchInput.addEventListener('keyup', handleSearch);
+    searchInput.addEventListener('keyup', filterAndRender); // Átneveztük!
 
     // Kosár törlése gomb
     clearCartButton.addEventListener('click', clearCart);
 
-    // Tétel lista (Hozzáadás)
+    // Tétel lista
     itemList.addEventListener('click', (e) => {
       const target = e.target.closest('button');
       if (!target) return;
 
+      const itemId = target.dataset.itemId;
+
       if (target.classList.contains('add-to-cart-btn')) {
-        const itemId = target.dataset.itemId;
         addToCart(itemId);
       }
-      // ... (kedvenc gomb helye) ...
+
+      if (target.classList.contains('toggle-favorite-btn')) {
+        toggleFavorite(itemId, target);
+      }
     });
 
-    // Kosár (Darabszám, Törlés)
+    // Kosár
     cartItems.addEventListener('click', (e) => {
       const target = e.target.closest('button');
       if (!target) return;
@@ -209,30 +218,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Másolás gomb
     copyCommandButton.addEventListener('click', copyCommands);
+
+    // Fő Kedvencek gomb a fejlécben
+    document.getElementById('toggle-favorites').addEventListener('click', toggleFavoritesView);
+
+    // document.getElementById('toggle-dark-mode').addEventListener('click', ...);
   }
 
-  // --- KERESÉSI FUNKCIÓ ---
-  function handleSearch() {
-    const searchTerm = searchInput.value.toLowerCase().trim();
+  // --- KERESÉS ÉS SZŰRÉS FUNKCIÓK ---
 
-    if (searchTerm === '') {
-      renderItemList(allItems); // Ha üres a kereső, mutass mindent
-      return;
+  function filterAndRender() {
+    const searchTerm = searchInput.value.toLowerCase().trim();
+    let itemsToFilter = allItems;
+
+    // 1. Szűrés Kedvencekre (ha aktív)
+    if (isFavoritesView) {
+      itemsToFilter = allItems.filter(item => favorites.includes(item.id));
     }
 
-    const filteredItems = allItems.filter(item => {
-      const name = item.megnevezes.toLowerCase();
-      const abbreviation = item.rovidites ? item.rovidites.toLowerCase() : '';
-      const paragraph = item.paragrafus.toLowerCase();
-      const note = item.megjegyzes ? item.megjegyzes.toLowerCase() : '';
+    // 2. Szűrés Keresőszóra
+    let filteredItems = itemsToFilter;
+    if (searchTerm !== '') {
+      filteredItems = itemsToFilter.filter(item => {
+        const name = item.megnevezes.toLowerCase();
+        const abbreviation = item.rovidites ? item.rovidites.toLowerCase() : '';
+        const paragraph = item.paragrafus.toLowerCase();
+        const note = item.megjegyzes ? item.megjegyzes.toLowerCase() : '';
 
-      return name.includes(searchTerm) ||
-        abbreviation.includes(searchTerm) ||
-        paragraph.includes(searchTerm) ||
-        note.includes(searchTerm);
-    });
+        return name.includes(searchTerm) ||
+          abbreviation.includes(searchTerm) ||
+          paragraph.includes(searchTerm) ||
+          note.includes(searchTerm);
+      });
+    }
 
+    // 3. Végül renderelés
     renderItemList(filteredItems);
+  }
+
+  function handleSearch() {
+    filterAndRender();
   }
 
   // --- KOSÁR FUNKCIÓK ---
@@ -254,7 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    updateCartDisplay(); // Frissítjük a kosár nézetét
+    updateCartDisplay();
     calculateSummary();
   }
 
@@ -461,6 +486,56 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Hiba a vágólapra másoláskor:', err);
       alert("Hiba történt a másolás közben. Ellenőrizd a konzolt.");
     });
+  }
+
+  // --- KEDVENC FUNKCIÓK ---
+
+  // Betölti a kedvenceket a localStorage-ból
+  function loadFavorites() {
+    const storedFavorites = localStorage.getItem('hlmta_favorites');
+    if (storedFavorites) {
+      favorites = JSON.parse(storedFavorites);
+    }
+  }
+
+  // Elmenti a kedvenceket a localStorage-ba
+  function saveFavorites() {
+    localStorage.setItem('hlmta_favorites', JSON.stringify(favorites));
+  }
+
+  // Hozzáad/elvesz egy tételt a kedvencekből
+  function toggleFavorite(itemId, buttonElement) {
+    const index = favorites.indexOf(itemId);
+
+    if (index > -1) {
+      // Már kedvenc, ezért eltávolítjuk
+      favorites.splice(index, 1);
+      buttonElement.classList.remove('text-yellow-400');
+      buttonElement.classList.add('text-gray-400');
+    } else {
+      // Még nem kedvenc, ezért hozzáadjuk
+      favorites.push(itemId);
+      buttonElement.classList.add('text-yellow-400');
+      buttonElement.classList.remove('text-gray-400');
+    }
+
+    saveFavorites();
+  }
+
+  // A fő nézetkapcsoló (Összes / Csak kedvencek)
+  function toggleFavoritesView() {
+    isFavoritesView = !isFavoritesView;
+
+    // Gomb állapotának frissítése
+    const favButton = document.getElementById('toggle-favorites');
+    if (isFavoritesView) {
+      favButton.classList.add('bg-blue-100', 'dark:bg-blue-900', 'text-blue-600');
+    } else {
+      favButton.classList.remove('bg-blue-100', 'dark:bg-blue-900', 'text-blue-600');
+    }
+
+    // A lista újrarajzolása a szűrő alapján
+    filterAndRender();
   }
 
   // --- SEGÉDFÜGGVÉNYEK ---
