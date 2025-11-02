@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- VÁLTOZÓK ÉS DOM ELEMEK ---
   let penalCodeData = [];
   let isFavoritesView = false;
+  let history = [];
 
   // DOM elemek gyors elérése
   const itemList = document.getElementById('item-list');
@@ -33,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     await loadPenalCode();
     prepareData();
     loadFavorites();
+    loadHistory();
     renderItemList(allItems);
 
     setupEventListeners();
@@ -221,6 +223,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Fő Kedvencek gomb a fejlécben
     document.getElementById('toggle-favorites').addEventListener('click', toggleFavoritesView);
+
+    // Előzmények gomb
+    document.getElementById('history-button').addEventListener('click', showHistoryModal);
 
     // document.getElementById('toggle-dark-mode').addEventListener('click', ...);
   }
@@ -476,6 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
       copyCommandButton.textContent = 'Másolva!';
       copyCommandButton.classList.add('bg-green-600', 'hover:bg-green-700');
       copyCommandButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+      saveToHistory();
 
       setTimeout(() => {
         copyCommandButton.textContent = 'Parancsok Másolása';
@@ -536,6 +542,166 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // A lista újrarajzolása a szűrő alapján
     filterAndRender();
+  }
+
+  // --- ELŐZMÉNY FUNKCIÓK ---
+  const MAX_HISTORY_ITEMS = 10;
+
+  function loadHistory() {
+    const storedHistory = localStorage.getItem('hlmta_history');
+    if (storedHistory) {
+      history = JSON.parse(storedHistory);
+    }
+  }
+
+  function saveToHistory() {
+    // 1. Snapshot készítése az aktuális intézkedésről
+    const snapshot = {
+      cart: JSON.parse(JSON.stringify(cart)),
+      finalFine: parseInt(fineSlider.value),
+      finalJail: parseInt(jailSlider.value),
+      reasons: cart.map(c => c.item.rovidites).join(', '),
+      timestamp: new Date().toISOString()
+    };
+
+    // 2. Hozzáadás a lista elejére
+    history.unshift(snapshot);
+
+    // 3. Lista méretének korlátozása
+    if (history.length > MAX_HISTORY_ITEMS) {
+      history.pop();
+    }
+
+    // 4. Mentés
+    localStorage.setItem('hlmta_history', JSON.stringify(history));
+  }
+
+  // Előzmény betöltése
+  function loadFromHistory(timestamp) {
+    const snapshot = history.find(item => item.timestamp === timestamp);
+    if (!snapshot) {
+      alert('Hiba: Ez az előzmény nem található.');
+      return;
+    }
+
+    // 1. Kosár visszaállítása
+    cart = JSON.parse(JSON.stringify(snapshot.cart));
+
+    // 2. UI frissítése
+    updateCartDisplay();
+    calculateSummary();
+
+    // 3. Csúszkák pontos értékének beállítása
+    fineSlider.value = snapshot.finalFine;
+    jailSlider.value = snapshot.finalJail;
+
+    // 4. UI frissítése a csúszka-értékekkel
+    updateSliderValueDisplay();
+    generateCommands();
+
+    // 5. Modal bezárása
+    closeHistoryModal();
+  }
+
+  // Modal bezárása
+  function closeHistoryModal() {
+    const modal = document.getElementById('history-modal');
+    if (modal) {
+      modal.remove();
+    }
+  }
+
+  // Modal megjelenítése
+  function showHistoryModal() {
+    closeHistoryModal();
+
+    // 1. Fő "overlay" létrehozása
+    const modalOverlay = document.createElement('div');
+    modalOverlay.id = 'history-modal';
+    modalOverlay.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50';
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target.id === 'history-modal') {
+        closeHistoryModal();
+      }
+    });
+
+    // 2. Maga a "modal" (fehér doboz)
+    const modalContent = document.createElement('div');
+    modalContent.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col';
+
+    // 3. Modal Fejléc
+    modalContent.innerHTML = `
+            <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-2xl font-semibold">Intézkedés Előzmények</h2>
+                <button id="modal-close-btn" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                </button>
+            </div>
+        `;
+
+    // 4. Modal Törzs (görgethető lista)
+    const modalBody = document.createElement('div');
+    modalBody.className = 'p-4 overflow-y-auto space-y-3';
+
+    if (history.length === 0) {
+      modalBody.innerHTML = '<p class="text-gray-500 text-center py-4">Nincsenek mentett előzmények.</p>';
+    } else {
+      history.forEach(item => {
+        const historyItem = document.createElement('div');
+        historyItem.className = 'flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg';
+
+        const relativeTime = getRelativeTime(item.timestamp);
+
+        historyItem.innerHTML = `
+                    <div>
+                        <p class="font-medium">${formatCurrency(item.finalFine)} / ${item.finalJail} perc</p>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 truncate max-w-xs" title="${item.reasons}">${item.reasons}</p>
+                        <p class="text-xs text-gray-400 dark:text-gray-500">${relativeTime}</p>
+                    </div>
+                    <button data-timestamp="${item.timestamp}" class="history-load-btn px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors">
+                        Visszatöltés
+                    </button>
+                `;
+        modalBody.appendChild(historyItem);
+      });
+    }
+    modalContent.appendChild(modalBody);
+
+    // 5. Eseménykezelők a modal-on belül
+    modalContent.querySelector('#modal-close-btn').addEventListener('click', closeHistoryModal);
+
+    modalBody.querySelectorAll('.history-load-btn').forEach(button => {
+      button.addEventListener('click', (e) => {
+        loadFromHistory(e.target.dataset.timestamp);
+      });
+    });
+
+    // 6. Összerakás és megjelenítés
+    modalOverlay.appendChild(modalContent);
+    document.body.appendChild(modalOverlay);
+  }
+
+  // Idők
+  function getRelativeTime(timestamp) {
+    const now = new Date();
+    const past = new Date(timestamp);
+    const diffInSeconds = Math.floor((now - past) / 1000);
+
+    const rtf = new Intl.RelativeTimeFormat('hu', { numeric: 'auto' });
+
+    if (diffInSeconds < 60) {
+      return rtf.format(-diffInSeconds, 'second');
+    }
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+      return rtf.format(-diffInMinutes, 'minute');
+    }
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+      return rtf.format(-diffInHours, 'hour');
+    }
+    const diffInDays = Math.floor(diffInHours / 24);
+    return rtf.format(-diffInDays, 'day');
   }
 
   // --- SEGÉDFÜGGVÉNYEK ---
