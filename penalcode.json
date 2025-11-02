@@ -1252,7 +1252,7 @@
             "megnevezes": "-Különösen Visszaeső Által",
             "min_birsag": 300000,
             "max_birsag": 600000,
-            "min_fegyhaz": 30,
+            "min_fegyhaz": "+ 30 perc",
             "max_fegyhaz": null,
             "rovidites": "GY/VI.",
             "megjegyzes": "Volt már előállítva többször korábban hasonló bűncselekményekért. (MDC Alapján)"
@@ -1547,7 +1547,7 @@
         "min_birsag": 150000,
         "max_birsag": 300000,
         "min_fegyhaz": null,
-        "max_fegyhaz": null,
+        "max_fegyhaz": "Elkövetett bűn fele.",
         "rovidites": "BR",
         "megjegyzes": "Aki a bűntett létrejövetele óta jelen van, és részt vesz benne."
       }
