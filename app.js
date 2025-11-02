@@ -1,5 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
 
+  // --- ALKALMAZÁS KONFIGURÁCIÓ ---
+  const WARNING_KEYWORDS = [
+    'eltiltható',
+    'bevonható',
+    'max 30 nap',
+    'eltiltani'
+  ];
+
   // --- VÁLTOZÓK ÉS DOM ELEMEK ---
   let penalCodeData = [];
   let isFavoritesView = false;
@@ -74,27 +82,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function prepareData() {
     let idCounter = 0;
+
+    const checkWarning = (note) => {
+      if (!note) return false;
+      const lowerCaseNote = note.toLowerCase();
+      return WARNING_KEYWORDS.some(keyword => lowerCaseNote.includes(keyword));
+    };
+
     penalCodeData.forEach(kategoria => {
       kategoria.tetelek.forEach(tetel => {
+
+        const foMegjegyzes = tetel.megjegyzes || '';
+
         if (tetel.alpontok && tetel.alpontok.length > 0) {
           tetel.alpontok.forEach(alpont => {
+            const alpontMegjegyzes = alpont.megjegyzes || '';
+            const fullNote = `${foMegjegyzes} ${alpontMegjegyzes}`;
+
             allItems.push({
               ...alpont,
               id: `item-${idCounter++}`,
               kategoria_nev: kategoria.kategoria_nev,
-              fo_tetel_nev: tetel.megnevezes
+              fo_tetel_nev: tetel.megnevezes,
+              isWarning: checkWarning(fullNote)
             });
           });
         } else if (tetel.rovidites) {
           allItems.push({
             ...tetel,
             id: `item-${idCounter++}`,
-            kategoria_nev: kategoria.kategoria_nev
+            kategoria_nev: kategoria.kategoria_nev,
+            isWarning: checkWarning(tetel.megjegyzes)
           });
         }
       });
     });
-    console.log('Adatok előkészítve a kereséshez:', allItems);
+    console.log('Adatok előkészítve (figyelmeztetésekkel):', allItems);
   }
 
   // 3. Tételek renderelése a bal oszlopba
@@ -138,9 +161,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
       groupedByKategoria[kategoriaNev].forEach(item => {
         const isInCart = cart.some(cartItem => cartItem.item.id === item.id);
+        const isWarning = item.isWarning;
+
+        let bgClass = '';
+        let iconHtml = '';
+
+        if (isInCart) {
+          if (isWarning) {
+            bgClass = 'bg-amber-50 dark:bg-amber-900/50';
+            iconHtml = ' <span title="Figyelem: Eltiltás/bevonás lehetséges!">⚠️</span>';
+          } else {
+            bgClass = 'bg-blue-50 dark:bg-blue-900/50';
+          }
+        }
 
         const tetelKartya = document.createElement('div');
-        tetelKartya.className = `p-4 flex justify-between items-start ${isInCart ? 'bg-blue-50 dark:bg-blue-900/50' : ''}`;
+        tetelKartya.className = `p-4 flex justify-between items-start ${bgClass}`;
 
         // Tétel adatai (bal oldal)
         let tetelHtml = `
