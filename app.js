@@ -5,6 +5,20 @@ document.addEventListener('DOMContentLoaded', () => {
   let isFavoritesView = false;
   let history = [];
 
+  // --- TÉMA VÁLTOZÓK ---
+  const themeToggleButton = document.getElementById('toggle-dark-mode');
+
+  // A Nap ikon (világos módhoz)
+  const sunIcon = `
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+        </svg>`;
+
+  const moonIcon = `
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+        </svg>`;
+
   // DOM elemek gyors elérése
   const itemList = document.getElementById('item-list');
   const searchInput = document.getElementById('search-input');
@@ -35,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     prepareData();
     loadFavorites();
     loadHistory();
+    initializeTheme();
     renderItemList(allItems);
 
     setupEventListeners();
@@ -103,22 +118,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Hozzuk létre a HTML-t
     for (const kategoriaNev in groupedByKategoria) {
-      const kategoriaWrapper = document.createElement('div');
-      kategoriaWrapper.className = 'bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden';
+      const kategoriaWrapper = document.createElement('details');
+      kategoriaWrapper.className = 'bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden group';
+      kategoriaWrapper.open = true;
 
-      kategoriaWrapper.innerHTML = `
-                <h2 class="text-xl font-semibold p-4 border-b border-gray-200 dark:border-gray-700 cursor-pointer">
-                    ${kategoriaNev}
-                </h2>
+      const summary = document.createElement('summary');
+      summary.className = 'text-xl font-semibold p-4 border-b border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 flex justify-between items-center';
+      summary.innerHTML = `
+                <span>${kategoriaNev}</span>
+                <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
             `;
+      kategoriaWrapper.appendChild(summary);
 
       // Tételek listája a kategórián belül
       const tetelListaDiv = document.createElement('div');
       tetelListaDiv.className = 'divide-y divide-gray-200 dark:divide-gray-700';
 
       groupedByKategoria[kategoriaNev].forEach(item => {
+        const isInCart = cart.some(cartItem => cartItem.item.id === item.id);
+
         const tetelKartya = document.createElement('div');
-        tetelKartya.className = 'p-4 flex justify-between items-start';
+        tetelKartya.className = `p-4 flex justify-between items-start ${isInCart ? 'bg-blue-50 dark:bg-blue-900/50' : ''}`;
 
         // Tétel adatai (bal oldal)
         let tetelHtml = `
@@ -147,13 +169,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const isFavorite = favorites.includes(item.id);
         const favoriteClass = isFavorite ? 'text-yellow-400' : 'text-gray-400';
 
+        // Ellenőrizzük, hogy kosárban van-e
+        const addButtonClass = isInCart
+          ? 'bg-green-600 hover:bg-green-700'
+          : 'bg-blue-600 hover:bg-blue-700';
+        const addButtonText = isInCart ? 'Hozzáadva ✓' : 'Hozzáadás';
+
         const gombokHtml = `
                     <div class="flex-shrink-0 flex flex-col items-end space-y-2 ml-4">
-                        <button data-item-id="${item.id}" class="add-to-cart-btn px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors">
-                            Hozzáadás
+                        <button data-item-id="${item.id}" class="add-to-cart-btn px-3 py-1 ${addButtonClass} text-white text-sm font-medium rounded-md shadow-sm transition-colors">
+                            ${addButtonText}
                         </button>
                         <button data-item-id="${item.id}" class="toggle-favorite-btn p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 ${favoriteClass}">
-                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path>
+                            </svg>
                         </button>
                     </div>
                 `;
@@ -227,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Előzmények gomb
     document.getElementById('history-button').addEventListener('click', showHistoryModal);
 
-    // document.getElementById('toggle-dark-mode').addEventListener('click', ...);
+    themeToggleButton.addEventListener('click', toggleDarkMode);
   }
 
   // --- KERESÉS ÉS SZŰRÉS FUNKCIÓK ---
@@ -286,6 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateCartDisplay();
     calculateSummary();
+    filterAndRender();
   }
 
   // Kosár tartalmának frissítése a HTML-ben
@@ -336,7 +367,8 @@ document.addEventListener('DOMContentLoaded', () => {
       removeFromCart(cartId);
     } else {
       updateCartDisplay();
-      calculateSummary(); // Újraszámolás
+      calculateSummary();
+      filterAndRender();
     }
   }
 
@@ -345,6 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
     cart = cart.filter(item => item.cartId !== cartId);
     updateCartDisplay();
     calculateSummary();
+    filterAndRender();
   }
 
   // Teljes kosár törlése
@@ -352,6 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
     cart = [];
     updateCartDisplay();
     calculateSummary();
+    filterAndRender();
   }
 
   // --- ÖSSZESÍTÉS FUNKCIÓ (Egyelőre üres) ---
@@ -598,6 +632,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 4. UI frissítése a csúszka-értékekkel
     updateSliderValueDisplay();
     generateCommands();
+    filterAndRender();
 
     // 5. Modal bezárása
     closeHistoryModal();
@@ -702,6 +737,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const diffInDays = Math.floor(diffInHours / 24);
     return rtf.format(-diffInDays, 'day');
+  }
+
+  // --- TÉMA (SÖTÉT MÓD) FUNKCIÓK ---
+
+  // Leellenőrzi a mentett vagy rendszer-preferenciát és beállítja a témát
+  function initializeTheme() {
+    const savedTheme = localStorage.getItem('hlmta_theme');
+
+    const userPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    if (savedTheme === 'dark' || (!savedTheme && userPrefersDark)) {
+      setTheme('dark');
+    } else {
+      setTheme('light');
+    }
+  }
+
+  // Beállítja a témát
+  function setTheme(theme) {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      themeToggleButton.innerHTML = sunIcon;
+      localStorage.setItem('hlmta_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      themeToggleButton.innerHTML = moonIcon;
+      localStorage.setItem('hlmta_theme', 'light');
+    }
+  }
+
+  function toggleDarkMode() {
+    if (document.documentElement.classList.contains('dark')) {
+      setTheme('light');
+    } else {
+      setTheme('dark');
+    }
   }
 
   // --- SEGÉDFÜGGVÉNYEK ---
