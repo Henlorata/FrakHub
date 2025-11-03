@@ -77,7 +77,6 @@ document.addEventListener('DOMContentLoaded', () => {
 				throw new Error(`HTTP hiba! Státusz: ${response.status}`);
 			}
 			penalCodeData = await response.json();
-			await new Promise(resolve => setTimeout(resolve, 3000));
 			console.log('Penal Code sikeresen betöltve.');
 		} catch (error) {
 			console.error('Hiba a Penal Code betöltésekor:', error);
