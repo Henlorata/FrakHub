@@ -1,201 +1,204 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-  // --- ALKALMAZÁS KONFIGURÁCIÓ ---
-  const WARNING_KEYWORDS = [
-    'eltiltható',
-    'bevonható',
-    'max 30 nap',
-    'eltiltani'
-  ];
+	// --- ALKALMAZÁS KONFIGURÁCIÓ ---
+	const WARNING_KEYWORDS = [
+		'eltiltható',
+		'bevonható',
+		'max 30 nap',
+		'eltiltani'
+	];
 
-  // --- VÁLTOZÓK ÉS DOM ELEMEK ---
-  let penalCodeData = [];
-  let isFavoritesView = false;
-  let history = [];
+	// --- VÁLTOZÓK ÉS DOM ELEMEK ---
+	let penalCodeData = [];
+	let isFavoritesView = false;
+	let history = [];
 
-  // --- TÉMA VÁLTOZÓK ---
-  const themeToggleButton = document.getElementById('toggle-dark-mode');
+	// --- TÉMA VÁLTOZÓK ---
+	const themeToggleButton = document.getElementById('toggle-dark-mode');
 
-  // A Nap ikon (világos módhoz)
-  const sunIcon = `
+	// A Nap ikon (világos módhoz)
+	const sunIcon = `
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
         </svg>`;
 
-  const moonIcon = `
+	const moonIcon = `
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
         </svg>`;
 
-  // DOM elemek gyors elérése
-  const itemList = document.getElementById('item-list');
-  const searchInput = document.getElementById('search-input');
-  const cartItems = document.getElementById('cart-items');
-  const cartPlaceholder = document.getElementById('cart-placeholder');
-  let cart = [];
-  let cartIdCounter = 0;
-  let favorites = [];
+	// DOM elemek gyors elérése
+	const itemList = document.getElementById('item-list');
+	const searchInput = document.getElementById('search-input');
+	const cartItems = document.getElementById('cart-items');
+	const cartPlaceholder = document.getElementById('cart-placeholder');
+	let cart = [];
+	let cartIdCounter = 0;
+	let favorites = [];
 
-  // Összesítő elemek
-  const summaryFine = document.getElementById('summary-fine');
-  const summaryJail = document.getElementById('summary-jail');
-  const fineSlider = document.getElementById('fine-slider');
-  const jailSlider = document.getElementById('jail-slider');
-  const selectedFine = document.getElementById('selected-fine');
-  const selectedJail = document.getElementById('selected-jail');
+	// Összesítő elemek
+	const summaryFine = document.getElementById('summary-fine');
+	const summaryJail = document.getElementById('summary-jail');
+	const fineSlider = document.getElementById('fine-slider');
+	const jailSlider = document.getElementById('jail-slider');
+	const selectedFine = document.getElementById('selected-fine');
+	const selectedJail = document.getElementById('selected-jail');
+	const fineInput = document.getElementById('fine-input');
+	const jailInput = document.getElementById('jail-input');
 
-  // Parancs generátor elemek
-  const commandOutput = document.getElementById('command-output');
-  const copyCommandButton = document.getElementById('copy-command-button');
-  const clearCartButton = document.getElementById('clear-cart-button');
+	// Parancs generátor elemek
+	const commandOutput = document.getElementById('command-output');
+	const copyCommandButton = document.getElementById('copy-command-button');
+	const clearCartButton = document.getElementById('clear-cart-button');
 	const mobileCartToggle = document.getElementById('mobile-cart-toggle');
 	const cartBackdrop = document.getElementById('cart-backdrop');
 	const sidebarAside = document.getElementById('sidebar-aside');
+	const targetIdInput = document.getElementById('target-id-input');
 
-  // --- FŐ INDÍTÓ FÜGGVÉNY ---
+	// --- FŐ INDÍTÓ FÜGGVÉNY ---
 
-  // 1. Az app inicializálása
-  async function initializeApp() {
-    await loadPenalCode();
-    prepareData();
-    loadFavorites();
-    loadHistory();
-    initializeTheme();
-    renderItemList(allItems);
+	// 1. Az app inicializálása
+	async function initializeApp() {
+		await loadPenalCode();
+		prepareData();
+		loadFavorites();
+		loadHistory();
+		initializeTheme();
+		renderItemList(allItems);
 
-    setupEventListeners();
-  }
+		setupEventListeners();
+	}
 
-  // 2. A JSON adatok betöltése
-  async function loadPenalCode() {
-    try {
-      const response = await fetch('penalcode.json');
-      if (!response.ok) {
-        throw new Error(`HTTP hiba! Státusz: ${response.status}`);
-      }
-      penalCodeData = await response.json();
-      console.log('Penal Code sikeresen betöltve.');
-    } catch (error) {
-      console.error('Hiba a Penal Code betöltésekor:', error);
-      itemList.innerHTML = '<div class="bg-red-100 dark:bg-red-900 border border-red-400 text-red-700 dark:text-red-200 px-4 py-3 rounded" role="alert">Hiba történt a penalcode.json betöltése közben. Ellenőrizd a konzolt.</div>';
-    }
-  }
+	// 2. A JSON adatok betöltése
+	async function loadPenalCode() {
+		try {
+			const response = await fetch('penalcode.json');
+			if (!response.ok) {
+				throw new Error(`HTTP hiba! Státusz: ${response.status}`);
+			}
+			penalCodeData = await response.json();
+			console.log('Penal Code sikeresen betöltve.');
+		} catch (error) {
+			console.error('Hiba a Penal Code betöltésekor:', error);
+			itemList.innerHTML = '<div class="bg-red-100 dark:bg-red-900 border border-red-400 text-red-700 dark:text-red-200 px-4 py-3 rounded" role="alert">Hiba történt a penalcode.json betöltése közben. Ellenőrizd a konzolt.</div>';
+		}
+	}
 
-  let allItems = [];
+	let allItems = [];
 
-  function prepareData() {
-    let idCounter = 0;
+	function prepareData() {
+		let idCounter = 0;
 
-    const checkWarning = (note) => {
-      if (!note) return false;
-      const lowerCaseNote = note.toLowerCase();
-      return WARNING_KEYWORDS.some(keyword => lowerCaseNote.includes(keyword));
-    };
+		const checkWarning = (note) => {
+			if (!note) return false;
+			const lowerCaseNote = note.toLowerCase();
+			return WARNING_KEYWORDS.some(keyword => lowerCaseNote.includes(keyword));
+		};
 
-    penalCodeData.forEach(kategoria => {
-      kategoria.tetelek.forEach(tetel => {
+		penalCodeData.forEach(kategoria => {
+			kategoria.tetelek.forEach(tetel => {
 
-        const foMegjegyzes = tetel.megjegyzes || '';
+				const foMegjegyzes = tetel.megjegyzes || '';
 
-        if (tetel.alpontok && tetel.alpontok.length > 0) {
-          tetel.alpontok.forEach(alpont => {
-            const alpontMegjegyzes = alpont.megjegyzes || '';
-            const fullNote = `${foMegjegyzes} ${alpontMegjegyzes}`;
+				if (tetel.alpontok && tetel.alpontok.length > 0) {
+					tetel.alpontok.forEach(alpont => {
+						const alpontMegjegyzes = alpont.megjegyzes || '';
+						const fullNote = `${foMegjegyzes} ${alpontMegjegyzes}`;
 
-            allItems.push({
-              ...alpont,
-              id: `item-${idCounter++}`,
-              kategoria_nev: kategoria.kategoria_nev,
-              fo_tetel_nev: tetel.megnevezes,
-              isWarning: checkWarning(fullNote)
-            });
-          });
-        } else if (tetel.rovidites) {
-          allItems.push({
-            ...tetel,
-            id: `item-${idCounter++}`,
-            kategoria_nev: kategoria.kategoria_nev,
-            isWarning: checkWarning(tetel.megjegyzes)
-          });
-        }
-      });
-    });
-    console.log('Adatok előkészítve (figyelmeztetésekkel):', allItems);
-  }
+						allItems.push({
+							...alpont,
+							id: `item-${idCounter++}`,
+							kategoria_nev: kategoria.kategoria_nev,
+							fo_tetel_nev: tetel.megnevezes,
+							isWarning: checkWarning(fullNote)
+						});
+					});
+				} else if (tetel.rovidites) {
+					allItems.push({
+						...tetel,
+						id: `item-${idCounter++}`,
+						kategoria_nev: kategoria.kategoria_nev,
+						isWarning: checkWarning(tetel.megjegyzes)
+					});
+				}
+			});
+		});
+		console.log('Adatok előkészítve (figyelmeztetésekkel):', allItems);
+	}
 
-  // 3. Tételek renderelése a bal oszlopba
-  function renderItemList(itemsToRender = allItems) {
-    itemList.innerHTML = '';
+	// 3. Tételek renderelése a bal oszlopba
+	function renderItemList(itemsToRender = allItems) {
+		itemList.innerHTML = '';
 
-    if (itemsToRender.length === 0) {
-      itemList.innerHTML = '<p class="text-gray-500 text-center py-4">Nincs a keresésnek megfelelő találat.</p>';
-      return;
-    }
+		if (itemsToRender.length === 0) {
+			itemList.innerHTML = '<p class="text-gray-500 text-center py-4">Nincs a keresésnek megfelelő találat.</p>';
+			return;
+		}
 
-    // Csoportosítsuk a tételeket kategóriák szerint
-    const groupedByKategoria = itemsToRender.reduce((acc, item) => {
-      const kategoria = item.kategoria_nev;
-      if (!acc[kategoria]) {
-        acc[kategoria] = [];
-      }
-      acc[kategoria].push(item);
-      return acc;
-    }, {});
+		// Csoportosítsuk a tételeket kategóriák szerint
+		const groupedByKategoria = itemsToRender.reduce((acc, item) => {
+			const kategoria = item.kategoria_nev;
+			if (!acc[kategoria]) {
+				acc[kategoria] = [];
+			}
+			acc[kategoria].push(item);
+			return acc;
+		}, {});
 
-    // Hozzuk létre a HTML-t
-    for (const kategoriaNev in groupedByKategoria) {
-      const kategoriaWrapper = document.createElement('details');
-      kategoriaWrapper.className = 'bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden group';
-      kategoriaWrapper.open = true;
+		// Hozzuk létre a HTML-t
+		for (const kategoriaNev in groupedByKategoria) {
+			const kategoriaWrapper = document.createElement('details');
+			kategoriaWrapper.className = 'bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden group';
+			kategoriaWrapper.open = true;
 
-      const summary = document.createElement('summary');
-      summary.className = 'text-xl font-semibold p-4 border-b border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 flex justify-between items-center';
-      summary.innerHTML = `
+			const summary = document.createElement('summary');
+			summary.className = 'text-xl font-semibold p-4 border-b border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 flex justify-between items-center';
+			summary.innerHTML = `
                 <span>${kategoriaNev}</span>
                 <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                 </svg>
             `;
-      kategoriaWrapper.appendChild(summary);
+			kategoriaWrapper.appendChild(summary);
 
-      // Tételek listája a kategórián belül
-      const tetelListaDiv = document.createElement('div');
-      tetelListaDiv.className = 'divide-y divide-gray-200 dark:divide-gray-700';
+			// Tételek listája a kategórián belül
+			const tetelListaDiv = document.createElement('div');
+			tetelListaDiv.className = 'divide-y divide-gray-200 dark:divide-gray-700';
 
-      groupedByKategoria[kategoriaNev].forEach(item => {
-        const isInCart = cart.some(cartItem => cartItem.item.id === item.id);
-        const isWarning = item.isWarning;
+			groupedByKategoria[kategoriaNev].forEach(item => {
+				const isInCart = cart.some(cartItem => cartItem.item.id === item.id);
+				const isWarning = item.isWarning;
 
-        let bgClass = '';
-        let iconHtml = '';
+				let bgClass = '';
+				let iconHtml = '';
 
-        if (isInCart) {
-          if (isWarning) {
-            bgClass = 'bg-amber-50 dark:bg-amber-900/50';
-            iconHtml = ' <span title="Figyelem: Eltiltás/bevonás lehetséges!">⚠️</span>';
-          } else {
-            bgClass = 'bg-blue-50 dark:bg-blue-900/50';
-          }
-        }
+				if (isInCart) {
+					if (isWarning) {
+						bgClass = 'bg-amber-50 dark:bg-amber-900/50';
+						iconHtml = ' <span title="Figyelem: Eltiltás/bevonás lehetséges!">⚠️</span>';
+					} else {
+						bgClass = 'bg-blue-50 dark:bg-blue-900/50';
+					}
+				}
 
-        const tetelKartya = document.createElement('div');
-        tetelKartya.className = `p-4 flex justify-between items-start ${bgClass}`;
+				const tetelKartya = document.createElement('div');
+				tetelKartya.className = `p-4 flex justify-between items-start ${bgClass}`;
 
-        // Tétel adatai (bal oldal)
-        let tetelHtml = `
+				// Tétel adatai (bal oldal)
+				let tetelHtml = `
                     <div>
                         <h3 class="text-lg font-medium text-blue-600 dark:text-blue-400">${item.megnevezes}</h3>
                 `;
 
-        // Ha alpont, mutassuk a fő tételt is
-        if (item.fo_tetel_nev) {
-          tetelHtml += `<p class="text-sm text-gray-500 dark:text-gray-400">${item.fo_tetel_nev} (${item.paragrafus})</p>`;
-        } else {
-          tetelHtml += `<p class="text-sm text-gray-500 dark:text-gray-400">${item.paragrafus}</p>`;
-        }
+				// Ha alpont, mutassuk a fő tételt is
+				if (item.fo_tetel_nev) {
+					tetelHtml += `<p class="text-sm text-gray-500 dark:text-gray-400">${item.fo_tetel_nev} (${item.paragrafus})</p>`;
+				} else {
+					tetelHtml += `<p class="text-sm text-gray-500 dark:text-gray-400">${item.paragrafus}</p>`;
+				}
 
-        // Bírság és Fegyház infók
-        tetelHtml += `
+				// Bírság és Fegyház infók
+				tetelHtml += `
                         <div class="text-sm mt-1">
                             <span>Bírság: <strong>${formatCurrency(item.min_birsag)} - ${formatCurrency(item.max_birsag)}</strong></span>
                             <span class="ml-4">Fegyház: <strong>${formatJailTime(item.min_fegyhaz)} - ${formatJailTime(item.max_fegyhaz)}</strong></span>
@@ -204,17 +207,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-        // Gombok (jobb oldal)
-        const isFavorite = favorites.includes(item.id);
-        const favoriteClass = isFavorite ? 'text-yellow-400' : 'text-gray-400';
+				// Gombok (jobb oldal)
+				const isFavorite = favorites.includes(item.id);
+				const favoriteClass = isFavorite ? 'text-yellow-400' : 'text-gray-400';
 
-        // Ellenőrizzük, hogy kosárban van-e
-        const addButtonClass = isInCart
-          ? 'bg-green-600 hover:bg-green-700'
-          : 'bg-blue-600 hover:bg-blue-700';
-        const addButtonText = isInCart ? 'Hozzáadva ✓' : 'Hozzáadás';
+				// Ellenőrizzük, hogy kosárban van-e
+				const addButtonClass = isInCart
+					? 'bg-green-600 hover:bg-green-700'
+					: 'bg-blue-600 hover:bg-blue-700';
+				const addButtonText = isInCart ? 'Hozzáadva ✓' : 'Hozzáadás';
 
-        const gombokHtml = `
+				const gombokHtml = `
                     <div class="flex-shrink-0 flex flex-col items-end space-y-2 ml-4">
                         <button data-item-id="${item.id}" class="add-to-cart-btn px-3 py-1 ${addButtonClass} text-white text-sm font-medium rounded-md shadow-sm transition-colors">
                             ${addButtonText}
@@ -227,165 +230,199 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-        tetelKartya.innerHTML = tetelHtml + gombokHtml;
-        tetelListaDiv.appendChild(tetelKartya);
-      });
+				tetelKartya.innerHTML = tetelHtml + gombokHtml;
+				tetelListaDiv.appendChild(tetelKartya);
+			});
 
-      kategoriaWrapper.appendChild(tetelListaDiv);
-      itemList.appendChild(kategoriaWrapper);
-    }
-  }
+			kategoriaWrapper.appendChild(tetelListaDiv);
+			itemList.appendChild(kategoriaWrapper);
+		}
+	}
 
-  // 4. Eseménykezelők (Kereső, Gombok...)
-  function setupEventListeners() {
+	// 4. Eseménykezelők (Kereső, Gombok...)
+	function setupEventListeners() {
 
-    // Kereső eseménykezelője
-    searchInput.addEventListener('keyup', filterAndRender); // Átneveztük!
+		// Kereső eseménykezelője
+		searchInput.addEventListener('keyup', filterAndRender); // Átneveztük!
 
-    // Kosár törlése gomb
-    clearCartButton.addEventListener('click', clearCart);
+		// Kosár törlése gomb
+		clearCartButton.addEventListener('click', clearCart);
 
-    // Tétel lista
-    itemList.addEventListener('click', (e) => {
-      const target = e.target.closest('button');
-      if (!target) return;
+		// Tétel lista
+		itemList.addEventListener('click', (e) => {
+			const target = e.target.closest('button');
+			if (!target) return;
 
-      const itemId = target.dataset.itemId;
+			const itemId = target.dataset.itemId;
 
-      if (target.classList.contains('add-to-cart-btn')) {
-        addToCart(itemId);
-      }
+			if (target.classList.contains('add-to-cart-btn')) {
+				addToCart(itemId);
+			}
 
-      if (target.classList.contains('toggle-favorite-btn')) {
-        toggleFavorite(itemId, target);
-      }
-    });
+			if (target.classList.contains('toggle-favorite-btn')) {
+				toggleFavorite(itemId, target);
+			}
+		});
 
-    // Kosár
-    cartItems.addEventListener('click', (e) => {
-      const target = e.target.closest('button');
-      if (!target) return;
+		// Kosár
+		cartItems.addEventListener('click', (e) => {
+			const target = e.target.closest('button');
+			if (!target) return;
 
-      const cartId = target.dataset.cartId;
+			const cartId = target.dataset.cartId;
 
-      if (target.classList.contains('inc-qty-btn')) {
-        updateCartQuantity(cartId, 1);
-      } else if (target.classList.contains('dec-qty-btn')) {
-        updateCartQuantity(cartId, -1);
-      } else if (target.classList.contains('remove-from-cart-btn')) {
-        removeFromCart(cartId);
-      }
-    });
+			if (target.classList.contains('inc-qty-btn')) {
+				updateCartQuantity(cartId, 1);
+			} else if (target.classList.contains('dec-qty-btn')) {
+				updateCartQuantity(cartId, -1);
+			} else if (target.classList.contains('remove-from-cart-btn')) {
+				removeFromCart(cartId);
+			}
+		});
 
-    // Csúszkák eseménykezelői
-    fineSlider.addEventListener('input', () => {
-      updateSliderValueDisplay();
-      generateCommands();
-    });
-    jailSlider.addEventListener('input', () => {
-      updateSliderValueDisplay();
-      generateCommands();
-    });
+		/// Csúszkák eseménykezelői
+		fineSlider.addEventListener('input', () => {
+			fineInput.value = fineSlider.value;
+			updateSliderValueDisplay();
+			generateCommands();
+		});
+		jailSlider.addEventListener('input', () => {
+			jailInput.value = jailSlider.value;
+			updateSliderValueDisplay();
+			generateCommands();
+		});
 
-    // Másolás gomb
-    copyCommandButton.addEventListener('click', copyCommands);
+		// Beviteli mezők eseménykezelői
+		fineInput.addEventListener('input', () => {
+			fineSlider.value = fineInput.value;
+			updateSliderValueDisplay();
+			generateCommands();
+		});
+		jailInput.addEventListener('input', () => {
+			jailSlider.value = jailInput.value;
+			updateSliderValueDisplay();
+			generateCommands();
+		});
 
-    // Fő Kedvencek gomb a fejlécben
-    document.getElementById('toggle-favorites').addEventListener('click', toggleFavoritesView);
+		const validateOnBlur = (input, slider) => {
+			let value = parseInt(input.value);
+			const min = parseInt(input.min);
+			const max = parseInt(input.max);
 
-    // Előzmények gomb
-    document.getElementById('history-button').addEventListener('click', showHistoryModal);
+			if (isNaN(value) || value < min) value = min;
+			if (value > max) value = max;
+
+			input.value = value;
+			slider.value = value;
+			updateSliderValueDisplay();
+			generateCommands();
+		};
+
+		fineInput.addEventListener('blur', () => validateOnBlur(fineInput, fineSlider));
+		jailInput.addEventListener('blur', () => validateOnBlur(jailInput, jailSlider));
+
+		// Másolás gomb
+		copyCommandButton.addEventListener('click', copyCommands);
+
+		// Fő Kedvencek gomb a fejlécben
+		document.getElementById('toggle-favorites').addEventListener('click', toggleFavoritesView);
+
+		// Előzmények gomb
+		document.getElementById('history-button').addEventListener('click', showHistoryModal);
 
 		// Téma váltó gomb
-    themeToggleButton.addEventListener('click', toggleDarkMode);
+		themeToggleButton.addEventListener('click', toggleDarkMode);
 
-	  if (mobileCartToggle) {
-		  mobileCartToggle.addEventListener('click', openMobileCart);
-	  }
-	  if (cartBackdrop) {
-		  cartBackdrop.addEventListener('click', closeMobileCart);
-	  }
-  }
+		if (mobileCartToggle) {
+			mobileCartToggle.addEventListener('click', openMobileCart);
+		}
+		if (cartBackdrop) {
+			cartBackdrop.addEventListener('click', closeMobileCart);
+		}
+		if (targetIdInput) {
+			targetIdInput.addEventListener('keyup', generateCommands);
+		}
+	}
 
-  // --- KERESÉS ÉS SZŰRÉS FUNKCIÓK ---
+	// --- KERESÉS ÉS SZŰRÉS FUNKCIÓK ---
 
-  function filterAndRender() {
-    const searchTerm = searchInput.value.toLowerCase().trim();
-    let itemsToFilter = allItems;
+	function filterAndRender() {
+		const searchTerm = searchInput.value.toLowerCase().trim();
+		let itemsToFilter = allItems;
 
-    // 1. Szűrés Kedvencekre (ha aktív)
-    if (isFavoritesView) {
-      itemsToFilter = allItems.filter(item => favorites.includes(item.id));
-    }
+		// 1. Szűrés Kedvencekre (ha aktív)
+		if (isFavoritesView) {
+			itemsToFilter = allItems.filter(item => favorites.includes(item.id));
+		}
 
-    // 2. Szűrés Keresőszóra
-    let filteredItems = itemsToFilter;
-    if (searchTerm !== '') {
-      filteredItems = itemsToFilter.filter(item => {
-        const name = item.megnevezes.toLowerCase();
-        const abbreviation = item.rovidites ? item.rovidites.toLowerCase() : '';
-        const paragraph = item.paragrafus.toLowerCase();
-        const note = item.megjegyzes ? item.megjegyzes.toLowerCase() : '';
+		// 2. Szűrés Keresőszóra
+		let filteredItems = itemsToFilter;
+		if (searchTerm !== '') {
+			filteredItems = itemsToFilter.filter(item => {
+				const name = item.megnevezes.toLowerCase();
+				const abbreviation = item.rovidites ? item.rovidites.toLowerCase() : '';
+				const paragraph = item.paragrafus.toLowerCase();
+				const note = item.megjegyzes ? item.megjegyzes.toLowerCase() : '';
 
-        return name.includes(searchTerm) ||
-          abbreviation.includes(searchTerm) ||
-          paragraph.includes(searchTerm) ||
-          note.includes(searchTerm);
-      });
-    }
+				return name.includes(searchTerm) ||
+					abbreviation.includes(searchTerm) ||
+					paragraph.includes(searchTerm) ||
+					note.includes(searchTerm);
+			});
+		}
 
-    // 3. Végül renderelés
-    renderItemList(filteredItems);
-  }
+		// 3. Végül renderelés
+		renderItemList(filteredItems);
+	}
 
-  function handleSearch() {
-    filterAndRender();
-  }
+	function handleSearch() {
+		filterAndRender();
+	}
 
-  // --- KOSÁR FUNKCIÓK ---
+	// --- KOSÁR FUNKCIÓK ---
 
-  // Tétel hozzáadása a kosárhoz
-  function addToCart(itemId) {
-    const existingCartItem = cart.find(cartItem => cartItem.item.id === itemId);
+	// Tétel hozzáadása a kosárhoz
+	function addToCart(itemId) {
+		const existingCartItem = cart.find(cartItem => cartItem.item.id === itemId);
 
-    if (existingCartItem) {
-      existingCartItem.quantity++;
-    } else {
-      const itemToAdd = allItems.find(item => item.id === itemId);
-      if (itemToAdd) {
-        cart.push({
-          item: itemToAdd,
-          quantity: 1,
-          cartId: `cart-${cartIdCounter++}` // Egyedi kosár-azonosító
-        });
-      }
-    }
+		if (existingCartItem) {
+			existingCartItem.quantity++;
+		} else {
+			const itemToAdd = allItems.find(item => item.id === itemId);
+			if (itemToAdd) {
+				cart.push({
+					item: itemToAdd,
+					quantity: 1,
+					cartId: `cart-${cartIdCounter++}` // Egyedi kosár-azonosító
+				});
+			}
+		}
 
-    updateCartDisplay();
-    calculateSummary();
-    filterAndRender();
-  }
+		updateCartDisplay();
+		calculateSummary();
+		filterAndRender();
+	}
 
-  // Kosár tartalmának frissítése a HTML-ben
-  function updateCartDisplay() {
-    cartItems.innerHTML = '';
+	// Kosár tartalmának frissítése a HTML-ben
+	function updateCartDisplay() {
+		cartItems.innerHTML = '';
 
-    if (cart.length === 0) {
-      cartPlaceholder.classList.remove('hidden');
-      return;
-    }
+		if (cart.length === 0) {
+			cartPlaceholder.classList.remove('hidden');
+			return;
+		}
 
-    cartPlaceholder.classList.add('hidden');
+		cartPlaceholder.classList.add('hidden');
 
-    cart.forEach(cartItem => {
-      const { item, quantity, cartId } = cartItem;
+		cart.forEach(cartItem => {
+			const {item, quantity, cartId} = cartItem;
 
-      const isWarning = item.isWarning;
-      const warningIcon = isWarning ? ' <span class="text-amber-500" title="Figyelem: Eltiltás/bevonás lehetséges!">⚠️</span>' : '';
+			const isWarning = item.isWarning;
+			const warningIcon = isWarning ? ' <span class="text-amber-500" title="Figyelem: Eltiltás/bevonás lehetséges!">⚠️</span>' : '';
 
-      const cartRow = document.createElement('div');
-      cartRow.className = 'flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700';
-      cartRow.innerHTML = `
+			const cartRow = document.createElement('div');
+			cartRow.className = 'flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700';
+			cartRow.innerHTML = `
                 <div class="flex-1 min-w-0 mr-2">
                     <p class="text-sm font-medium truncate">${item.megnevezes}${warningIcon}</p>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -402,183 +439,196 @@ document.addEventListener('DOMContentLoaded', () => {
                     </button>
                 </div>
             `;
-      cartItems.appendChild(cartRow);
-    });
-  }
+			cartItems.appendChild(cartRow);
+		});
+	}
 
-  // Darabszám változtatása
-  function updateCartQuantity(cartId, change) {
-    const cartItem = cart.find(item => item.cartId === cartId);
-    if (!cartItem) return;
+	// Darabszám változtatása
+	function updateCartQuantity(cartId, change) {
+		const cartItem = cart.find(item => item.cartId === cartId);
+		if (!cartItem) return;
 
-    cartItem.quantity += change;
+		cartItem.quantity += change;
 
-    if (cartItem.quantity <= 0) {
-      removeFromCart(cartId);
-    } else {
-      updateCartDisplay();
-      calculateSummary();
-      filterAndRender();
-    }
-  }
+		if (cartItem.quantity <= 0) {
+			removeFromCart(cartId);
+		} else {
+			updateCartDisplay();
+			calculateSummary();
+			filterAndRender();
+		}
+	}
 
-  // Tétel törlése a kosárból
-  function removeFromCart(cartId) {
-    cart = cart.filter(item => item.cartId !== cartId);
-    updateCartDisplay();
-    calculateSummary();
-    filterAndRender();
-  }
+	// Tétel törlése a kosárból
+	function removeFromCart(cartId) {
+		cart = cart.filter(item => item.cartId !== cartId);
+		updateCartDisplay();
+		calculateSummary();
+		filterAndRender();
+	}
 
-  // Teljes kosár törlése
-  function clearCart() {
-    cart = [];
-    updateCartDisplay();
-    calculateSummary();
-    filterAndRender();
-  }
+	// Teljes kosár törlése
+	function clearCart() {
+		cart = [];
+		updateCartDisplay();
+		calculateSummary();
+		filterAndRender();
+	}
 
-  // --- ÖSSZESÍTÉS FUNKCIÓ (Egyelőre üres) ---
-  function calculateSummary() {
-    let totalMinFine = 0;
-    let totalMaxFine = 0;
-    let totalMinJail = 0;
-    let totalMaxJail = 0;
-    let specialJailNotes = [];
+	// --- ÖSSZESÍTÉS FUNKCIÓ (Egyelőre üres) ---
+	function calculateSummary() {
+		let totalMinFine = 0;
+		let totalMaxFine = 0;
+		let totalMinJail = 0;
+		let totalMaxJail = 0;
+		let specialJailNotes = [];
 
-    let warningItems = [];
+		let warningItems = [];
 
-    cart.forEach(cartItem => {
-      const item = cartItem.item;
-      const qty = cartItem.quantity;
+		cart.forEach(cartItem => {
+			const item = cartItem.item;
+			const qty = cartItem.quantity;
 
-      if (item.isWarning) {
-        if (!warningItems.includes(item.megnevezes)) {
-          warningItems.push(item.megnevezes);
-        }
-      }
+			if (item.isWarning) {
+				if (!warningItems.includes(item.megnevezes)) {
+					warningItems.push(item.megnevezes);
+				}
+			}
 
-      // Bírságok számolása
-      if (typeof item.min_birsag === 'number') {
-        totalMinFine += item.min_birsag * qty;
-      }
-      if (typeof item.max_birsag === 'number') {
-        totalMaxFine += item.max_birsag * qty;
-      }
+			// Bírságok számolása
+			if (typeof item.min_birsag === 'number') {
+				totalMinFine += item.min_birsag * qty;
+			}
+			if (typeof item.max_birsag === 'number') {
+				totalMaxFine += item.max_birsag * qty;
+			}
 
-      // Fegyház számolása
-      // Min Fegyház
-      if (typeof item.min_fegyhaz === 'number') {
-        totalMinJail += item.min_fegyhaz * qty;
-      } else if (item.min_fegyhaz) {
-        specialJailNotes.push(`${item.megnevezes}: ${item.min_fegyhaz} (x${qty})`);
-      }
-      // Max Fegyház
-      if (typeof item.max_fegyhaz === 'number') {
-        totalMaxJail += item.max_fegyhaz * qty;
-      } else if (item.max_fegyhaz) {
-        specialJailNotes.push(`${item.megnevezes}: ${item.max_fegyhaz} (x${qty})`);
-      }
-    });
+			// Fegyház számolása
+			// Min Fegyház
+			if (typeof item.min_fegyhaz === 'number') {
+				totalMinJail += item.min_fegyhaz * qty;
+			} else if (item.min_fegyhaz) {
+				specialJailNotes.push(`${item.megnevezes}: ${item.min_fegyhaz} (x${qty})`);
+			}
+			// Max Fegyház
+			if (typeof item.max_fegyhaz === 'number') {
+				totalMaxJail += item.max_fegyhaz * qty;
+			} else if (item.max_fegyhaz) {
+				specialJailNotes.push(`${item.megnevezes}: ${item.max_fegyhaz} (x${qty})`);
+			}
+		});
 
-    // 1. Összesítő szövegek frissítése
-    summaryFine.textContent = `${formatCurrency(totalMinFine)} - ${formatCurrency(totalMaxFine)}`;
-    summaryJail.textContent = `${totalMinJail} perc - ${totalMaxJail} perc`;
+		// 1. Összesítő szövegek frissítése
+		summaryFine.textContent = `${formatCurrency(totalMinFine)} - ${formatCurrency(totalMaxFine)}`;
+		summaryJail.textContent = `${totalMinJail} perc - ${totalMaxJail} perc`;
 
-    // Speciális megjegyzések hozzáadása
-    const notesContainer = document.getElementById('jail-notes-container');
-    if (notesContainer) notesContainer.remove();
+		// Speciális megjegyzések hozzáadása
+		const notesContainer = document.getElementById('jail-notes-container');
+		if (notesContainer) notesContainer.remove();
 
-    if (specialJailNotes.length > 0) {
-      const container = document.createElement('div');
-      container.id = 'jail-notes-container';
-      container.className = 'text-xs text-amber-600 dark:text-amber-400 mt-1 border-t border-gray-200 dark:border-gray-700 pt-2';
-      container.innerHTML = '<strong>Speciális tételek:</strong><ul class="list-disc list-inside"><li>' + specialJailNotes.join('</li><li>') + '</li></ul>';
-      summaryJail.parentElement.appendChild(container);
-    }
+		if (specialJailNotes.length > 0) {
+			const container = document.createElement('div');
+			container.id = 'jail-notes-container';
+			container.className = 'text-xs text-amber-600 dark:text-amber-400 mt-1 border-t border-gray-200 dark:border-gray-700 pt-2';
+			container.innerHTML = '<strong>Speciális tételek:</strong><ul class="list-disc list-inside"><li>' + specialJailNotes.join('</li><li>') + '</li></ul>';
+			summaryJail.parentElement.appendChild(container);
+		}
 
-    const summaryPanel = document.getElementById('summary-panel');
-    const summaryTitle = summaryPanel.querySelector('h2');
+		const summaryPanel = document.getElementById('summary-panel');
+		const summaryTitle = summaryPanel.querySelector('h2');
 
-    const oldWarningContainer = document.getElementById('license-warning-container');
-    if (oldWarningContainer) oldWarningContainer.remove();
+		const oldWarningContainer = document.getElementById('license-warning-container');
+		if (oldWarningContainer) oldWarningContainer.remove();
 
-    if (warningItems.length > 0) {
-      const container = document.createElement('div');
-      container.id = 'license-warning-container';
-      container.className = 'p-3 mb-4 bg-amber-100 dark:bg-amber-900 border border-amber-400 text-amber-800 dark:text-amber-200 rounded-lg text-sm';
-      container.innerHTML = '<strong>Figyelem:</strong> A jegyzőkönyv eltiltással/bevonással járó tételeket tartalmaz:<ul class="list-disc list-inside mt-1"><li>' + warningItems.join('</li><li>') + '</li></ul>';
+		if (warningItems.length > 0) {
+			const container = document.createElement('div');
+			container.id = 'license-warning-container';
+			container.className = 'p-3 mb-4 bg-amber-100 dark:bg-amber-900 border border-amber-400 text-amber-800 dark:text-amber-200 rounded-lg text-sm';
+			container.innerHTML = '<strong>Figyelem:</strong> A jegyzőkönyv eltiltással/bevonással járó tételeket tartalmaz:<ul class="list-disc list-inside mt-1"><li>' + warningItems.join('</li><li>') + '</li></ul>';
 
-      summaryTitle.after(container);
-    }
+			summaryTitle.after(container);
+		}
 
-    // 2. Csúszkák beállítása
-    // Bírság csúszka
-    fineSlider.min = totalMinFine;
-    fineSlider.max = totalMaxFine;
-    fineSlider.value = totalMinFine;
-    fineSlider.disabled = (totalMinFine === 0 && totalMaxFine === 0);
+		// 2. Csúszkák beállítása
+		// Bírság csúszka
+		fineSlider.min = totalMinFine;
+		fineSlider.max = totalMaxFine;
+		fineSlider.value = totalMinFine;
+		fineSlider.disabled = (totalMinFine === 0 && totalMaxFine === 0);
 
-    // Fegyház csúszka
-    jailSlider.min = totalMinJail;
-    jailSlider.max = totalMaxJail;
-    jailSlider.value = totalMinJail;
-    jailSlider.disabled = (totalMinJail === 0 && totalMaxJail === 0);
+		// Bírság beviteli mező
+		fineInput.min = totalMinFine;
+		fineInput.max = totalMaxFine;
+		fineInput.value = totalMinFine;
+		fineInput.disabled = (totalMinFine === 0 && totalMaxFine === 0);
 
-    // 3. Generátorok indítása
-    updateSliderValueDisplay();
-    generateCommands();
-  }
+		// Fegyház csúszka
+		jailSlider.min = totalMinJail;
+		jailSlider.max = totalMaxJail;
+		jailSlider.value = totalMinJail;
+		jailSlider.disabled = (totalMinJail === 0 && totalMaxJail === 0);
 
-  // A csúszka alatti "Kiszabott: X" szöveg frissítése
-  function updateSliderValueDisplay() {
-    selectedFine.textContent = formatCurrency(parseInt(fineSlider.value));
-    selectedJail.textContent = `${jailSlider.value} perc`;
-  }
+		// Fegyház beviteli mező
+		jailInput.min = totalMinJail;
+		jailInput.max = totalMaxJail;
+		jailInput.value = totalMinJail;
+		jailInput.disabled = (totalMinJail === 0 && totalMaxJail === 0);
 
-  // --- PARANCS GENERÁTOR ---
-  function generateCommands() {
-    const fineValue = parseInt(fineSlider.value);
-    const jailValue = parseInt(jailSlider.value);
+		// 3. Generátorok indítása
+		updateSliderValueDisplay();
+		generateCommands();
+	}
 
-    if (cart.length === 0) {
-      commandOutput.value = '/ticket [ID] ...';
-      copyCommandButton.disabled = true;
-      return;
-    }
+	// A csúszka alatti "Kiszabott: X" szöveg frissítése
+	function updateSliderValueDisplay() {
+		selectedFine.textContent = formatCurrency(parseInt(fineSlider.value));
+		selectedJail.textContent = `${jailSlider.value} perc`;
+	}
 
-    copyCommandButton.disabled = false;
+	// --- PARANCS GENERÁTOR ---
+	function generateCommands() {
+		const fineValue = parseInt(fineSlider.value);
+		const jailValue = parseInt(jailSlider.value);
 
-    // Rövidítések összegyűjtése
-    const reasons = cart.map(cartItem => {
-      const item = cartItem.item;
-      const qty = cartItem.quantity;
-      return `${item.rovidites}${qty > 1 ? `(x${qty})` : ''}`;
-    }).join(', ');
+		const targetId = targetIdInput.value.trim();
+		const idPlaceholder = targetId === '' ? '[ID]' : targetId;
 
-    // Parancsok generálása
-    let commands = [];
-    if (fineValue > 0) {
-      commands.push(`/ticket [ID] ${fineValue} ${reasons}`);
-    }
-    if (jailValue > 0) {
-      commands.push(`/jail [ID] ${jailValue} ${reasons}`);
-    }
+		if (cart.length === 0) {
+			commandOutput.value = `/ticket ${idPlaceholder} ...`;
+			copyCommandButton.disabled = true;
+			return;
+		}
 
-    // Ha van speciális szöveges büntetés, azt is jelezzük
-    if (document.getElementById('jail-notes-container')) {
-      if (commands.length > 0) commands.push("\n");
-      commands.push("FIGYELEM: A fenti tételek speciális (szöveges) büntetést tartalmaznak, lásd 'Speciális tételek'!");
-    }
+		copyCommandButton.disabled = false;
 
-    if (commands.length === 0) {
-      commandOutput.value = "Nincs kiszabandó bírság vagy fegyház.";
-    } else {
-      commandOutput.value = commands.join('\n');
-    }
-  }
+		const reasons = cart.map(cartItem => {
+			const item = cartItem.item;
+			const qty = cartItem.quantity;
+			return `${item.rovidites}${qty > 1 ? `(x${qty})` : ''}`;
+		}).join(', ');
 
-  // --- ESZKÖZ FUNKCIÓK ---
+		// Parancsok generálása
+		let commands = [];
+		if (fineValue > 0) {
+			commands.push(`/ticket ${idPlaceholder} ${fineValue} ${reasons}`);
+		}
+		if (jailValue > 0) {
+			commands.push(`/jail ${idPlaceholder} ${jailValue} ${reasons}`);
+		}
+
+		if (document.getElementById('jail-notes-container')) {
+			if (commands.length > 0) commands.push("\n");
+			commands.push("FIGYELEM: A fenti tételek speciális (szöveges) büntetést tartalmaznak, lásd 'Speciális tételek'!");
+		}
+
+		if (commands.length === 0) {
+			commandOutput.value = "Nincs kiszabandó bírság vagy fegyház.";
+		} else {
+			commandOutput.value = commands.join('\n');
+		}
+	}
+
+	// --- ESZKÖZ FUNKCIÓK ---
 
 	// Megnyitja a mobil oldalsávot
 	function openMobileCart() {
@@ -620,9 +670,9 @@ document.addEventListener('DOMContentLoaded', () => {
 		const commandPanel = document.getElementById('command-generator');
 
 		// Áthelyezzük őket a modalba
-		if(cartPanel) modalBody.appendChild(cartPanel);
-		if(summaryPanel) modalBody.appendChild(summaryPanel);
-		if(commandPanel) modalBody.appendChild(commandPanel);
+		if (cartPanel) modalBody.appendChild(cartPanel);
+		if (summaryPanel) modalBody.appendChild(summaryPanel);
+		if (commandPanel) modalBody.appendChild(commandPanel);
 
 		modalContent.appendChild(modalBody);
 
@@ -651,9 +701,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 		// 3. Visszamozgatjuk a paneleket a rejtett <aside>-ba (a footer elé)
 		if (footer && originalContainer) {
-			if(cartPanel) originalContainer.insertBefore(cartPanel, footer);
-			if(summaryPanel) originalContainer.insertBefore(summaryPanel, footer);
-			if(commandPanel) originalContainer.insertBefore(commandPanel, footer);
+			if (cartPanel) originalContainer.insertBefore(cartPanel, footer);
+			if (summaryPanel) originalContainer.insertBefore(summaryPanel, footer);
+			if (commandPanel) originalContainer.insertBefore(commandPanel, footer);
 		}
 
 		// 4. Modal eltávolítása
@@ -661,162 +711,216 @@ document.addEventListener('DOMContentLoaded', () => {
 		document.documentElement.classList.remove('overflow-hidden', 'lg:overflow-auto');
 	}
 
-  // Parancsok másolása vágólapra
-  function copyCommands() {
-    if (!commandOutput.value) return;
+	function showToast(message, type = 'success') {
+		const container = document.getElementById('toast-container');
+		if (!container) return;
 
-    navigator.clipboard.writeText(commandOutput.value).then(() => {
-      copyCommandButton.textContent = 'Másolva!';
-      copyCommandButton.classList.add('bg-green-600', 'hover:bg-green-700');
-      copyCommandButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-      saveToHistory();
+		// 1. A Toast elem létrehozása
+		const toast = document.createElement('div');
 
-      setTimeout(() => {
-        copyCommandButton.textContent = 'Parancsok Másolása';
-        copyCommandButton.classList.remove('bg-green-600', 'hover:bg-green-700');
-        copyCommandButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
-      }, 1500);
-    }).catch(err => {
-      console.error('Hiba a vágólapra másoláskor:', err);
-      alert("Hiba történt a másolás közben. Ellenőrizd a konzolt.");
-    });
-  }
+		let baseClasses = 'w-full rounded-lg shadow-lg pointer-events-auto transition-all duration-300 ease-in-out transform';
+		let startState = 'translate-x-full opacity-0';
 
-  // --- KEDVENC FUNKCIÓK ---
+		if (type === 'success') {
+			baseClasses += ' bg-green-600 text-white';
+		} else {
+			baseClasses += ' bg-red-600 text-white';
+		}
 
-  // Betölti a kedvenceket a localStorage-ból
-  function loadFavorites() {
-    const storedFavorites = localStorage.getItem('hlmta_favorites');
-    if (storedFavorites) {
-      favorites = JSON.parse(storedFavorites);
-    }
-  }
+		toast.className = `${baseClasses} ${startState}`;
 
-  // Elmenti a kedvenceket a localStorage-ba
-  function saveFavorites() {
-    localStorage.setItem('hlmta_favorites', JSON.stringify(favorites));
-  }
+		// 2. A belső tartalom (ikon + szöveg)
+		const content = document.createElement('div');
+		content.className = 'flex items-center p-4';
 
-  // Hozzáad/elvesz egy tételt a kedvencekből
-  function toggleFavorite(itemId, buttonElement) {
-    const index = favorites.indexOf(itemId);
+		let iconSvg = '';
+		if (type === 'success') {
+			iconSvg = `<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>`;
+		} else {
+			iconSvg = `<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>`;
+		}
 
-    if (index > -1) {
-      favorites.splice(index, 1);
-      buttonElement.classList.remove('text-yellow-400');
-      buttonElement.classList.add('text-gray-400');
-    } else {
-      favorites.push(itemId);
-      buttonElement.classList.add('text-yellow-400');
-      buttonElement.classList.remove('text-gray-400');
-    }
+		const messageEl = document.createElement('div');
+		messageEl.className = 'ml-3 text-sm font-medium';
+		messageEl.textContent = message;
 
-    saveFavorites();
-  }
+		content.innerHTML = iconSvg;
+		content.appendChild(messageEl);
+		toast.appendChild(content);
 
-  // A fő nézetkapcsoló (Összes / Csak kedvencek)
-  function toggleFavoritesView() {
-    isFavoritesView = !isFavoritesView;
+		// 3. Hozzáadás a tárolóhoz
+		container.appendChild(toast);
 
-    // Gomb állapotának frissítése
-    const favButton = document.getElementById('toggle-favorites');
-    if (isFavoritesView) {
-      favButton.classList.add('bg-blue-100', 'dark:bg-blue-900', 'text-blue-600');
-    } else {
-      favButton.classList.remove('bg-blue-100', 'dark:bg-blue-900', 'text-blue-600');
-    }
+		// 4. Animáció indítása
+		requestAnimationFrame(() => {
+			toast.classList.remove('translate-x-full', 'opacity-0');
+		});
 
-    filterAndRender();
-  }
+		setTimeout(() => {
+			toast.classList.add('translate-x-full', 'opacity-0');
 
-  // --- ELŐZMÉNY FUNKCIÓK ---
-  const MAX_HISTORY_ITEMS = 10;
+			setTimeout(() => {
+				toast.remove();
+			}, 350);
+		}, 3000);
+	}
 
-  function loadHistory() {
-    const storedHistory = localStorage.getItem('hlmta_history');
-    if (storedHistory) {
-      history = JSON.parse(storedHistory);
-    }
-  }
+	// Parancsok másolása vágólapra
+	function copyCommands() {
+		if (!commandOutput.value) return;
 
-  function saveToHistory() {
-    // 1. Snapshot készítése az aktuális intézkedésről
-    const snapshot = {
-      cart: JSON.parse(JSON.stringify(cart)),
-      finalFine: parseInt(fineSlider.value),
-      finalJail: parseInt(jailSlider.value),
-      reasons: cart.map(c => c.item.rovidites).join(', '),
-      timestamp: new Date().toISOString()
-    };
+		navigator.clipboard.writeText(commandOutput.value).then(() => {
+			showToast('✅ Parancsok a vágólapra másolva!', 'success');
+			saveToHistory();
 
-    // 2. Hozzáadás a lista elejére
-    history.unshift(snapshot);
+			setTimeout(() => {
+				copyCommandButton.textContent = 'Parancsok Másolása';
+				copyCommandButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+				copyCommandButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
+			}, 1500);
+		}).catch(err => {
+			console.error('Hiba a vágólapra másoláskor:', err);
+			showToast('❌ Hiba a másoláskor.', 'error');
+		});
+	}
 
-    // 3. Lista méretének korlátozása
-    if (history.length > MAX_HISTORY_ITEMS) {
-      history.pop();
-    }
+	// --- KEDVENC FUNKCIÓK ---
 
-    // 4. Mentés
-    localStorage.setItem('hlmta_history', JSON.stringify(history));
-  }
+	// Betölti a kedvenceket a localStorage-ból
+	function loadFavorites() {
+		const storedFavorites = localStorage.getItem('hlmta_favorites');
+		if (storedFavorites) {
+			favorites = JSON.parse(storedFavorites);
+		}
+	}
 
-  // Előzmény betöltése
-  function loadFromHistory(timestamp) {
-    const snapshot = history.find(item => item.timestamp === timestamp);
-    if (!snapshot) {
-      alert('Hiba: Ez az előzmény nem található.');
-      return;
-    }
+	// Elmenti a kedvenceket a localStorage-ba
+	function saveFavorites() {
+		localStorage.setItem('hlmta_favorites', JSON.stringify(favorites));
+	}
 
-    // 1. Kosár visszaállítása
-    cart = JSON.parse(JSON.stringify(snapshot.cart));
+	// Hozzáad/elvesz egy tételt a kedvencekből
+	function toggleFavorite(itemId, buttonElement) {
+		const index = favorites.indexOf(itemId);
 
-    // 2. UI frissítése
-    updateCartDisplay();
-    calculateSummary();
+		if (index > -1) {
+			favorites.splice(index, 1);
+			buttonElement.classList.remove('text-yellow-400');
+			buttonElement.classList.add('text-gray-400');
+		} else {
+			favorites.push(itemId);
+			buttonElement.classList.add('text-yellow-400');
+			buttonElement.classList.remove('text-gray-400');
+		}
 
-    // 3. Csúszkák pontos értékének beállítása
-    fineSlider.value = snapshot.finalFine;
-    jailSlider.value = snapshot.finalJail;
+		saveFavorites();
+	}
 
-    // 4. UI frissítése a csúszka-értékekkel
-    updateSliderValueDisplay();
-    generateCommands();
-    filterAndRender();
+	// A fő nézetkapcsoló (Összes / Csak kedvencek)
+	function toggleFavoritesView() {
+		isFavoritesView = !isFavoritesView;
 
-    // 5. Modal bezárása
-    closeHistoryModal();
-  }
+		// Gomb állapotának frissítése
+		const favButton = document.getElementById('toggle-favorites');
+		if (isFavoritesView) {
+			favButton.classList.add('bg-blue-100', 'dark:bg-blue-900', 'text-blue-600');
+			searchInput.placeholder = 'Keresés a kedvencekben...';
+		} else {
+			favButton.classList.remove('bg-blue-100', 'dark:bg-blue-900', 'text-blue-600');
+			searchInput.placeholder = 'Keresés (név, rövidítés, paragrafus, megjegyzés)...';
+		}
 
-  // Modal bezárása
-  function closeHistoryModal() {
-    const modal = document.getElementById('history-modal');
-    if (modal) {
-      modal.remove();
-    }
-  }
+		filterAndRender();
+	}
 
-  // Modal megjelenítése
-  function showHistoryModal() {
-    closeHistoryModal();
+	// --- ELŐZMÉNY FUNKCIÓK ---
+	const MAX_HISTORY_ITEMS = 10;
 
-    // 1. Fő "overlay" létrehozása
-    const modalOverlay = document.createElement('div');
-    modalOverlay.id = 'history-modal';
-    modalOverlay.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50';
-    modalOverlay.addEventListener('click', (e) => {
-      if (e.target.id === 'history-modal') {
-        closeHistoryModal();
-      }
-    });
+	function loadHistory() {
+		const storedHistory = localStorage.getItem('hlmta_history');
+		if (storedHistory) {
+			history = JSON.parse(storedHistory);
+		}
+	}
 
-    // 2. Maga a "modal" (fehér doboz)
-    const modalContent = document.createElement('div');
-    modalContent.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col';
+	function saveToHistory() {
+		// 1. Snapshot készítése az aktuális intézkedésről
+		const snapshot = {
+			cart: JSON.parse(JSON.stringify(cart)),
+			finalFine: parseInt(fineSlider.value),
+			finalJail: parseInt(jailSlider.value),
+			reasons: cart.map(c => c.item.rovidites).join(', '),
+			timestamp: new Date().toISOString()
+		};
 
-    // 3. Modal Fejléc
-    modalContent.innerHTML = `
+		// 2. Hozzáadás a lista elejére
+		history.unshift(snapshot);
+
+		// 3. Lista méretének korlátozása
+		if (history.length > MAX_HISTORY_ITEMS) {
+			history.pop();
+		}
+
+		// 4. Mentés
+		localStorage.setItem('hlmta_history', JSON.stringify(history));
+	}
+
+	// Előzmény betöltése
+	function loadFromHistory(timestamp) {
+		const snapshot = history.find(item => item.timestamp === timestamp);
+		if (!snapshot) {
+			alert('Hiba: Ez az előzmény nem található.');
+			return;
+		}
+
+		// 1. Kosár visszaállítása
+		cart = JSON.parse(JSON.stringify(snapshot.cart));
+
+		// 2. UI frissítése
+		updateCartDisplay();
+		calculateSummary();
+
+		// 3. Csúszkák pontos értékének beállítása
+		fineSlider.value = snapshot.finalFine;
+		jailSlider.value = snapshot.finalJail;
+
+		// 4. UI frissítése a csúszka-értékekkel
+		updateSliderValueDisplay();
+		generateCommands();
+		filterAndRender();
+
+		// 5. Modal bezárása
+		closeHistoryModal();
+	}
+
+	// Modal bezárása
+	function closeHistoryModal() {
+		const modal = document.getElementById('history-modal');
+		if (modal) {
+			modal.remove();
+		}
+	}
+
+	// Modal megjelenítése
+	function showHistoryModal() {
+		closeHistoryModal();
+
+		// 1. Fő "overlay" létrehozása
+		const modalOverlay = document.createElement('div');
+		modalOverlay.id = 'history-modal';
+		modalOverlay.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50';
+		modalOverlay.addEventListener('click', (e) => {
+			if (e.target.id === 'history-modal') {
+				closeHistoryModal();
+			}
+		});
+
+		// 2. Maga a "modal" (fehér doboz)
+		const modalContent = document.createElement('div');
+		modalContent.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col';
+
+		// 3. Modal Fejléc
+		modalContent.innerHTML = `
             <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
                 <h2 class="text-2xl font-semibold">Intézkedés Előzmények</h2>
                 <button id="modal-close-btn" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
@@ -825,20 +929,20 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-    // 4. Modal Törzs (görgethető lista)
-    const modalBody = document.createElement('div');
-    modalBody.className = 'p-4 overflow-y-auto space-y-3';
+		// 4. Modal Törzs (görgethető lista)
+		const modalBody = document.createElement('div');
+		modalBody.className = 'p-4 overflow-y-auto space-y-3';
 
-    if (history.length === 0) {
-      modalBody.innerHTML = '<p class="text-gray-500 text-center py-4">Nincsenek mentett előzmények.</p>';
-    } else {
-      history.forEach(item => {
-        const historyItem = document.createElement('div');
-        historyItem.className = 'flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg';
+		if (history.length === 0) {
+			modalBody.innerHTML = '<p class="text-gray-500 text-center py-4">Nincsenek mentett előzmények.</p>';
+		} else {
+			history.forEach(item => {
+				const historyItem = document.createElement('div');
+				historyItem.className = 'flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg';
 
-        const relativeTime = getRelativeTime(item.timestamp);
+				const relativeTime = getRelativeTime(item.timestamp);
 
-        historyItem.innerHTML = `
+				historyItem.innerHTML = `
                     <div>
                         <p class="font-medium">${formatCurrency(item.finalFine)} / ${item.finalJail} perc</p>
                         <p class="text-sm text-gray-600 dark:text-gray-400 truncate max-w-xs" title="${item.reasons}">${item.reasons}</p>
@@ -848,100 +952,100 @@ document.addEventListener('DOMContentLoaded', () => {
                         Visszatöltés
                     </button>
                 `;
-        modalBody.appendChild(historyItem);
-      });
-    }
-    modalContent.appendChild(modalBody);
+				modalBody.appendChild(historyItem);
+			});
+		}
+		modalContent.appendChild(modalBody);
 
-    // 5. Eseménykezelők a modal-on belül
-    modalContent.querySelector('#modal-close-btn').addEventListener('click', closeHistoryModal);
+		// 5. Eseménykezelők a modal-on belül
+		modalContent.querySelector('#modal-close-btn').addEventListener('click', closeHistoryModal);
 
-    modalBody.querySelectorAll('.history-load-btn').forEach(button => {
-      button.addEventListener('click', (e) => {
-        loadFromHistory(e.target.dataset.timestamp);
-      });
-    });
+		modalBody.querySelectorAll('.history-load-btn').forEach(button => {
+			button.addEventListener('click', (e) => {
+				loadFromHistory(e.target.dataset.timestamp);
+			});
+		});
 
-    // 6. Összerakás és megjelenítés
-    modalOverlay.appendChild(modalContent);
-    document.body.appendChild(modalOverlay);
-  }
+		// 6. Összerakás és megjelenítés
+		modalOverlay.appendChild(modalContent);
+		document.body.appendChild(modalOverlay);
+	}
 
-  // Idők
-  function getRelativeTime(timestamp) {
-    const now = new Date();
-    const past = new Date(timestamp);
-    const diffInSeconds = Math.floor((now - past) / 1000);
+	// Idők
+	function getRelativeTime(timestamp) {
+		const now = new Date();
+		const past = new Date(timestamp);
+		const diffInSeconds = Math.floor((now - past) / 1000);
 
-    const rtf = new Intl.RelativeTimeFormat('hu', { numeric: 'auto' });
+		const rtf = new Intl.RelativeTimeFormat('hu', {numeric: 'auto'});
 
-    if (diffInSeconds < 60) {
-      return rtf.format(-diffInSeconds, 'second');
-    }
-    const diffInMinutes = Math.floor(diffInSeconds / 60);
-    if (diffInMinutes < 60) {
-      return rtf.format(-diffInMinutes, 'minute');
-    }
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) {
-      return rtf.format(-diffInHours, 'hour');
-    }
-    const diffInDays = Math.floor(diffInHours / 24);
-    return rtf.format(-diffInDays, 'day');
-  }
+		if (diffInSeconds < 60) {
+			return rtf.format(-diffInSeconds, 'second');
+		}
+		const diffInMinutes = Math.floor(diffInSeconds / 60);
+		if (diffInMinutes < 60) {
+			return rtf.format(-diffInMinutes, 'minute');
+		}
+		const diffInHours = Math.floor(diffInMinutes / 60);
+		if (diffInHours < 24) {
+			return rtf.format(-diffInHours, 'hour');
+		}
+		const diffInDays = Math.floor(diffInHours / 24);
+		return rtf.format(-diffInDays, 'day');
+	}
 
-  // --- TÉMA (SÖTÉT MÓD) FUNKCIÓK ---
+	// --- TÉMA (SÖTÉT MÓD) FUNKCIÓK ---
 
-  // Leellenőrzi a mentett vagy rendszer-preferenciát és beállítja a témát
-  function initializeTheme() {
-    const savedTheme = localStorage.getItem('hlmta_theme');
+	// Leellenőrzi a mentett vagy rendszer-preferenciát és beállítja a témát
+	function initializeTheme() {
+		const savedTheme = localStorage.getItem('hlmta_theme');
 
-    const userPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		const userPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-    if (savedTheme === 'dark' || (!savedTheme && userPrefersDark)) {
-      setTheme('dark');
-    } else {
-      setTheme('light');
-    }
-  }
+		if (savedTheme === 'dark' || (!savedTheme && userPrefersDark)) {
+			setTheme('dark');
+		} else {
+			setTheme('light');
+		}
+	}
 
-  // Beállítja a témát
-  function setTheme(theme) {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-      themeToggleButton.innerHTML = sunIcon;
-      localStorage.setItem('hlmta_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      themeToggleButton.innerHTML = moonIcon;
-      localStorage.setItem('hlmta_theme', 'light');
-    }
-  }
+	// Beállítja a témát
+	function setTheme(theme) {
+		if (theme === 'dark') {
+			document.documentElement.classList.add('dark');
+			themeToggleButton.innerHTML = sunIcon;
+			localStorage.setItem('hlmta_theme', 'dark');
+		} else {
+			document.documentElement.classList.remove('dark');
+			themeToggleButton.innerHTML = moonIcon;
+			localStorage.setItem('hlmta_theme', 'light');
+		}
+	}
 
-  function toggleDarkMode() {
-    if (document.documentElement.classList.contains('dark')) {
-      setTheme('light');
-    } else {
-      setTheme('dark');
-    }
-  }
+	function toggleDarkMode() {
+		if (document.documentElement.classList.contains('dark')) {
+			setTheme('light');
+		} else {
+			setTheme('dark');
+		}
+	}
 
-  // --- SEGÉDFÜGGVÉNYEK ---
+	// --- SEGÉDFÜGGVÉNYEK ---
 
-  // Pénz formázása
-  function formatCurrency(value) {
-    if (value === null || value === undefined) return '---';
-    return `$${value.toLocaleString('hu-HU')}`;
-  }
+	// Pénz formázása
+	function formatCurrency(value) {
+		if (value === null || value === undefined) return '---';
+		return `$${value.toLocaleString('hu-HU')}`;
+	}
 
-  // Idő formázása
-  function formatJailTime(value) {
-    if (value === null || value === undefined) return '---';
-    if (typeof value === 'string') return value;
-    return `${value} perc`;
-  }
+	// Idő formázása
+	function formatJailTime(value) {
+		if (value === null || value === undefined) return '---';
+		if (typeof value === 'string') return value;
+		return `${value} perc`;
+	}
 
-  // --- ALKALMAZÁS INDÍTÁSA ---
-  initializeApp();
+	// --- ALKALMAZÁS INDÍTÁSA ---
+	initializeApp();
 
 });

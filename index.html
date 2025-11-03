@@ -85,8 +85,14 @@
 					</div>
 					<input id="fine-slider" type="range" min="0" max="0" value="0"
 					       class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700" disabled>
-					<div class="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-						<span>Kiszabott: <span id="selected-fine" class="font-bold">$0</span></span>
+					<div class="flex justify-between items-center text-sm text-gray-600 dark:text-gray-400 mt-1">
+						<span class="flex-1">Kiszabott: <span id="selected-fine" class="font-bold">$0</span></span>
+						<div class="relative">
+							<span class="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-500">$</span>
+							<input type="number" id="fine-input" min="0" max="0" value="0"
+							       class="w-28 p-1 pl-5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm text-sm text-right"
+							       disabled>
+						</div>
 					</div>
 				</div>
 				<div>
@@ -96,14 +102,26 @@
 					</div>
 					<input id="jail-slider" type="range" min="0" max="0" value="0"
 					       class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700" disabled>
-					<div class="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-						<span>Kiszabott: <span id="selected-jail" class="font-bold">0 perc</span></span>
+					<div class="flex justify-between items-center text-sm text-gray-600 dark:text-gray-400 mt-1">
+						<span class="flex-1">Kiszabott: <span id="selected-jail" class="font-bold">0 perc</span></span>
+						<div class="relative">
+							<input type="number" id="jail-input" min="0" max="0" value="0"
+							       class="w-28 p-1 pr-12 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm text-sm text-right"
+							       disabled>
+							<span class="absolute inset-y-0 right-0 pr-2 flex items-center text-gray-500">perc</span>
+						</div>
 					</div>
 				</div>
 			</div>
 
 			<div id="command-generator" class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow space-y-2">
 				<h2 class="text-2xl font-semibold">Parancs Generátor</h2>
+				<div>
+					<label for="target-id-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Célpont
+						ID</label>
+					<input type="text" id="target-id-input" placeholder="[ID]"
+					       class="w-full p-2 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+				</div>
 				<textarea id="command-output"
 				          class="w-full h-24 p-2 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded font-mono text-sm"
 				          readonly>/ticket [ID] ...</textarea>
@@ -122,11 +140,15 @@
 	        class="lg:hidden fixed bottom-4 right-4 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg z-30 transition-transform active:scale-95"
 	        aria-label="Jegyzőkönyv megnyitása">
 		<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+			      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
 		</svg>
 	</button>
 </div>
 
 <script src="app.js"></script>
+
+<div id="toast-container" class="fixed top-4 right-4 z-[100] space-y-2 w-full max-w-xs"></div>
+
 </body>
 </html>
