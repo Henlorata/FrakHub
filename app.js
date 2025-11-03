@@ -48,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const commandOutput = document.getElementById('command-output');
   const copyCommandButton = document.getElementById('copy-command-button');
   const clearCartButton = document.getElementById('clear-cart-button');
+	const mobileCartToggle = document.getElementById('mobile-cart-toggle');
+	const cartBackdrop = document.getElementById('cart-backdrop');
+	const sidebarAside = document.getElementById('sidebar-aside');
 
   // --- FŐ INDÍTÓ FÜGGVÉNY ---
 
@@ -293,7 +296,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Előzmények gomb
     document.getElementById('history-button').addEventListener('click', showHistoryModal);
 
+		// Téma váltó gomb
     themeToggleButton.addEventListener('click', toggleDarkMode);
+
+	  if (mobileCartToggle) {
+		  mobileCartToggle.addEventListener('click', openMobileCart);
+	  }
+	  if (cartBackdrop) {
+		  cartBackdrop.addEventListener('click', closeMobileCart);
+	  }
   }
 
   // --- KERESÉS ÉS SZŰRÉS FUNKCIÓK ---
@@ -357,23 +368,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Kosár tartalmának frissítése a HTML-ben
   function updateCartDisplay() {
-    cartItems.innerHTML = ''; // Kosár kiürítése
+    cartItems.innerHTML = '';
 
     if (cart.length === 0) {
-      cartPlaceholder.classList.remove('hidden'); // "A jegyzőkönyv üres" mutatása
+      cartPlaceholder.classList.remove('hidden');
       return;
     }
 
-    cartPlaceholder.classList.add('hidden'); // "A jegyzőkönyv üres" elrejtése
+    cartPlaceholder.classList.add('hidden');
 
     cart.forEach(cartItem => {
       const { item, quantity, cartId } = cartItem;
+
+      const isWarning = item.isWarning;
+      const warningIcon = isWarning ? ' <span class="text-amber-500" title="Figyelem: Eltiltás/bevonás lehetséges!">⚠️</span>' : '';
 
       const cartRow = document.createElement('div');
       cartRow.className = 'flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700';
       cartRow.innerHTML = `
                 <div class="flex-1 min-w-0 mr-2">
-                    <p class="text-sm font-medium truncate">${item.megnevezes}</p>
+                    <p class="text-sm font-medium truncate">${item.megnevezes}${warningIcon}</p>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
                         ${formatCurrency(item.min_birsag)} / ${formatJailTime(item.min_fegyhaz)}
                     </p>
@@ -432,9 +446,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let totalMaxJail = 0;
     let specialJailNotes = [];
 
+    let warningItems = [];
+
     cart.forEach(cartItem => {
       const item = cartItem.item;
       const qty = cartItem.quantity;
+
+      if (item.isWarning) {
+        if (!warningItems.includes(item.megnevezes)) {
+          warningItems.push(item.megnevezes);
+        }
+      }
 
       // Bírságok számolása
       if (typeof item.min_birsag === 'number') {
@@ -465,28 +487,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Speciális megjegyzések hozzáadása
     const notesContainer = document.getElementById('jail-notes-container');
-    if (notesContainer) notesContainer.remove(); // Előző megjegyzések törlése
+    if (notesContainer) notesContainer.remove();
 
     if (specialJailNotes.length > 0) {
       const container = document.createElement('div');
       container.id = 'jail-notes-container';
       container.className = 'text-xs text-amber-600 dark:text-amber-400 mt-1 border-t border-gray-200 dark:border-gray-700 pt-2';
       container.innerHTML = '<strong>Speciális tételek:</strong><ul class="list-disc list-inside"><li>' + specialJailNotes.join('</li><li>') + '</li></ul>';
-      summaryJail.parentElement.appendChild(container); // A "Fegyház Keret" alá szúrja be
+      summaryJail.parentElement.appendChild(container);
+    }
+
+    const summaryPanel = document.getElementById('summary-panel');
+    const summaryTitle = summaryPanel.querySelector('h2');
+
+    const oldWarningContainer = document.getElementById('license-warning-container');
+    if (oldWarningContainer) oldWarningContainer.remove();
+
+    if (warningItems.length > 0) {
+      const container = document.createElement('div');
+      container.id = 'license-warning-container';
+      container.className = 'p-3 mb-4 bg-amber-100 dark:bg-amber-900 border border-amber-400 text-amber-800 dark:text-amber-200 rounded-lg text-sm';
+      container.innerHTML = '<strong>Figyelem:</strong> A jegyzőkönyv eltiltással/bevonással járó tételeket tartalmaz:<ul class="list-disc list-inside mt-1"><li>' + warningItems.join('</li><li>') + '</li></ul>';
+
+      summaryTitle.after(container);
     }
 
     // 2. Csúszkák beállítása
     // Bírság csúszka
     fineSlider.min = totalMinFine;
     fineSlider.max = totalMaxFine;
-    fineSlider.value = totalMinFine; // Alapértelmezett a minimum
-    fineSlider.disabled = (totalMinFine === 0 && totalMaxFine === 0); // Tiltás, ha nincs bírság
+    fineSlider.value = totalMinFine;
+    fineSlider.disabled = (totalMinFine === 0 && totalMaxFine === 0);
 
     // Fegyház csúszka
     jailSlider.min = totalMinJail;
     jailSlider.max = totalMaxJail;
-    jailSlider.value = totalMinJail; // Alapértelmezett a minimum
-    jailSlider.disabled = (totalMinJail === 0 && totalMaxJail === 0); // Tiltás, ha nincs fegyház
+    jailSlider.value = totalMinJail;
+    jailSlider.disabled = (totalMinJail === 0 && totalMaxJail === 0);
 
     // 3. Generátorok indítása
     updateSliderValueDisplay();
@@ -530,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Ha van speciális szöveges büntetés, azt is jelezzük
     if (document.getElementById('jail-notes-container')) {
-      if (commands.length > 0) commands.push("\n"); // Térköz
+      if (commands.length > 0) commands.push("\n");
       commands.push("FIGYELEM: A fenti tételek speciális (szöveges) büntetést tartalmaznak, lásd 'Speciális tételek'!");
     }
 
@@ -542,6 +579,87 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- ESZKÖZ FUNKCIÓK ---
+
+	// Megnyitja a mobil oldalsávot
+	function openMobileCart() {
+		if (document.getElementById('mobile-cart-modal')) return;
+
+		// 1. Fő "overlay" létrehozása
+		const modalOverlay = document.createElement('div');
+		modalOverlay.id = 'mobile-cart-modal';
+		modalOverlay.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50';
+		modalOverlay.addEventListener('click', (e) => {
+			// Ha a sötét háttérre kattint, zárja be
+			if (e.target.id === 'mobile-cart-modal') {
+				closeMobileCart();
+			}
+		});
+
+		// 2. Maga a "modal" (fehér doboz)
+		const modalContent = document.createElement('div');
+		modalContent.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col';
+
+		// 3. Modal Fejléc (Bezárás gombbal)
+		const modalHeader = document.createElement('div');
+		modalHeader.className = 'flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700';
+		modalHeader.innerHTML = `
+      <h2 class="text-2xl font-semibold">Jegyzőkönyv & Összesítés</h2>
+      <button id="modal-close-btn" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+      </button>
+    `;
+		modalContent.appendChild(modalHeader);
+
+		// 4. Modal Törzs (ide mozgatjuk a paneleket)
+		const modalBody = document.createElement('div');
+		modalBody.className = 'p-4 overflow-y-auto space-y-4';
+
+		// Keressük meg az eredeti paneleket a DOM-ban
+		const cartPanel = document.querySelector('.bg-white.dark\\:bg-gray-800.p-4.rounded-lg.shadow.space-y-3');
+		const summaryPanel = document.getElementById('summary-panel');
+		const commandPanel = document.getElementById('command-generator');
+
+		// Áthelyezzük őket a modalba
+		if(cartPanel) modalBody.appendChild(cartPanel);
+		if(summaryPanel) modalBody.appendChild(summaryPanel);
+		if(commandPanel) modalBody.appendChild(commandPanel);
+
+		modalContent.appendChild(modalBody);
+
+		// 5. Eseménykezelő a bezárás gombra
+		modalContent.querySelector('#modal-close-btn').addEventListener('click', closeMobileCart);
+
+		// 6. Összerakás és megjelenítés
+		modalOverlay.appendChild(modalContent);
+		document.body.appendChild(modalOverlay);
+		document.documentElement.classList.add('overflow-hidden', 'lg:overflow-auto');
+	}
+
+	// Bezárja a modalt és visszamozgatja a paneleket
+	function closeMobileCart() {
+		const modalOverlay = document.getElementById('mobile-cart-modal');
+		if (!modalOverlay) return;
+
+		// 1. Keressük meg a paneleket a modalban
+		const cartPanel = modalOverlay.querySelector('.bg-white.dark\\:bg-gray-800.p-4.rounded-lg.shadow.space-y-3');
+		const summaryPanel = modalOverlay.querySelector('#summary-panel');
+		const commandPanel = modalOverlay.querySelector('#command-generator');
+
+		// 2. Keressük meg az eredeti "rejtett" <aside> tárolót
+		const originalContainer = document.getElementById('sidebar-aside');
+		const footer = originalContainer.querySelector('footer');
+
+		// 3. Visszamozgatjuk a paneleket a rejtett <aside>-ba (a footer elé)
+		if (footer && originalContainer) {
+			if(cartPanel) originalContainer.insertBefore(cartPanel, footer);
+			if(summaryPanel) originalContainer.insertBefore(summaryPanel, footer);
+			if(commandPanel) originalContainer.insertBefore(commandPanel, footer);
+		}
+
+		// 4. Modal eltávolítása
+		modalOverlay.remove();
+		document.documentElement.classList.remove('overflow-hidden', 'lg:overflow-auto');
+	}
 
   // Parancsok másolása vágólapra
   function copyCommands() {
@@ -584,12 +702,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const index = favorites.indexOf(itemId);
 
     if (index > -1) {
-      // Már kedvenc, ezért eltávolítjuk
       favorites.splice(index, 1);
       buttonElement.classList.remove('text-yellow-400');
       buttonElement.classList.add('text-gray-400');
     } else {
-      // Még nem kedvenc, ezért hozzáadjuk
       favorites.push(itemId);
       buttonElement.classList.add('text-yellow-400');
       buttonElement.classList.remove('text-gray-400');
@@ -610,7 +726,6 @@ document.addEventListener('DOMContentLoaded', () => {
       favButton.classList.remove('bg-blue-100', 'dark:bg-blue-900', 'text-blue-600');
     }
 
-    // A lista újrarajzolása a szűrő alapján
     filterAndRender();
   }
 
