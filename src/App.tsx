@@ -2,7 +2,9 @@ import { Route, Routes } from "react-router-dom";
 import { HomePage } from "./pages/Home";
 import { SfsdLayout } from "./layouts/SfsdLayout";
 import { PenalCodePage } from "./pages/sfsd/PenalCode";
-import "./App.css"; // Az üres CSS fájl
+import { DashboardPage } from "./pages/sfsd/DashboardPage"; // ÚJ IMPORT
+import { SzabalyzatPage } from "./pages/sfsd/SzabalyzatPage"; // ÚJ IMPORT
+import "./App.css";
 
 function App() {
   return (
@@ -12,19 +14,13 @@ function App() {
 
       {/* SFSD Szekció (Layout-tal védve) */}
       <Route path="/sfsd" element={<SfsdLayout />}>
-        {/* Az 'index' az /sfsd főoldala lesz, egyelőre a PenalCode-ra irányít */}
-        <Route index element={<PenalCodePage />} />
+        {/* JAVÍTÁS: Az 'index' mostantól a Dashboardra mutat */}
+        <Route index element={<DashboardPage />} />
         <Route path="penalcode" element={<PenalCodePage />} />
-        {/* Ide jöhetnek majd a további aloldalak, pl:
+        {/* ÚJ ÚTVONAL: */}
         <Route path="szabalyzat" element={<SzabalyzatPage />} />
-        */}
       </Route>
 
-      {/* Később ide jöhet az LSPD szekció:
-      <Route path="/lspd" element={<LspdLayout />}>
-        ...
-      </Route>
-      */}
     </Routes>
   );
 }
