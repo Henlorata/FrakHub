@@ -1,10 +1,26 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Kiemeljük a változókat, hogy egyértelmű legyen
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+
 // 1. Admin kliens (SERVICE_KEY)
-export const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL || '', // JAVÍTVA: VITE_ prefix eltávolítva
-  process.env.SUPABASE_SERVICE_KEY || ''
-);
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  // --- EZ A JAVÍTÁS ---
+  // Kifejezetten megmondjuk a kliensnek, hogy minden kérésnél
+  // ezt a service key-t használja az authorizációhoz,
+  // ezzel 100%-ban kényszerítve az RLS (Row Level Security) megkerülését.
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  },
+  global: {
+    headers: {
+      Authorization: `Bearer ${supabaseServiceKey}`
+    }
+  }
+  // --- JAVÍTÁS VÉGE ---
+});
 
 // 2. Közös segédfüggvény
 export const isUserAdmin = async (token: string) => {
