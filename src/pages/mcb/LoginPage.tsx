@@ -23,16 +23,25 @@ export function LoginPage() {
     setIsLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: password,
-    });
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+      });
 
-    if (error) {
-      setError(error.message);
+      if (error) {
+        setError(error.message);
+      } else {
+        // Sikeres bejelentkezés, az AuthContext észleli,
+        // az McbLayout pedig átirányít
+        navigate(from, { replace: true });
+      }
+    } catch (catchError) {
+      setError((catchError as Error).message);
+    } finally {
+      // Ez a 'finally' blokk biztosítja, hogy a töltésjelző leálljon,
+      // még akkor is, ha a Context/Layout közben visszairányít.
       setIsLoading(false);
-    } else {
-      navigate(from, { replace: true });
     }
   };
 
