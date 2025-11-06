@@ -1,10 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_KEY || ''
-);
+// JAVÍTÁS: .ts eltávolítva az import végéről
+import { supabaseAdmin } from './lib/supabase-admin';
 
 export default async function handler(
   req: VercelRequest,

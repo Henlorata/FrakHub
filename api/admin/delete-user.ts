@@ -1,43 +1,116 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin, isUserAdmin } from '../lib/supabase-admin.ts';
+import { createClient } from '@supabase/supabase-js'; // <-- FONTOS: Ezt az importot hozzáadjuk
 
-// A segédfüggvények törölve innen
+// --- KÓD BEMÁSOLVA (KEZDET) ---
+// A 'supabase-admin.ts' tartalma ide lett másolva, hogy elkerüljük az import hibát
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
 
-// A FŐ FUNKCIÓ
+console.log('--- delete-user: modultöltés ---');
+console.log('Supabase URL (első 10 karakter):', supabaseUrl.substring(0, 10));
+
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  },
+  global: {
+    headers: {
+      Authorization: `Bearer ${supabaseServiceKey}`
+    }
+  }
+});
+
+console.log('--- delete-user: supabaseAdmin kliens létrehozva ---');
+
+export const isUserAdmin = async (token: string): Promise<boolean | string> => {
+  console.log('--- delete-user: isUserAdmin futtatása ---');
+  try {
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+
+    if (userError) {
+      console.error('isUserAdmin hiba (auth.getUser):', userError.message);
+      return `auth.getUser error: ${userError.message}`;
+    }
+    if (!user) {
+      console.warn('isUserAdmin hiba: Nincs felhasználó ehhez a tokenhez');
+      return "No user found for token";
+    }
+    console.log('isUserAdmin: Felhasználó azonosítva:', user.id);
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('isUserAdmin hiba (profiles.select):', profileError.message);
+      return `profiles.select error: ${profileError.message}`;
+    }
+    console.log('isUserAdmin: Profil lekérdezve:', profile);
+
+    return profile && profile.role === 'lead_detective';
+
+  } catch (e: any) {
+    console.error('isUserAdmin GLOBÁLIS HIBA:', e.message);
+    return `isUserAdmin global catch block: ${e.message}`;
+  }
+};
+// --- KÓD BEMÁSOLVA (VÉGE) ---
+
+
+// A FŐ FUNKCIÓ (már használja a fenti, lokális kódot)
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse,
 ) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-  const { targetUserId } = req.body;
-  const token = req.headers.authorization?.split(' ')[1];
-
-  // --- BIZTONSÁGI ELLENŐRZÉS ---
-  if (!token || !(await isUserAdmin(token))) { // JAVÍTVA
-    return res.status(401).json({ error: 'Unauthorized: Csak admin végezheti el ezt a műveletet.' });
-  }
-
-  if (!targetUserId) {
-    return res.status(400).json({ error: 'Hiányzó adat (targetUserId).' });
-  }
-
+  console.log('--- delete-user API hívás érkezett ---');
   try {
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
+    if (req.method !== 'POST') {
+      console.warn('Rossz metódus:', req.method);
+      return res.status(405).json({ error: 'Method Not Allowed' });
+    }
+
+    const { targetUserId } = req.body;
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      console.warn('Admin check hiba: Nincs token');
+      return res.status(401).json({ error: 'Unauthorized: No token provided.' });
+    }
+
+    console.log('Admin check indítása...');
+    const adminCheckResult = await isUserAdmin(token); // A fenti kódot hívja
+    console.log('Admin check eredmény:', adminCheckResult);
+
+    if (typeof adminCheckResult === 'string') {
+      console.warn('Admin check hiba:', adminCheckResult);
+      return res.status(401).json({ error: `Unauthorized: Admin check failed. Reason: ${adminCheckResult}` });
+    }
+
+    if (adminCheckResult === false) {
+      console.warn('Admin check hiba: A felhasználó nem admin');
+      return res.status(401).json({ error: 'Unauthorized: Csak admin végezheti el ezt a műveletet.' });
+    }
+
+    console.log('Admin check sikeres, törlés indítása...');
+    const { data, error } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
 
     if (error) {
-      if (error.message.includes("Cannot delete own user")) {
-        return res.status(403).json({ error: "Saját magadat nem törölheted." });
-      }
+      console.error('Törlés hiba:', error.message);
       throw error;
     }
 
-    return res.status(200).json({ success: true, deletedUserId: targetUserId });
+    console.log('Törlés sikeres');
+    return res.status(200).json({ success: true, deletedUser: data });
 
   } catch (err) {
     const error = err as Error;
-    return res.status(500).json({ error: error.message });
+    console.error('delete-user GLOBÁLIS HIBA:', error.message);
+    return res.status(500).json({
+      error: "A server error occurred inside the delete-user handler",
+      message: error.message
+    });
   }
 }
