@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // 1. Admin kliens (SERVICE_KEY)
 export const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL || '',
+  process.env.SUPABASE_URL || '', // JAVÍTVA: VITE_ prefix eltávolítva
   process.env.SUPABASE_SERVICE_KEY || ''
 );
 
