@@ -129,4 +129,22 @@
         -ms-overflow-style: none;
         scrollbar-width: none;
     }
+
+    div[data-blocknote-editor] {
+        flex-grow: 1;           /* Kitölti a szülőt (a BlockNoteView root-ot) */
+        min-height: 0;          /* Elengedhetetlen a flex-en belüli görgetéshez */
+        display: flex;          /* Legyen ez is egy flex container... */
+        flex-direction: column; /* ...hogy a gyermeke (.bn-editor) tovább tudjon növekedni */
+        border-radius: inherit; /* Örökölje a szülő kártya sarok-lekerekítését */
+    }
+
+    /* * 2. A tényleges szövegszerkesztő/nézegető terület.
+     * Ennek is ki kell töltenie a szülőjét (a [data-blocknote-editor]-t).
+     */
+    .bn-editor {
+        flex-grow: 1;           /* Kitölti a szülőt ([data-blocknote-editor]-t) */
+        min-height: 0;          /* Elengedhetetlen a flex-en belüli görgetéshez */
+        overflow-y: auto;       /* CSAK EZ az elem görgethető */
+        padding: 1rem;          /* A padding ITT van, nem a külső elemeken */
+    }
 }
