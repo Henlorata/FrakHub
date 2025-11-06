@@ -1,6 +1,66 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin, isUserAdmin } from '../lib/supabase-admin';
+import { createClient } from '@supabase/supabase-js'; // <-- FONTOS: Ezt az importot hozzáadjuk
 
+// --- KÓD BEMÁSOLVA (KEZDET) ---
+// A 'supabase-admin.ts' tartalma ide lett másolva, hogy elkerüljük az import hibát
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+
+console.log('--- update-role: modultöltés ---');
+console.log('Supabase URL (első 10 karakter):', supabaseUrl.substring(0, 10));
+
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  },
+  global: {
+    headers: {
+      Authorization: `Bearer ${supabaseServiceKey}`
+    }
+  }
+});
+
+console.log('--- update-role: supabaseAdmin kliens létrehozva ---');
+
+export const isUserAdmin = async (token: string): Promise<boolean | string> => {
+  console.log('--- update-role: isUserAdmin futtatása ---');
+  try {
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+
+    if (userError) {
+      console.error('isUserAdmin hiba (auth.getUser):', userError.message);
+      return `auth.getUser error: ${userError.message}`;
+    }
+    if (!user) {
+      console.warn('isUserAdmin hiba: Nincs felhasználó ehhez a tokenhez');
+      return "No user found for token";
+    }
+    console.log('isUserAdmin: Felhasználó azonosítva:', user.id);
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('isUserAdmin hiba (profiles.select):', profileError.message);
+      return `profiles.select error: ${profileError.message}`;
+    }
+    console.log('isUserAdmin: Profil lekérdezve:', profile);
+
+    return profile && profile.role === 'lead_detective';
+
+  } catch (e: any) {
+    console.error('isUserAdmin GLOBÁLIS HIBA:', e.message);
+    return `isUserAdmin global catch block: ${e.message}`;
+  }
+};
+// --- KÓD BEMÁSOLVA (VÉGE) ---
+
+
+// A FŐ FUNKCIÓ (már használja a fenti, lokális kódot)
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse,
@@ -21,7 +81,7 @@ export default async function handler(
     }
 
     console.log('Admin check indítása...');
-    const adminCheckResult = await isUserAdmin(token);
+    const adminCheckResult = await isUserAdmin(token); // A fenti kódot hívja
     console.log('Admin check eredmény:', adminCheckResult);
 
     if (typeof adminCheckResult === 'string') {
