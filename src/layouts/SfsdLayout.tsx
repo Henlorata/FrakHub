@@ -97,7 +97,7 @@ export function SfsdLayout() {
         </Sheet>
       </header>
 
-      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-8">
+      <main className="flex-1 w-full max-w-screen-2xl mx-auto p-4 md:p-8">
         <Outlet/>
       </main>
     </div>
