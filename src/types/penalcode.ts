@@ -1,3 +1,9 @@
+export type WarningType =
+  | "none"
+  | "license_ban"
+  | "license_registration_revoke"
+  | "firearm_revoke";
+
 export interface Alpont {
   paragrafus: string;
   megnevezes: string;
@@ -30,6 +36,7 @@ export interface PenalCodeItem {
   id: string;
   kategoria_nev: string;
   fo_tetel_nev?: string;
+  fo_tetel_paragrafus?: string;
   paragrafus: string;
   megnevezes: string;
   min_birsag: number | null;
@@ -39,4 +46,19 @@ export interface PenalCodeItem {
   rovidites: string;
   megjegyzes: string;
   isWarning: boolean;
+  warningType: WarningType;
+}
+
+export interface PenalCodeGroup {
+  id: string;
+  kategoria_nev: string;
+  paragrafus: string;
+  megnevezes: string;
+  megjegyzes: string;
+  alpontok: PenalCodeItem[];
+}
+
+export interface KategoriaData {
+  kategoria_nev: string;
+  items: (PenalCodeItem | PenalCodeGroup)[];
 }

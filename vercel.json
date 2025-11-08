@@ -1,4 +1,6 @@
 {
+  "framework": "vite",
+  "devCommand": "vite",
   "rewrites": [
     {
       "source": "/api/(.*)",

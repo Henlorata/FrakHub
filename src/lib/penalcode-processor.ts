@@ -1,44 +1,102 @@
 import penalCodeData from "../data/penalcode.json";
-import type {Kategoria, PenalCodeItem} from "@/types/penalcode";
+import type {
+  Kategoria,
+  KategoriaData,
+  PenalCodeItem,
+  PenalCodeGroup,
+  Tetel,
+  Alpont,
+  WarningType,
+} from "@/types/penalcode";
 
-const WARNING_KEYWORDS = [
+const LICENSE_BAN_KEYWORDS = [
   "eltiltható",
-  "bevonható",
-  "max 30 nap",
   "eltiltani",
+  "vezetéstől",
+  "max 30 nap",
 ];
 
-const checkWarning = (note: string | null | undefined): boolean => {
-  if (!note) return false;
-  const lowerCaseNote = note.toLowerCase();
-  return WARNING_KEYWORDS.some((keyword) => lowerCaseNote.includes(keyword));
+const LICENSE_REGISTRATION_REVOKE_KEYWORDS = [
+  "jogosítvány és forgalmi",
+];
+
+const FIREARM_WARNING_KEYWORDS = [
+  "fegyver",
+  "lőfegyver",
+  "fegyvertár"
+];
+
+const checkWarning = (note: string | null | undefined, name: string): WarningType => {
+  if (!note && !name) return "none";
+  const lowerNote = (note || "").toLowerCase();
+  const lowerName = (name || "").toLowerCase();
+  const combinedText = `${lowerNote} ${lowerName}`;
+
+  // 1. Jogosítvány ÉS Forgalmi
+  if (LICENSE_REGISTRATION_REVOKE_KEYWORDS.some((keyword) => combinedText.includes(keyword))) {
+    return "license_registration_revoke";
+  }
+
+  // 2. Fegyver
+  if (FIREARM_WARNING_KEYWORDS.some((keyword) => combinedText.includes(keyword))) {
+    return "firearm_revoke";
+  }
+
+  // 3. Csak Jogosítvány (általános)
+  if (LICENSE_BAN_KEYWORDS.some((keyword) => combinedText.includes(keyword))) {
+    return "license_ban";
+  }
+
+  return "none";
 };
 
-export const prepareData = (): PenalCodeItem[] => {
-  const allItems: PenalCodeItem[] = [];
+export const prepareData = (): KategoriaData[] => {
+  const allKategorias: KategoriaData[] = [];
   let idCounter = 0;
 
   (penalCodeData as Kategoria[]).forEach((kategoria) => {
-    kategoria.tetelek.forEach((tetel) => {
-      const foMegjegyzes = tetel.megjegyzes || "";
+    const kategoriaData: KategoriaData = {
+      kategoria_nev: kategoria.kategoria_nev,
+      items: [],
+    };
 
+    kategoria.tetelek.forEach((tetel: Tetel) => {
       if (tetel.alpontok && tetel.alpontok.length > 0) {
-        tetel.alpontok.forEach((alpont) => {
+        const group: PenalCodeGroup = {
+          id: `group-${tetel.paragrafus.replace(/\s/g, "")}`,
+          kategoria_nev: kategoria.kategoria_nev,
+          paragrafus: tetel.paragrafus,
+          megnevezes: tetel.megnevezes,
+          megjegyzes: tetel.megjegyzes || "",
+          alpontok: [],
+        };
+
+        const foMegjegyzes = tetel.megjegyzes || "";
+
+        group.alpontok = tetel.alpontok.map((alpont: Alpont) => {
           const alpontMegjegyzes = alpont.megjegyzes || "";
           const fullNote = `${foMegjegyzes} ${alpontMegjegyzes}`.trim();
+          idCounter++;
+          const warningType = checkWarning(fullNote, alpont.megnevezes);
 
-          allItems.push({
+          return {
             ...alpont,
-            id: `item-${idCounter++}`,
+            id: `item-${idCounter}`,
             kategoria_nev: kategoria.kategoria_nev,
             fo_tetel_nev: tetel.megnevezes,
+            fo_tetel_paragrafus: tetel.paragrafus,
             megjegyzes: fullNote,
-            isWarning: checkWarning(fullNote),
-          });
+            isWarning: warningType !== "none",
+            warningType: warningType,
+          };
         });
+
+        kategoriaData.items.push(group);
       } else if (tetel.rovidites) {
-        allItems.push({
-          id: `item-${idCounter++}`,
+        idCounter++;
+        const warningType = checkWarning(tetel.megjegyzes, tetel.megnevezes);
+        const item: PenalCodeItem = {
+          id: `item-${idCounter}`,
           kategoria_nev: kategoria.kategoria_nev,
           paragrafus: tetel.paragrafus,
           megnevezes: tetel.megnevezes,
@@ -48,12 +106,16 @@ export const prepareData = (): PenalCodeItem[] => {
           max_fegyhaz: tetel.max_fegyhaz,
           rovidites: tetel.rovidites,
           megjegyzes: tetel.megjegyzes || "",
-          isWarning: checkWarning(tetel.megjegyzes),
-        });
+          isWarning: warningType !== "none",
+          warningType: warningType,
+        };
+        kategoriaData.items.push(item);
       }
     });
+
+    allKategorias.push(kategoriaData);
   });
-  return allItems;
+  return allKategorias;
 };
 
 export const formatCurrency = (value: number | null | undefined): string => {
