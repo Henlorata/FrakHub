@@ -1,3 +1,5 @@
+// FrakHub/src/pages/sfsd/PenalCode.tsx
+
 import * as React from "react";
 import {
   prepareData,
@@ -11,6 +13,7 @@ import type {
 } from "@/types/penalcode";
 import {useMediaQuery} from "@/hooks/use-media-query";
 
+// Shadcn UI Komponensek
 import {
   Accordion,
   AccordionContent,
@@ -68,11 +71,14 @@ import {
   ClipboardCheck,
   Save,
   Trash2,
+  ChevronLeft,
 } from "lucide-react";
 import {Alert, AlertDescription, AlertTitle} from "@/components/ui/alert";
 import {cn} from "@/lib/utils";
+import {ScrollArea} from "@/components/ui/scroll-area";
 
 // --- Típusdefiníciók ---
+
 interface CartItem {
   item: PenalCodeItem;
   quantity: number;
@@ -101,6 +107,7 @@ interface Summary {
   warningItems: PenalCodeItem[];
 }
 
+// Kiterjesztett típus a keresési logika számára
 type FilteredPenalCodeGroup = PenalCodeGroup & { _matchType?: "group" | "children" };
 type FilteredKategoriaData = {
   kategoria_nev: string;
@@ -209,8 +216,8 @@ function SaveTemplateDialog({open, onOpenChange, onSave}: SaveTemplateDialogProp
 
   const handleSave = () => {
     onSave(name);
-    setName("");
-    onOpenChange(false);
+    setName(""); // Reset state after save
+    onOpenChange(false); // Ablak bezárása
   };
 
   React.useEffect(() => {
@@ -465,9 +472,17 @@ function TemplateModal({
 
 
 // --- A FŐ KOMPONENS ---
+
 export function PenalCodePage() {
   const [searchTerm, setSearchTerm] = React.useState("");
   const [isFavoritesView, setIsFavoritesView] = React.useState(false);
+
+  // === JAVÍTÁS: useState -> useLocalStorage ===
+  const [isCategorySidebarVisible, setIsCategorySidebarVisible] = useLocalStorage<boolean>(
+    "frakhub_sfsd_category_sidebar_visible", // Egyedi kulcs
+    false // Alapértelmezett érték (rejtett)
+  );
+
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [favorites, setFavorites] = useLocalStorage<string[]>(
     "frakhub_favorites",
@@ -511,9 +526,11 @@ export function PenalCodePage() {
 
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   useMediaQuery("(min-width: 1280px)");
+// A bal oldali sávhoz
 
 
   // --- Logika ---
+
   const addToCart = (itemId: string) => {
     const existing = cart.find((c) => c.item.id === itemId);
     if (existing) {
@@ -936,6 +953,7 @@ export function PenalCodePage() {
   };
 
   // --- Renderelési függvények ---
+
   const PenalCodeItemCard = ({
                                item,
                                className,
@@ -1486,23 +1504,25 @@ export function PenalCodePage() {
       <h3 className="text-base font-bold text-slate-300 p-4 border-b border-slate-700 flex-shrink-0">
         Kategóriák
       </h3>
-      <div className="flex flex-col gap-2 p-4">
-        {ALL_KATEGORIA_NAMES.map((name) => (
-          <Button
-            key={name}
-            variant="ghost"
-            className={cn(
-              "w-full justify-start text-left h-auto text-base whitespace-normal",
-              openCategories.length === 1 && openCategories[0] === name
-                ? "text-blue-300 bg-slate-800"
-                : "text-slate-300"
-            )}
-            onClick={() => handleCategoryJump(name)}
-          >
-            {name}
-          </Button>
-        ))}
-      </div>
+      <ScrollArea className="flex-1 min-h-0 scrollbar-hide">
+        <div className="flex flex-col gap-2 p-4">
+          {ALL_KATEGORIA_NAMES.map((name) => (
+            <Button
+              key={name}
+              variant="ghost"
+              className={cn(
+                "w-full justify-start text-left h-auto text-base whitespace-normal",
+                openCategories.length === 1 && openCategories[0] === name
+                  ? "text-blue-300 bg-slate-800"
+                  : "text-slate-300"
+              )}
+              onClick={() => handleCategoryJump(name)}
+            >
+              {name}
+            </Button>
+          ))}
+        </div>
+      </ScrollArea>
     </div>
   );
 
@@ -1517,16 +1537,21 @@ export function PenalCodePage() {
         onSave={handleSaveTemplate}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6 lg:items-start">
-        <div
-          className="hidden xl:block xl:sticky xl:top-[5.5rem] max-h-[calc(100vh-7rem)] overflow-y-auto scrollbar-hide">
-          {renderLeftSidebar()}
-        </div>
+      <div className={cn(
+        "grid grid-cols-1 lg:grid-cols-3 gap-6 lg:items-start",
+        isCategorySidebarVisible ? "xl:grid-cols-4" : "xl:grid-cols-3"
+      )}>
 
-        {/* === KÖZÉPSŐ OSZLOP === */}
+        {isCategorySidebarVisible && (
+          <div
+            className="hidden xl:block xl:sticky xl:top-[5.5rem] max-h-[calc(100vh-7rem)] overflow-y-auto scrollbar-hide">
+            {renderLeftSidebar()}
+          </div>
+        )}
+
         <div className="lg:col-span-2">
 
-          {/* Mobil/Tablet Kereső */}
+          {/* Mobil/Tablet Kereső (XL ALATT jelenik meg) */}
           <div className="xl:hidden sticky top-[4rem] z-20 bg-slate-950 pt-4 pb-3 border-b border-slate-800 -mt-4 mb-6">
             <div className="flex items-center gap-4">
               <div className="relative flex-1">
@@ -1584,6 +1609,7 @@ export function PenalCodePage() {
             </div>
           </div>
 
+          {/* XL nézetben a kereső ITT van */}
           <div
             className="hidden xl:block sticky top-[4rem] z-20 bg-slate-950 pt-4 pb-3 border-b border-slate-800 -mt-4 mb-6">
             <div className="flex items-center gap-4">
@@ -1596,6 +1622,21 @@ export function PenalCodePage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
+
+              {/* === JAVÍTÁS: Animált gomb === */}
+              <Button
+                variant="outline" // Mindig "outline"
+                size="icon"
+                title={isCategorySidebarVisible ? "Kategóriák elrejtése" : "Kategóriák mutatása"}
+                onClick={() => setIsCategorySidebarVisible(!isCategorySidebarVisible)}
+              >
+                <ChevronLeft className={cn(
+                  "w-5 h-5 transition-transform duration-300",
+                  // Ha rejtve van (false), az ikon jobbra néz (180 fok)
+                  !isCategorySidebarVisible && "rotate-180"
+                )}/>
+              </Button>
+
               <Button
                 variant={isFavoritesView ? "default" : "outline"}
                 size="icon"
@@ -1637,6 +1678,7 @@ export function PenalCodePage() {
       </div>
 
 
+      {/* Mobil nézet: Alsó felugró (Drawer) a Jegyzőkönyvnek (LG alatt) */}
       {!isDesktop && (
         <Drawer open={isMobileDrawerOpen} onOpenChange={setIsMobileDrawerOpen}>
           <DrawerTrigger asChild>
