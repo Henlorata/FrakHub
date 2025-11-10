@@ -1,3 +1,5 @@
+// FrakHub/src/pages/mcb/components/AddCollaboratorDialog.tsx
+
 import * as React from "react";
 import {
   Dialog,
@@ -26,7 +28,7 @@ type SearchResultProfile = {
 interface AddCollaboratorDialogProps {
   caseId: string;
   ownerId: string;
-  existingCollaborators: string[];
+  existingCollaborators: string[]; // Ez a prop már automatikusan frissül
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCollaboratorAdded: () => void;
@@ -42,19 +44,15 @@ export function AddCollaboratorDialog({
                                       }: AddCollaboratorDialogProps) {
   const { supabase, profile } = useAuth();
   const [searchTerm, setSearchTerm] = React.useState("");
-
-  // --- JAVÍTOTT LOGIKA ---
-  const [isLoading, setIsLoading] = React.useState(false); // Ez már csak a teljes lista betöltését jelzi
-  const [allDetectives, setAllDetectives] = React.useState<SearchResultProfile[]>([]); // Itt tároljuk a teljes listát
-  const [filteredResults, setFilteredResults] = React.useState<SearchResultProfile[]>([]); // Itt a szűrt listát
-  // --- VÉGE ---
-
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [allDetectives, setAllDetectives] = React.useState<SearchResultProfile[]>([]);
+  const [filteredResults, setFilteredResults] = React.useState<SearchResultProfile[]>([]);
   const [isAdding, setIsAdding] = React.useState<string | null>(null);
 
-  // JAVÍTÁS: Keresés helyett mostantól a 'searchTerm' változását figyeljük
+  // Keresés
   React.useEffect(() => {
     if (searchTerm.trim() === "") {
-      setFilteredResults(allDetectives); // Ha üres a kereső, mutass mindent
+      setFilteredResults(allDetectives);
     } else {
       const lowerSearch = searchTerm.toLowerCase();
       const filtered = allDetectives.filter(user =>
@@ -62,21 +60,20 @@ export function AddCollaboratorDialog({
       );
       setFilteredResults(filtered);
     }
-  }, [searchTerm, allDetectives]); // Figyeljük a searchTerm ÉS az allDetectives változását
+  }, [searchTerm, allDetectives]);
 
-  // JAVÍTÁS: Adatok lekérése a dialógus megnyitásakor
+  // Adatok lekérése megnyitáskor
   React.useEffect(() => {
     if (open) {
-      // Csak akkor töltsük be, ha még nem tettük meg
       if (allDetectives.length === 0) {
         setIsLoading(true);
         const fetchAllDetectives = async () => {
           const { data, error } = await supabase
             .from("profiles")
             .select("id, full_name, role")
-            .neq("role", "pending") // Függőben lévőket ne
-            .neq("id", profile!.id) // Saját magunkat ne
-            .neq("id", ownerId)   // <-- JAVÍTÁS: Kiszűrjük az akta tulajdonosát is
+            .neq("role", "pending")
+            .neq("id", profile!.id)
+            .neq("id", ownerId)
 
           if (error) {
             toast.error("Hiba a nyomozók listájának lekérésekor", { description: error.message });
@@ -89,13 +86,13 @@ export function AddCollaboratorDialog({
         fetchAllDetectives();
       }
     } else {
-      // Dialógus bezárásakor resetelünk
       setSearchTerm("");
-      setFilteredResults(allDetectives); // Reset a szűrésre
+      // Nem kell resetelni az allDetectives-t, csak a szűrést
+      setFilteredResults(allDetectives);
     }
-  }, [open, supabase, profile, allDetectives.length]); // Figyeljük az 'open' állapotot
+  }, [open, supabase, profile, allDetectives]);
 
-  // Felhasználó hozzáadása (VÁLTOZATLAN)
+  // Felhasználó hozzáadása
   const handleAddUser = async (user: SearchResultProfile) => {
     setIsAdding(user.id);
     const { error } = await supabase.from("case_collaborators").insert({
@@ -108,8 +105,9 @@ export function AddCollaboratorDialog({
       toast.error("Hiba a hozzáadás közben", { description: error.message });
     } else {
       toast.success(`${user.full_name} hozzáadva az aktához.`);
-      onCollaboratorAdded();
-      onOpenChange(false);
+      onCollaboratorAdded(); // Ez frissíti a szülőt (CaseDetailPage)
+      // --- VÁLTOZÁS: Az onOpenChange(false) hívás eltávolítva ---
+      // onOpenChange(false);
     }
   };
 
@@ -123,7 +121,6 @@ export function AddCollaboratorDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* --- JAVÍTÁS: Keresőgomb eltávolítva --- */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
@@ -147,6 +144,8 @@ export function AddCollaboratorDialog({
           ) : (
             <div className="space-y-3">
               {filteredResults.map((user) => {
+                // Az 'existingCollaborators' prop frissül a szülőtől,
+                // így ez a változó mindig naprakész lesz.
                 const isAlreadyAdded = existingCollaborators.includes(user.id);
                 return (
                   <div key={user.id} className="flex items-center justify-between">
@@ -178,7 +177,7 @@ export function AddCollaboratorDialog({
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Mégse</Button>
+            <Button variant="outline">Bezárás</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>

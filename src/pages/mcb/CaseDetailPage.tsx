@@ -1,4 +1,5 @@
 // FrakHub/src/pages/mcb/CaseDetailPage.tsx
+// (JAVÍTVA: A Közreműködők kártya most már dinamikus max-magassággal rendelkezik)
 
 import * as React from "react";
 import {useParams, Link} from "react-router-dom";
@@ -22,6 +23,8 @@ import {
   Shield,
   Save,
   Edit,
+  FileText,
+  Image,
 } from "lucide-react";
 import {toast} from "sonner";
 import {CaseEditor} from "@/pages/mcb/components/CaseEditor.tsx";
@@ -35,8 +38,10 @@ import {
   DialogTitle,
   DialogFooter as DialogFooterComponent,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+import { CaseEvidenceTab } from "./components/CaseEvidenceTab";
 
-// --- Típusok ---
+// --- Típusok (VÁLTOZATLAN) ---
 interface CaseDetailsData {
   caseDetails: {
     case: Case;
@@ -47,10 +52,7 @@ interface CaseDetailsData {
     user: Pick<Profile, 'full_name' | 'role'>;
   }[];
 }
-
 type CollaboratorDetail = CaseDetailsData['collaborators'][number];
-
-// ... getStatusBadge (változatlan) ...
 const getStatusBadge = (status: string) => {
   switch (status) {
     case "open":
@@ -63,7 +65,6 @@ const getStatusBadge = (status: string) => {
       return <Badge variant="outline">{status}</Badge>;
   }
 };
-// ... mantineTheme (változatlan) ...
 const mantineTheme = createTheme({});
 
 
@@ -82,13 +83,18 @@ export function CaseDetailPage() {
   const [tempEditorContent, setTempEditorContent] = React.useState<PartialBlock[] | undefined>(undefined);
 
   const [isAddCollabOpen, setIsAddCollabOpen] = React.useState(false);
+  const [activeView, setActiveView] = React.useState<'content' | 'evidence'>('content');
 
-  // --- VISSZAÁLLÍTVA: A JS-alapú magasság-számításhoz szükséges state és ref-ek ---
+  // --- EREDETI LOGIKA KIEGÉSZÍTÉSE ---
   const rightColumnRef = React.useRef<HTMLDivElement>(null);
   const leftHeaderRef = React.useRef<HTMLDivElement>(null);
   const [editorCardHeight, setEditorCardHeight] = React.useState<string | number>('auto');
 
-  // ... fetchCaseDetails (változatlan) ...
+  // VÁLTOZÁS: Új ref és state a Közreműködők kártya magasságához
+  const collaboratorsCardRef = React.useRef<HTMLDivElement>(null);
+  const [collaboratorMaxHeight, setCollaboratorMaxHeight] = React.useState<string | number>('350px');
+
+  // ... fetchCaseDetails (VÁLTOZATLAN) ...
   const fetchCaseDetails = React.useCallback(async () => {
     if (!caseId) {
       setError("Nincs akta ID megadva.");
@@ -145,55 +151,60 @@ export function CaseDetailPage() {
     fetchCaseDetails();
   }, [fetchCaseDetails]);
 
-  // --- VISSZAÁLLÍTVA: A JS-alapú magasság-számítás ---
+  // --- AZ EREDETI LOGIKA (KIEGÉSZÍTVE) ---
   React.useLayoutEffect(() => {
-    const calculateHeight = () => {
-      // Mobilon ne számoljunk
-      if (window.innerWidth < 1024) {
-        setEditorCardHeight('auto');
-        return;
+    // VÁLTOZATLAN: Csak 'content' nézetben számolunk
+    if (activeView === 'content') {
+      const calculateHeight = () => {
+        if (window.innerWidth < 1024) {
+          setEditorCardHeight('auto');
+          setCollaboratorMaxHeight('350px'); // Mobilon marad a fix
+          return;
+        }
+
+        // VÁLTOZATLAN: Bal oldal magasságának számítása
+        if (rightColumnRef.current && leftHeaderRef.current) {
+          const rightHeight = rightColumnRef.current.offsetHeight;
+          const leftHeaderHeight = leftHeaderRef.current.offsetHeight;
+          const gap = 24;
+          const newHeight = rightHeight - leftHeaderHeight - gap;
+          setEditorCardHeight(newHeight > 400 ? newHeight : 400);
+        }
+
+        // --- VÁLTOZÁS: Jobb oldal (Közreműködők) max-magasságának számítása ---
+        if (collaboratorsCardRef.current) {
+          const topOffset = collaboratorsCardRef.current.getBoundingClientRect().top;
+          // 24px = a grid 'gap-6' alul, hogy ne érjen le teljesen a lap aljáig
+          const newMaxHeight = window.innerHeight - topOffset - 24;
+
+          // A min magasság 350px, de a max ne legyen kevesebb ennél
+          setCollaboratorMaxHeight(newMaxHeight > 350 ? newMaxHeight : 350);
+        }
+      };
+
+      const timer = setTimeout(calculateHeight, 50);
+      window.addEventListener('resize', calculateHeight);
+      const observer = new ResizeObserver(calculateHeight);
+
+      // VÁLTOZATLAN: Figyeljük a jobb oszlopot
+      if (rightColumnRef.current) {
+        observer.observe(rightColumnRef.current);
       }
 
-      // Csak akkor számolunk, ha a ref-ek már léteznek
-      if (rightColumnRef.current && leftHeaderRef.current) {
-        const rightHeight = rightColumnRef.current.offsetHeight;
-        const leftHeaderHeight = leftHeaderRef.current.offsetHeight;
-
-        // A 'gap-6' értéke 1.5rem (24px)
-        const gap = 24;
-
-        // A bal oldali editor magassága =
-        // (Jobb oszlop teljes magassága) - (Bal oszlop fejléc-kártyájának magassága) - (A két kártya közti rés)
-        const newHeight = rightHeight - leftHeaderHeight - gap;
-
-        // Beállítunk egy ésszerű minimális magasságot, pl. 400px
-        setEditorCardHeight(newHeight > 400 ? newHeight : 400);
-      }
-    };
-
-    // Késleltetés, hogy a renderelés befejeződjön
-    const timer = setTimeout(calculateHeight, 50);
-
-    // Figyeljük az ablak átméretezését
-    window.addEventListener('resize', calculateHeight);
-
-    // Figyeljük a JOBB OLDALI sáv magasságának VÁLTOZÁSÁT
-    // Ez fog lefutni, amikor a közreműködők listája (az "ugrás" előtt) nő
-    const observer = new ResizeObserver(calculateHeight);
-    if (rightColumnRef.current) {
-      observer.observe(rightColumnRef.current);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('resize', calculateHeight);
+        observer.disconnect();
+      };
+    } else {
+      // VÁLTOZATLAN: Más nézetben resetelünk
+      setEditorCardHeight('auto');
+      setCollaboratorMaxHeight('350px');
     }
-
-    // Takarítás
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', calculateHeight);
-      observer.disconnect();
-    };
-  }, [details, isLoading]); // Lefut, ha a betöltés befejeződött vagy a 'details' változik
+  }, [details, isLoading, activeView]);
 
 
-  // ... (a többi handler, canEdit, canManageCollaborators változatlan) ...
+  // ... (a többi handler, canEdit, canManageCollaborators VÁLTOZATLAN) ...
   const handleEditorSave = async () => {
     if (!caseId || !tempEditorContent) return;
     setIsSaving(true);
@@ -245,7 +256,7 @@ export function CaseDetailPage() {
     return false;
   }, [profile, details]);
 
-  // ... (Betöltés és Hiba nézet változatlan) ...
+  // ... (Betöltés és Hiba nézet VÁLTOZATLAN) ...
   if (isLoading) {
     return (
       <div className="flex justify-center items-center py-16">
@@ -272,130 +283,166 @@ export function CaseDetailPage() {
   const {collaborators} = details;
 
   return (
-    // JAVÍTÁS: Gyökér elem 'flex-1 flex flex-col', hogy kitöltse a 'main'-t
     <div className="space-y-6 flex-1 flex flex-col">
 
-      {/* 1. SOR: FEJLÉC GOMBOK (Változatlan) */}
+      {/* 1. SOR: FEJLÉC GOMBOK (VÁLTOZATLAN) */}
       <div className="flex justify-between items-center flex-shrink-0">
         <Button asChild variant="outline" className="w-fit">
           <Link to="/mcb">
             <ArrowLeft className="w-4 h-4 mr-2"/> Vissza az aktákhoz
           </Link>
         </Button>
-        {canEdit && (
+        <div className="flex items-center gap-2 p-1 bg-slate-800 rounded-lg">
+          <Button
+            variant={activeView === 'content' ? 'default' : 'ghost'}
+            onClick={() => setActiveView('content')}
+            className={cn(
+              "h-8 px-3",
+              activeView === 'content' && "bg-slate-950 text-white"
+            )}
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            Akta Tartalma
+          </Button>
+          <Button
+            variant={activeView === 'evidence' ? 'default' : 'ghost'}
+            onClick={() => setActiveView('evidence')}
+            className={cn(
+              "h-8 px-3",
+              activeView === 'evidence' && "bg-slate-950 text-white"
+            )}
+          >
+            <Image className="w-4 h-4 mr-2" />
+            Bizonyítékok
+          </Button>
+        </div>
+        {canEdit ? (
           <Button onClick={handleOpenEditor}>
             <Edit className="w-4 h-4 mr-2"/> Akta Szerkesztése
           </Button>
+        ) : (
+          <div className="w-fit" />
         )}
       </div>
 
       {/* 2. SOR: FŐ TARTALOM */}
-      {/* JAVÍTÁS: A grid 'flex-1' és 'lg:items-start' (ez tartja a jobb sávot felül) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 lg:items-start">
 
-        {/* BAL OSZLOP (Görgőző tartalom) */}
-        {/* JAVÍTÁS: 'flex flex-col' hogy a belső kártya nyúlhasson */}
-        <div className="lg:col-span-2 space-y-6 flex flex-col">
-          {/* JAVÍTÁS: Visszaállítva a 'leftHeaderRef' */}
-          <Card className="bg-slate-900 border-slate-700 text-white flex-shrink-0" ref={leftHeaderRef}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-3xl">#{caseData.case_number}: {caseData.title}</CardTitle>
-                  <CardDescription className="text-lg text-slate-400">
-                    {caseData.short_description || "Nincs rövid leírás megadva."}
-                  </CardDescription>
-                </div>
-                {getStatusBadge(caseData.status)}
-              </div>
-            </CardHeader>
-          </Card>
+      {/* 1. NÉZET: AKTA TARTALMA (AZ EREDETI LOGIKA) */}
+      {activeView === 'content' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 lg:items-start">
 
-          {/* Akta Tartalma Kártya (JAVÍTVA) */}
-          {/* JAVÍTÁS: Visszaállítva a 'style' és a belső görgetés */}
-          <Card
-            className="bg-slate-900 border-slate-700 text-white flex flex-col"
-            style={{ height: editorCardHeight }}
-          >
-            <CardHeader>
-              <h3 className="text-xl font-semibold">Akta Tartalma</h3>
-            </CardHeader>
-            <CardContent className="p-0 flex-1 flex flex-col min-h-0">
-              <div className="flex-1 min-h-0">
-                <MantineProvider theme={mantineTheme} forceColorScheme="dark">
-                  <CaseEditor
-                    key={JSON.stringify(editorContent)}
-                    initialContent={editorContent}
-                    editable={false}
-                    onChange={() => {
-                    }}
-                  />
-                </MantineProvider>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* JOBB OSZLOP (Ragadós oldalsáv) */}
-        {/* JAVÍTÁS: Visszaállítva a 'rightColumnRef' */}
-        <div className="lg:col-span-1 space-y-6" ref={rightColumnRef}>
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="p-4">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Shield className="w-5 h-5 text-blue-400"/> Akta Tulajdonosa
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <p className="text-base">{owner.full_name}</p>
-              <p className="text-sm text-slate-400">{owner.role}</p>
-            </CardContent>
-          </Card>
-
-          {/* === A VÉGLEGES JAVÍTÁS AZ "UGRÁLÁSRA" === */}
-          {/* JAVÍTÁS: A KÁRTYA fix 'h-[350px]' magasságot kap (lehet 300, 350, 400, ízlés szerint) */}
-          <Card className="bg-slate-800 border-slate-700 flex flex-col h-[350px]">
-            <CardHeader className="p-4 flex-shrink-0">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Users className="w-5 h-5 text-green-400"/> Közreműködők
-              </CardTitle>
-            </CardHeader>
-
-            {/* JAVÍTÁS: A CardContent 'flex-1 min-h-0'-t kap (max-h törölve) */}
-            <CardContent className="p-4 pt-0 space-y-3 flex-1 min-h-0 overflow-y-auto">
-              {collaborators.length === 0 ? (
-                <p className="text-sm text-slate-500 italic">Nincsenek közreműködők.</p>
-              ) : (
-                collaborators.map((collab: CollaboratorDetail) => (
-                  <div key={collab.user.full_name} className="flex items-center justify-between">
-                    <div>
-                      <p className="text-base">{collab.user.full_name}</p>
-                      <p className="text-sm text-slate-400">{collab.user.role}</p>
-                    </div>
-                    <Badge variant={collab.collaborator.status === 'approved' ? 'default' : 'secondary'}
-                           className={collab.collaborator.status === 'approved' ? 'bg-green-600' : ''}>
-                      {collab.collaborator.status === 'approved' ? 'Jóváhagyva' : 'Függőben'}
-                    </Badge>
+          {/* BAL OSZLOP (VÁLTOZATLAN) */}
+          <div className="lg:col-span-2 space-y-6 flex flex-col">
+            <Card
+              className="bg-slate-900 border-slate-700 text-white flex-shrink-0 !py-0 !gap-0"
+              ref={leftHeaderRef}
+            >
+              <CardHeader className="p-6">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-3xl">#{caseData.case_number}: {caseData.title}</CardTitle>
+                    <CardDescription className="text-lg text-slate-400">
+                      {caseData.short_description || "Nincs rövid leírás megadva."}
+                    </CardDescription>
                   </div>
-                ))
-              )}
-            </CardContent>
+                  {getStatusBadge(caseData.status)}
+                </div>
+              </CardHeader>
+            </Card>
 
-            {/* JAVÍTÁS: A Footer 'mt-auto'-t kap (hogy alulra tapadjon) és 'flex-shrink-0' */}
-            {canManageCollaborators && (
-              <CardFooter className="p-4 pt-0 mt-auto flex-shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => setIsAddCollabOpen(true)}
-                >
-                  Közreműködő hozzáadása
-                </Button>
-              </CardFooter>
-            )}
-          </Card>
+            <Card
+              className="bg-slate-900 border-slate-700 text-white flex flex-col !py-0 !gap-0"
+              style={{ height: editorCardHeight }}
+            >
+              <CardHeader className="p-6">
+                <h3 className="text-xl font-semibold">Akta Tartalma</h3>
+              </CardHeader>
+              <CardContent className="p-0 flex-1 flex flex-col min-h-0">
+                <div className="flex-1 min-h-0">
+                  <MantineProvider theme={mantineTheme} forceColorScheme="dark">
+                    <CaseEditor
+                      key={JSON.stringify(editorContent)}
+                      initialContent={editorContent}
+                      editable={false}
+                      onChange={() => {
+                      }}
+                    />
+                  </MantineProvider>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* JOBB OSZLOP (Ragadós oldalsáv) */}
+          <div className="lg:col-span-1 space-y-6" ref={rightColumnRef}>
+
+            <Card className="bg-slate-800 border-slate-700 !py-0 !gap-0">
+              <CardHeader className="p-6 !pb-0">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-blue-400"/> Akta Tulajdonosa
+                </CardTitle>
+              </CardHeader>
+              {/* JAVÍTÁS (Előző kérésből): p-6 -> px-6 pt-0 pb-4 */}
+              <CardContent className="px-6 pt-0 pb-4">
+                <p className="text-base">{owner.full_name}</p>
+                <p className="text-sm text-slate-400">{owner.role}</p>
+              </CardContent>
+            </Card>
+
+            {/* --- VÁLTOZÁS ITT --- */}
+            <Card
+              ref={collaboratorsCardRef} // Ref hozzáadva
+              className="bg-slate-800 border-slate-700 flex flex-col !py-0 !gap-0"
+              // A h-[350px] eltávolítva, style hozzáadva
+              style={{ minHeight: '350px', maxHeight: collaboratorMaxHeight }}
+            >
+              {/* --- VÁLTOZÁS VÉGE --- */}
+              <CardHeader className="p-6 flex-shrink-0">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Users className="w-5 h-5 text-green-400"/> Közreműködők
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 !pt-0 space-y-3 flex-1 min-h-0 overflow-y-auto">
+                {collaborators.length === 0 ? (
+                  <p className="text-sm text-slate-500 italic">Nincsenek közreműködők.</p>
+                ) : (
+                  collaborators.map((collab: CollaboratorDetail) => (
+                    <div key={collab.user.full_name} className="flex items-center justify-between">
+                      <div>
+                        <p className="text-base">{collab.user.full_name}</p>
+                        <p className="text-sm text-slate-400">{collab.user.role}</p>
+                      </div>
+                      <Badge variant={collab.collaborator.status === 'approved' ? 'default' : 'secondary'}
+                             className={collab.collaborator.status === 'approved' ? 'bg-green-600' : ''}>
+                        {collab.collaborator.status === 'approved' ? 'Jóváhagyva' : 'Függőben'}
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+              {canManageCollaborators && (
+                <CardFooter className="p-6 !pt-4 mt-auto flex-shrink-0 border-t border-slate-700">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setIsAddCollabOpen(true)}
+                  >
+                    Közreműködő hozzáadása
+                  </Button>
+                </CardFooter>
+              )}
+            </Card>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* 2. NÉZET: BIZONYÍTÉKOK (VÁLTOZATLAN) */}
+      {activeView === 'evidence' && (
+        <div className="flex-1 flex flex-col min-h-0">
+          <CaseEvidenceTab />
+        </div>
+      )}
 
       {/* --- DIALÓGUSOK (Változatlan) --- */}
       <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
@@ -412,7 +459,7 @@ export function CaseDetailPage() {
                 onChange={(content) => {
                   setTempEditorContent(content);
                 }}
-                className="rounded-none h-full" // Ez felülírja a rounded-b-md-t
+                className="rounded-none h-full"
               />
             </MantineProvider>
           </div>
@@ -438,7 +485,6 @@ export function CaseDetailPage() {
           open={isAddCollabOpen}
           onOpenChange={setIsAddCollabOpen}
           onCollaboratorAdded={() => {
-            toast.success("Közreműködői lista frissítve.");
             fetchCaseDetails();
           }}
         />

@@ -1,3 +1,6 @@
+// FrakHub/src/types/supabase.ts
+// (KIEGÉSZÍTVE a CaseEvidence típussal)
+
 export type UserRole = "pending" | "detective" | "lead_detective";
 export type CaseStatus = "open" | "closed" | "archived";
 export type CollaboratorStatus = "pending" | "approved";
@@ -8,8 +11,6 @@ export interface Profile {
   full_name: string; // text
   role: UserRole; // user_role_enum
 }
-
-// --- ÚJ TÍPUSOK ---
 
 export interface Case {
   id: string; // uuid
@@ -29,11 +30,22 @@ export interface CaseCollaborator {
   status: CollaboratorStatus; // collaborator_status_enum
 }
 
-// Ezt a típust fogja visszaadni az új adatbázis-függvényünk
 export interface CaseRow {
   id: string;
   case_number: number;
   title: string;
   status: CaseStatus;
   owner_full_name: string; // (A 'profiles' táblából joinolva)
+}
+
+// --- EZ AZ ÚJ INTERFÉSZ ---
+export interface CaseEvidence {
+  id: string; // uuid
+  case_id: string; // uuid
+  user_id: string; // uuid
+  file_path: string; // text
+  file_name: string; // text
+  file_type: string; // text
+  created_at: string; // timestamptz
+  description: string | null; // text
 }
