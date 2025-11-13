@@ -1,10 +1,6 @@
-// FrakHub/src/pages/mcb/CaseDetailPage.tsx
-// (KIEGÉSZÍTVE: Akta Kezelése kártya és státuszváltás logika)
-
 import * as React from "react";
 import {useParams, Link} from "react-router-dom";
 import {useAuth} from "@/context/AuthContext";
-// VÁLTOZÁS: CaseStatus importálva
 import type {Case, Profile, CaseCollaborator, CaseStatus} from "@/types/supabase";
 import {
   Card,
@@ -26,10 +22,10 @@ import {
   Edit,
   FileText,
   Image,
-  Lock, // VÁLTOZÁS: Új ikon
-  Archive, // VÁLTOZÁS: Új ikon
-  FolderOpen, // VÁLTOZÁS: Új ikon
-  Settings, // VÁLTOZÁS: Új ikon
+  Lock,
+  Archive,
+  FolderOpen,
+  Settings,
 } from "lucide-react";
 import {toast} from "sonner";
 import {CaseEditor} from "@/pages/mcb/components/CaseEditor.tsx";
@@ -43,7 +39,6 @@ import {
   DialogTitle,
   DialogFooter as DialogFooterComponent,
 } from "@/components/ui/dialog";
-// VÁLTOZÁS: Új import a megerősítő ablakhoz
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,10 +49,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { cn } from "@/lib/utils";
-import { CaseEvidenceTab } from "./components/CaseEvidenceTab";
+import {cn} from "@/lib/utils";
+import {CaseEvidenceTab} from "./components/CaseEvidenceTab";
 
-// --- Típusok (VÁLTOZATLAN) ---
 interface CaseDetailsData {
   caseDetails: {
     case: Case;
@@ -68,6 +62,7 @@ interface CaseDetailsData {
     user: Pick<Profile, 'full_name' | 'role'>;
   }[];
 }
+
 type CollaboratorDetail = CaseDetailsData['collaborators'][number];
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -101,17 +96,14 @@ export function CaseDetailPage() {
   const [isAddCollabOpen, setIsAddCollabOpen] = React.useState(false);
   const [activeView, setActiveView] = React.useState<'content' | 'evidence'>('content');
 
-  // --- VÁLTOZÁS: Új state-ek a státusz változtatásához ---
   const [isStatusAlertOpen, setIsStatusAlertOpen] = React.useState(false);
   const [targetStatus, setTargetStatus] = React.useState<CaseStatus | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = React.useState(false);
 
-  // --- Magasság logika (VÁLTOZATLAN) ---
   const leftHeaderRef = React.useRef<HTMLDivElement>(null);
   const contentCardRef = React.useRef<HTMLDivElement>(null);
   const [contentCardHeight, setContentCardHeight] = React.useState<string | number>('auto');
 
-  // ... fetchCaseDetails (VÁLTOZATLAN) ...
   const fetchCaseDetails = React.useCallback(async () => {
     if (!caseId) {
       setError("Nincs akta ID megadva.");
@@ -168,7 +160,6 @@ export function CaseDetailPage() {
     fetchCaseDetails();
   }, [fetchCaseDetails]);
 
-  // --- Magasság logika (VÁLTOZATLAN) ---
   React.useLayoutEffect(() => {
     if (activeView === 'content') {
       const calculateHeight = () => {
@@ -179,7 +170,7 @@ export function CaseDetailPage() {
         if (leftHeaderRef.current && contentCardRef.current) {
           const contentTopOffset = contentCardRef.current.getBoundingClientRect().top;
           const viewportHeight = window.innerHeight;
-          const bottomPadding = 32;
+          const bottomPadding = 32; // 2rem (p-8)
           const newHeight = viewportHeight - contentTopOffset - bottomPadding;
           setContentCardHeight(newHeight > 400 ? newHeight : 400);
         }
@@ -201,8 +192,7 @@ export function CaseDetailPage() {
   }, [details, isLoading, activeView]);
 
 
-  // ... (a többi handler, canEdit VÁLTOZATLAN) ...
-  const handleEditorSave = async () => { /* ... (változatlan) ... */
+  const handleEditorSave = async () => {
     if (!caseId || !tempEditorContent) return;
     setIsSaving(true);
     const {error} = await supabase
@@ -230,16 +220,20 @@ export function CaseDetailPage() {
       setIsEditorOpen(false);
     }
   };
-  const handleEditorCancel = () => { /* ... (változatlan) ... */
+  const handleEditorCancel = () => {
     setIsEditorOpen(false);
     setTempEditorContent(undefined);
   };
-  const handleOpenEditor = () => { /* ... (változatlan) ... */
+  const handleOpenEditor = () => {
     setTempEditorContent(editorContent);
     setIsEditorOpen(true);
   };
-  const canEdit = React.useMemo(() => { /* ... (változatlan) ... */
+
+  const canEdit = React.useMemo(() => {
     if (!profile || !details) return false;
+    if (details.caseDetails.case.status !== 'open') {
+      return false;
+    }
     if (profile.role === 'lead_detective') return true;
     if (profile.id === details?.caseDetails.case.owner_id) return true;
     return details.collaborators.some(
@@ -247,7 +241,6 @@ export function CaseDetailPage() {
     );
   }, [profile, details]);
 
-  // VÁLTOZÁS: A `canEdit` helyett a szigorúbb `canManageCollaborators`-t használjuk
   const canManageCollaborators = React.useMemo(() => {
     if (!profile || !details) return false;
     if (profile.role === 'lead_detective') return true;
@@ -255,34 +248,23 @@ export function CaseDetailPage() {
     return false;
   }, [profile, details]);
 
-  // --- VÁLTOZÁS: Új handler-ek a státusz váltáshoz ---
-
-  /** Megnyitja a megerősítő ablakot */
   const handleOpenStatusAlert = (newStatus: CaseStatus) => {
     setTargetStatus(newStatus);
     setIsStatusAlertOpen(true);
   };
-
-  /** Bezárja a megerősítő ablakot */
   const handleCancelStatusChange = () => {
     setIsStatusAlertOpen(false);
     setIsUpdatingStatus(false);
-    setTimeout(() => setTargetStatus(null), 300); // Késleltetés az animációhoz
+    setTimeout(() => setTargetStatus(null), 300);
   };
-
-  /** Lefuttatja a státusz változtatást */
   const handleConfirmStatusChange = async () => {
     if (!targetStatus || !caseId || !details) return;
-
     setIsUpdatingStatus(true);
-
-    const { error } = await supabase
+    const {error} = await supabase
       .from("cases")
-      .update({ status: targetStatus })
+      .update({status: targetStatus})
       .eq("id", caseId);
-
     setIsUpdatingStatus(false);
-
     if (error) {
       toast.error("Hiba az akta státuszának frissítésekor", {
         description: error.message,
@@ -290,8 +272,6 @@ export function CaseDetailPage() {
       handleCancelStatusChange();
     } else {
       toast.success("Akta státusza sikeresen frissítve!");
-
-      // Frissítjük a lokális state-et, hogy azonnal látszódjon a változás
       setDetails({
         ...details,
         caseDetails: {
@@ -305,23 +285,28 @@ export function CaseDetailPage() {
       handleCancelStatusChange();
     }
   };
-
-  // Dinamikus szöveg a megerősítő ablakhoz
   const getAlertDialogStrings = () => {
     switch (targetStatus) {
       case 'open':
-        return { title: 'Akta újranyitása', description: 'Biztosan újranyitod ezt az aktát? A közreműködők ismét szerkeszthetik.' };
+        return {
+          title: 'Akta újranyitása',
+          description: 'Biztosan újranyitod ezt az aktát? A közreműködők ismét szerkeszthetik.'
+        };
       case 'closed':
-        return { title: 'Akta lezárása', description: 'Biztosan lezárod ezt az aktát? A közreműködők többé nem szerkeszthetik.' };
+        return {
+          title: 'Akta lezárása',
+          description: 'Biztosan lezárod ezt az aktát? A közreműködők többé nem szerkeszthetik.'
+        };
       case 'archived':
-        return { title: 'Akta archiválása', description: 'Biztosan archiválod ezt az aktát? Az akta elkerül az aktív listáról és nem szerkeszthető.' };
+        return {
+          title: 'Akta archiválása',
+          description: 'Biztosan archiválod ezt az aktát? Az akta elkerül az aktív listáról és nem szerkeszthető.'
+        };
       default:
-        return { title: '', description: '' };
+        return {title: '', description: ''};
     }
   };
 
-
-  // ... (Betöltés és Hiba nézet VÁLTOZATLAN) ...
   if (isLoading) {
     return (
       <div className="flex justify-center items-center py-16">
@@ -346,12 +331,11 @@ export function CaseDetailPage() {
 
   const {case: caseData, owner} = details.caseDetails;
   const {collaborators} = details;
-  const { title: alertTitle, description: alertDescription } = getAlertDialogStrings();
+  const {title: alertTitle, description: alertDescription} = getAlertDialogStrings();
 
   return (
     <div className="space-y-6 flex-1 flex flex-col">
 
-      {/* 1. SOR: FEJLÉC GOMBOK (VÁLTOZATLAN) */}
       <div className="flex justify-between items-center flex-shrink-0">
         <Button asChild variant="outline" className="w-fit">
           <Link to="/mcb">
@@ -367,7 +351,7 @@ export function CaseDetailPage() {
               activeView === 'content' && "bg-slate-950 text-white"
             )}
           >
-            <FileText className="w-4 h-4 mr-2" />
+            <FileText className="w-4 h-4 mr-2"/>
             Akta Tartalma
           </Button>
           <Button
@@ -378,7 +362,7 @@ export function CaseDetailPage() {
               activeView === 'evidence' && "bg-slate-950 text-white"
             )}
           >
-            <Image className="w-4 h-4 mr-2" />
+            <Image className="w-4 h-4 mr-2"/>
             Bizonyítékok
           </Button>
         </div>
@@ -387,17 +371,13 @@ export function CaseDetailPage() {
             <Edit className="w-4 h-4 mr-2"/> Akta Szerkesztése
           </Button>
         ) : (
-          <div className="w-fit" />
+          <div className="w-fit"/>
         )}
       </div>
 
-      {/* 2. SOR: FŐ TARTALOM */}
-
-      {/* 1. NÉZET: AKTA TARTALMA (VÁLTOZATLAN) */}
       {activeView === 'content' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 lg:items-start">
 
-          {/* BAL OSZLOP (VÁLTOZATLAN) */}
           <div className="lg:col-span-2 space-y-6 flex flex-col">
             <Card
               className="bg-slate-900 border-slate-700 text-white flex-shrink-0 !py-0 !gap-0"
@@ -419,7 +399,7 @@ export function CaseDetailPage() {
             <Card
               ref={contentCardRef}
               className="bg-slate-900 border-slate-700 text-white flex flex-col !py-0 !gap-0"
-              style={{ height: contentCardHeight }}
+              style={{height: contentCardHeight}}
             >
               <CardHeader className="p-6">
                 <h3 className="text-xl font-semibold">Akta Tartalma</h3>
@@ -440,109 +420,105 @@ export function CaseDetailPage() {
             </Card>
           </div>
 
-          {/* JOBB OSZLOP (Ragadós oldalsáv) */}
-          <div className="lg:col-span-1 space-y-6 lg:sticky top-24">
-
-            <Card className="bg-slate-800 border-slate-700 !py-0 !gap-0">
-              <CardHeader className="p-6 !pb-0">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-blue-400"/> Akta Tulajdonosa
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-6 pt-0 pb-4">
-                <p className="text-base">{owner.full_name}</p>
-                <p className="text-sm text-slate-400">{owner.role}</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-slate-800 border-slate-700 flex flex-col h-[350px] !py-0 !gap-0">
-              <CardHeader className="p-6 flex-shrink-0">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Users className="w-5 h-5 text-green-400"/> Közreműködők
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 !pt-0 space-y-3 flex-1 min-h-0 overflow-y-auto">
-                {collaborators.length === 0 ? (
-                  <p className="text-sm text-slate-500 italic">Nincsenek közreműködők.</p>
-                ) : (
-                  collaborators.map((collab: CollaboratorDetail) => (
-                    <div key={collab.user.full_name} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-base">{collab.user.full_name}</p>
-                        <p className="text-sm text-slate-400">{collab.user.role}</p>
-                      </div>
-                      <Badge variant={collab.collaborator.status === 'approved' ? 'default' : 'secondary'}
-                             className={collab.collaborator.status === 'approved' ? 'bg-green-600' : ''}>
-                        {collab.collaborator.status === 'approved' ? 'Jóváhagyva' : 'Függőben'}
-                      </Badge>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-              {canManageCollaborators && (
-                <CardFooter className="p-6 !pt-4 mt-auto flex-shrink-0 border-t border-slate-700">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => setIsAddCollabOpen(true)}
-                  >
-                    Közreműködő hozzáadása
-                  </Button>
-                </CardFooter>
-              )}
-            </Card>
-
-            {/* --- VÁLTOZÁS: ÚJ AKTA KEZELÉSE KÁRTYA --- */}
-            {canManageCollaborators && (
+          <div className="lg:col-span-1 lg:sticky top-24">
+            <div className="space-y-6 max-h-[calc(100vh-15rem)] overflow-y-auto scrollbar-hide">
               <Card className="bg-slate-800 border-slate-700 !py-0 !gap-0">
                 <CardHeader className="p-6 !pb-0">
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-gray-400"/> Akta Kezelése
+                    <Shield className="w-5 h-5 text-blue-400"/> Akta Tulajdonosa
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="p-6 space-y-2">
-                  {caseData.status === 'open' && (
-                    <>
-                      <Button variant="outline" className="w-full" onClick={() => handleOpenStatusAlert('closed')}>
-                        <Lock className="w-4 h-4 mr-2"/> Akta Lezárása
-                      </Button>
-                      <Button variant="destructive" className="w-full" onClick={() => handleOpenStatusAlert('archived')}>
-                        <Archive className="w-4 h-4 mr-2"/> Akta Archiválása
-                      </Button>
-                    </>
-                  )}
-                  {caseData.status === 'closed' && (
-                    <Button variant="outline" className="w-full" onClick={() => handleOpenStatusAlert('open')}>
-                      <FolderOpen className="w-4 h-4 mr-2"/> Akta Újranyitása
-                    </Button>
-                  )}
-                  {caseData.status === 'archived' && (
-                    <Button variant="outline" className="w-full" onClick={() => handleOpenStatusAlert('open')}>
-                      <FolderOpen className="w-4 h-4 mr-2"/> Akta Visszaállítása (Megnyitás)
-                    </Button>
-                  )}
+                <CardContent className="px-6 pt-0 pb-4">
+                  <p className="text-base">{owner.full_name}</p>
+                  <p className="text-sm text-slate-400">{owner.role}</p>
                 </CardContent>
               </Card>
-            )}
-            {/* --- VÁLTOZÁS VÉGE --- */}
 
+              <Card className="bg-slate-800 border-slate-700 flex flex-col h-[350px] !py-0 !gap-0">
+                <CardHeader className="p-6 flex-shrink-0">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Users className="w-5 h-5 text-green-400"/> Közreműködők
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 !pt-0 space-y-3 flex-1 min-h-0 overflow-y-auto">
+                  {collaborators.length === 0 ? (
+                    <p className="text-sm text-slate-500 italic">Nincsenek közreműködők.</p>
+                  ) : (
+                    collaborators.map((collab: CollaboratorDetail) => (
+                      <div key={collab.user.full_name} className="flex items-center justify-between">
+                        <div>
+                          <p className="text-base">{collab.user.full_name}</p>
+                          <p className="text-sm text-slate-400">{collab.user.role}</p>
+                        </div>
+                        <Badge variant={collab.collaborator.status === 'approved' ? 'default' : 'secondary'}
+                               className={collab.collaborator.status === 'approved' ? 'bg-green-600' : ''}>
+                          {collab.collaborator.status === 'approved' ? 'Jóváhagyva' : 'Függőben'}
+                        </Badge>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+                {canManageCollaborators && (
+                  <CardFooter className="p-6 !pt-4 mt-auto flex-shrink-0 border-t border-slate-700">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setIsAddCollabOpen(true)}
+                    >
+                      Közreműködő hozzáadása
+                    </Button>
+                  </CardFooter>
+                )}
+              </Card>
+
+              {canManageCollaborators && (
+                <Card className="bg-slate-800 border-slate-700 !py-0 !gap-0">
+                  <CardHeader className="p-6 !pb-0">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Settings className="w-5 h-5 text-gray-400"/> Akta Kezelése
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-2">
+                    {caseData.status === 'open' && (
+                      <>
+                        <Button variant="outline" className="w-full" onClick={() => handleOpenStatusAlert('closed')}>
+                          <Lock className="w-4 h-4 mr-2"/> Akta Lezárása
+                        </Button>
+                        <Button variant="destructive" className="w-full"
+                                onClick={() => handleOpenStatusAlert('archived')}>
+                          <Archive className="w-4 h-4 mr-2"/> Akta Archiválása
+                        </Button>
+                      </>
+                    )}
+                    {caseData.status === 'closed' && (
+                      <Button variant="outline" className="w-full" onClick={() => handleOpenStatusAlert('open')}>
+                        <FolderOpen className="w-4 h-4 mr-2"/> Akta Újranyitása
+                      </Button>
+                    )}
+                    {caseData.status === 'archived' && (
+                      <Button variant="outline" className="w-full" onClick={() => handleOpenStatusAlert('open')}>
+                        <FolderOpen className="w-4 h-4 mr-2"/> Akta Visszaállítása (Megnyitás)
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
+
         </div>
       )}
 
-      {/* 2. NÉZET: BIZONYÍTÉKOK (VÁLTOZATLAN) */}
       {activeView === 'evidence' && (
         <div className="flex-1 flex flex-col min-h-0">
-          <CaseEvidenceTab />
+          <CaseEvidenceTab/>
         </div>
       )}
 
-      {/* --- DIALÓGUSOK --- */}
-
-      {/* Szerkesztő Dialógus (Változatlan) */}
       <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-        <DialogContent className="bg-slate-900 border-slate-700 text-white w-[95vw] max-w-[95vw] sm:max-w-[95vw] h-[95vh] flex flex-col p-4">
+        <DialogContent
+          className="bg-slate-900 border-slate-700 text-white w-[95vw] max-w-[95vw] sm:max-w-[95vw] h-[95vh] flex flex-col p-4">
           <DialogHeader>
             <DialogTitle>Akta Szerkesztése: #{caseData.case_number}</DialogTitle>
           </DialogHeader>
@@ -556,6 +532,8 @@ export function CaseDetailPage() {
                   setTempEditorContent(content);
                 }}
                 className="rounded-none h-full"
+                caseId={caseId}
+                supabase={supabase}
               />
             </MantineProvider>
           </div>
@@ -573,7 +551,6 @@ export function CaseDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Közreműködő Dialógus (Változatlan) */}
       {canManageCollaborators && (
         <AddCollaboratorDialog
           caseId={caseId!}
@@ -587,7 +564,6 @@ export function CaseDetailPage() {
         />
       )}
 
-      {/* --- VÁLTOZÁS: ÚJ STÁTUSZ MEGERŐSÍTŐ DIALÓGUS --- */}
       <AlertDialog open={isStatusAlertOpen} onOpenChange={handleCancelStatusChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -600,7 +576,7 @@ export function CaseDetailPage() {
             <AlertDialogCancel disabled={isUpdatingStatus}>Mégse</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmStatusChange} disabled={isUpdatingStatus}>
               {isUpdatingStatus ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-2 animate-spin"/>
               ) : null}
               {isUpdatingStatus ? 'Folyamatban...' : 'Igen, megerősítem'}
             </AlertDialogAction>

@@ -1,3 +1,6 @@
+// FrakHub/src/pages/mcb/McbDashboard.tsx
+// (JAVÍTVA: TypeScript hiba ('error.message') és hibaállapot-kezelés)
+
 import * as React from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -11,13 +14,15 @@ import {
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FilePlus, Loader2, FileSearch, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FilePlus, Loader2, FileSearch, AlertTriangle, Search } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { NewCaseDialog } from "./components/NewCaseDialog";
 import type { CaseRow } from "@/types/supabase";
 import {Link} from "react-router-dom";
 
-// Segédfüggvény a státusz színezéséhez
+// Segédfüggvény a státusz színezéséhez (VÁLTOZATLAN)
 const getStatusBadge = (status: string) => {
   switch (status) {
     case "open":
@@ -32,43 +37,101 @@ const getStatusBadge = (status: string) => {
 };
 
 export function McbDashboard() {
-  const { supabase } = useAuth();
-  const [cases, setCases] = React.useState<CaseRow[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const { supabase, profile } = useAuth();
+
+  const [myCases, setMyCases] = React.useState<CaseRow[]>([]);
+  const [allCases, setAllCases] = React.useState<CaseRow[]>([]);
+  const [isLoadingMyCases, setIsLoadingMyCases] = React.useState(true);
+  const [isLoadingAllCases, setIsLoadingAllCases] = React.useState(true);
+
+  // --- JAVÍTÁS: 'error' átnevezve 'dashboardError'-ra ---
+  const [dashboardError, setDashboardError] = React.useState<string | null>(null);
   const [isNewCaseOpen, setIsNewCaseOpen] = React.useState(false);
 
-  // Adatlekérő funkció
-  const fetchCases = async () => {
-    setIsLoading(true);
-    setError(null);
+  const [activeTab, setActiveTab] = React.useState("my-cases");
+  const [searchTerm, setSearchTerm] = React.useState("");
 
-    // Az új, biztonságos SQL függvényünket hívjuk!
+  // Adatlekérő funkciók
+  const fetchMyCases = async () => {
+    setIsLoadingMyCases(true);
+    setDashboardError(null); // Töröljük a korábbi hibát
     const { data, error } = await supabase.rpc('get_my_cases');
+    if (error) {
+      console.error("Hiba a 'saját' akták lekérésekor:", error);
+      setDashboardError(error.message); // JAVÍTVA
+      toast.error("Hiba a saját akták lekérésekor", { description: error.message });
+    } else {
+      setMyCases(data || []);
+    }
+    setIsLoadingMyCases(false);
+  };
+
+  const fetchAllCases = async () => {
+    setIsLoadingAllCases(true);
+    // (A dashboardError-t nem töröljük, hátha a myCases-nél már volt hiba)
+    const { data, error } = await supabase.rpc('get_all_mcb_cases');
 
     if (error) {
-      console.error("Hiba az akták lekérésekor:", error);
-      setError(error.message);
-      toast.error("Hiba az akták lekérésekor", { description: error.message });
+      console.error("Hiba az 'összes' akta lekérésekor:", error);
+
+      // --- JAVÍTÁS: A hibaellenőrzés javítva ---
+      // Csak akkor állítjuk be a hibát, ha még nem volt hiba a 'myCases' lekérésnél
+      if (!dashboardError) {
+        setDashboardError(error.message);
+        toast.error("Hiba az összes akta lekérésekor", { description: error.message });
+      }
+      // --- JAVÍTÁS VÉGE ---
     } else {
-      setCases(data || []);
+      setAllCases(data || []);
     }
-    setIsLoading(false);
+    setIsLoadingAllCases(false);
   };
 
   // Betöltéskor lefuttatjuk
   React.useEffect(() => {
-    fetchCases();
-  }, []);
+    fetchMyCases();
+    if (profile?.role === 'lead_detective') {
+      fetchAllCases();
+    }
+  }, [profile]);
 
   // Callback, amit a NewCaseDialog hív meg
   const handleCaseCreated = () => {
-    // Újra lekérjük az összeset, hogy a lista frissüljön
-    // (A CaseRow és Case típusok nem egyeznek, ezért egyszerűbb újra lekérni)
-    fetchCases();
+    fetchMyCases();
+    if (profile?.role === 'lead_detective') {
+      fetchAllCases();
+    }
   };
 
-  // A tartalom renderelése
+  // Keresési és szűrési logika (VÁLTOZATLAN)
+  const filteredData = React.useMemo(() => {
+    const sourceData = (activeTab === 'my-cases' || profile?.role !== 'lead_detective')
+      ? myCases
+      : allCases;
+    if (!searchTerm) {
+      return sourceData;
+    }
+    const lowerSearch = searchTerm.toLowerCase();
+    return sourceData.filter(caseItem => {
+      if (caseItem.title.toLowerCase().includes(lowerSearch)) {
+        return true;
+      }
+      if (caseItem.owner_full_name.toLowerCase().includes(lowerSearch)) {
+        return true;
+      }
+      const caseNumberString = typeof caseItem.case_number === 'number'
+        ? caseItem.case_number.toString()
+        : caseItem.case_number;
+      if (caseNumberString.toLowerCase().includes(lowerSearch)) {
+        return true;
+      }
+      return false;
+    });
+  }, [searchTerm, activeTab, myCases, allCases, profile]);
+
+  const isLoading = activeTab === 'my-cases' ? isLoadingMyCases : isLoadingAllCases;
+
+  // A tartalom renderelése (most már a 'dashboardError'-t használja)
   const renderContent = () => {
     if (isLoading) {
       return (
@@ -78,22 +141,31 @@ export function McbDashboard() {
       );
     }
 
-    if (error) {
+    // --- JAVÍTVA: 'dashboardError'-t ellenőrizzük ---
+    if (dashboardError) {
       return (
         <div className="flex flex-col items-center justify-center py-16 text-red-400">
           <AlertTriangle className="h-12 w-12" />
           <p className="mt-4 text-lg font-semibold">Hiba történt</p>
-          <p className="text-sm text-red-300">{error}</p>
+          <p className="text-sm text-red-300">{dashboardError}</p>
         </div>
       );
     }
 
-    if (cases.length === 0) {
+    if (filteredData.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center py-16 text-slate-500">
           <FileSearch className="h-12 w-12" />
-          <p className="mt-4 text-lg font-semibold">Nincsenek aktáid</p>
-          <p className="text-sm">Nincsenek hozzád rendelt akták, vagy még nem hoztál létre egyet sem.</p>
+          <p className="mt-4 text-lg font-semibold">
+            {searchTerm ? "Nincs a keresésnek megfelelő akta" : "Nincsenek akták"}
+          </p>
+          <p className="text-sm">
+            {searchTerm
+              ? "Próbálj más keresőszót használni."
+              : (activeTab === 'my-cases'
+                ? "Nincsenek hozzád rendelt akták."
+                : "Nincsenek akták a rendszerben.")}
+          </p>
         </div>
       );
     }
@@ -110,7 +182,7 @@ export function McbDashboard() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {cases.map((caseItem) => (
+          {filteredData.map((caseItem) => (
             <TableRow key={caseItem.id}>
               <TableCell className="font-medium">#{caseItem.case_number}</TableCell>
               <TableCell>{caseItem.title}</TableCell>
@@ -130,6 +202,7 @@ export function McbDashboard() {
     );
   };
 
+  // --- Visszatérés (VÁLTOZATLAN) ---
   return (
     <>
       <Toaster position="top-center" richColors theme="dark" />
@@ -146,12 +219,37 @@ export function McbDashboard() {
         </Button>
       </div>
 
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
+        <TabsList className="bg-slate-800">
+          <TabsTrigger value="my-cases">Saját Aktáim</TabsTrigger>
+          {profile?.role === 'lead_detective' && (
+            <TabsTrigger value="all-cases">Összes Akta</TabsTrigger>
+          )}
+        </TabsList>
+      </Tabs>
+
       <Card className="bg-slate-900 border-slate-700 text-white">
-        <CardHeader>
-          <CardTitle>Aktáim</CardTitle>
-          <CardDescription>
-            Az összes 'Nyitott' akta, amihez hozzáférésed van.
-          </CardDescription>
+        <CardHeader className="flex-row items-center justify-between">
+          <div>
+            <CardTitle>
+              {activeTab === 'my-cases' ? "Saját Aktáim" : "Összes Akta"}
+            </CardTitle>
+            <CardDescription>
+              {activeTab === 'my-cases'
+                ? "Az összes akta, amihez hozzáférésed van."
+                : "Az összes akta a rendszerben (Admin nézet)."
+              }
+            </CardDescription>
+          </div>
+          <div className="relative w-full max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+            <Input
+              placeholder="Keresés (cím, #szám, tulajdonos)..."
+              className="pl-10 bg-slate-800"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           {renderContent()}
