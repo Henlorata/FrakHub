@@ -1,7 +1,7 @@
 import * as React from "react";
 import {useParams, Link} from "react-router-dom";
 import {useAuth} from "@/context/AuthContext";
-import type {Case, Profile, CaseCollaborator, CaseStatus} from "@/types/supabase";
+import type {Case, Profile, CaseCollaborator, CaseStatus, CaseEvidence} from "@/types/supabase";
 import {
   Card,
   CardContent,
@@ -38,6 +38,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter as DialogFooterComponent,
+  DialogDescription,
+  DialogClose,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -62,6 +64,8 @@ interface CaseDetailsData {
     user: Pick<Profile, 'full_name' | 'role'>;
   }[];
 }
+
+type EvidenceWithUrl = CaseEvidence & { signedUrl: string };
 
 type CollaboratorDetail = CaseDetailsData['collaborators'][number];
 const getStatusBadge = (status: string) => {
@@ -88,6 +92,8 @@ export function CaseDetailPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   const [editorContent, setEditorContent] = React.useState<PartialBlock[] | undefined>(undefined);
+
+  const [evidence, setEvidence] = React.useState<CaseEvidence[]>([]);
 
   const [isEditorOpen, setIsEditorOpen] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);

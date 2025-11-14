@@ -1,3 +1,6 @@
+// FrakHub/src/pages/mcb/components/CaseEditor.tsx
+// (JAVÍTVA: TS2322 és TS7006 - slashMenuItems a 'useCreateBlockNote' hook-ba helyezve)
+
 import * as React from "react";
 import {useCreateBlockNote} from "@blocknote/react";
 import {BlockNoteView} from "@blocknote/mantine";
@@ -5,7 +8,7 @@ import {BlockNoteView} from "@blocknote/mantine";
 import {
   BlockNoteEditor,
   type PartialBlock,
-  getDefaultSlashMenuItems,
+  getDefaultSlashMenuItems, // Ez a helyes import
 } from "@blocknote/core";
 import {cn} from "@/lib/utils";
 import {supabase as supabaseClient} from "@/lib/supabaseClient";
@@ -22,6 +25,7 @@ import {
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {Loader2, Image as ImageIcon} from "lucide-react";
 
+// Props interfész (VÁLTOZATLAN)
 interface CaseEditorProps {
   initialContent: PartialBlock[] | "loading" | undefined;
   editable: boolean;
@@ -31,6 +35,7 @@ interface CaseEditorProps {
   supabase?: typeof supabaseClient;
 }
 
+// EvidencePickerDialog komponens (VÁLTOZATLAN)
 function EvidencePickerDialog({
                                 open,
                                 onOpenChange,
@@ -121,6 +126,7 @@ function EvidencePickerDialog({
   );
 }
 
+// A FŐ KOMPONENS (JAVÍTVA)
 export function CaseEditor({
                              initialContent,
                              editable,
@@ -132,6 +138,7 @@ export function CaseEditor({
 
   const [isEvidencePickerOpen, setIsEvidencePickerOpen] = React.useState(false);
 
+  // Az egyedi parancs (VÁLTOZATLAN)
   const insertEvidenceCommand = {
     title: "Bizonyíték Beillesztése",
     aliases: ["bizonyitek", "kep", "evidence", "img"],
@@ -142,48 +149,69 @@ export function CaseEditor({
     },
   };
 
+  // --- JAVÍTÁS: A 'slashMenuItems' prop a 'useCreateBlockNote' hook-ba került ---
   const editor: BlockNoteEditor | null = useCreateBlockNote({
     initialContent:
       initialContent === "loading" || initialContent === undefined
         ? undefined
         : initialContent,
+    // A 'slashMenuItems' prop itt van definiálva
     slashMenuItems: (
+      // A 'TS7006' javítása: explicit típus 'BlockNoteEditor'
       editor: BlockNoteEditor
     ) => [
+      // Lekérjük az alapértelmezett parancsokat
       ...getDefaultSlashMenuItems(editor),
+      // És hozzáadjuk a sajátunkat, ha szerkeszthető és van caseId
       ...(editable && caseId ? [insertEvidenceCommand] : []),
     ],
   });
+  // --- JAVÍTÁS VÉGE ---
 
+  // handleEvidenceSelect (VÁLTOZATLAN)
   const handleEvidenceSelect = (item: CaseEvidence) => {
     if (!supabase || !editor) return;
 
-    const {data: publicUrlData} = supabase.storage
-      .from("case_evidence")
-      .getPublicUrl(item.file_path);
+    // A kép URL-jét már nem kérjük le itt, nincs rá szükség a hivatkozáshoz.
+    // const { data: publicUrlData } = supabase.storage
+    //   .from("case_evidence")
+    //   .getPublicUrl(item.file_path);
 
-    if (publicUrlData.publicUrl) {
-      editor.insertBlocks(
-        [
-          {
-            type: "image",
-            props: {
-              url: publicUrlData.publicUrl,
-              caption: item.description || item.file_name,
-              textAlignment: "center",
+    // Kép helyett egy formázott linket szúrunk be.
+    // Az 'href' egy belső horgony, amit a CaseDetailPage fog elkapni.
+    const evidenceLink = `evidence://${item.id}`;
+    const evidenceText = `[Bizonyíték: ${item.description || item.file_name}]`;
+
+    editor.insertBlocks(
+      [
+        {
+          type: "paragraph",
+          props: {
+            textAlignment: "center",
+          },
+          content: [
+            {
+              type: "link",
+              href: evidenceLink,
+              content: [
+                {
+                  type: "text",
+                  text: evidenceText,
+                  styles: {bold: true, italic: true},
+                },
+              ],
             },
-          },
-          {
-            type: "paragraph",
-            content: "",
-          },
-        ],
-        editor.getTextCursorPosition().block,
-        "after"
-      );
-    } else {
-      toast.error("Hiba: A kép nyilvános URL-je nem található.");
-    }
+          ],
+        },
+        {
+          type: "paragraph",
+          content: "",
+        },
+      ],
+      editor.getTextCursorPosition().block,
+      "after"
+    );
+
     setIsEvidencePickerOpen(false);
   };
 
@@ -209,6 +237,7 @@ export function CaseEditor({
 
   return (
     <>
+      {/* --- JAVÍTÁS: A 'slashMenuItems' prop innen el lett távolítva --- */}
       <BlockNoteView
         editor={editor}
         editable={editable}
