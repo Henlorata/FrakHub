@@ -12,7 +12,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {autoRefreshToken: false, persistSession: false}
 });
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(_req: VercelRequest, res: VercelResponse) {
   const results = {
     financeDeleted: 0,
     vehicleDeleted: 0,
