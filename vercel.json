@@ -2,7 +2,7 @@
   "framework": "vite",
   "crons": [
     {
-      "path": "/api/cron/cleanup-finance",
+      "path": "/api/cron/daily-cleanup",
       "schedule": "0 3 * * *"
     }
   ]

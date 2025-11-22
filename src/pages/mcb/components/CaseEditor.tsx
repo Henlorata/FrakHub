@@ -1,266 +1,140 @@
-import * as React from "react";
-import {
-  useCreateBlockNote,
-  SuggestionMenuController,
-  getDefaultReactSlashMenuItems,
-} from "@blocknote/react";
+import { useEffect, useState, useMemo } from "react";
+import { type PartialBlock, BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
-import {
-  BlockNoteEditor,
-  type PartialBlock,
-  filterSuggestionItems,
-} from "@blocknote/core";
-import { cn } from "@/lib/utils";
-import { supabase as supabaseClient } from "@/lib/supabaseClient";
-import type { CaseEvidence } from "@/types/supabase";
+import { useCreateBlockNote } from "@blocknote/react";
+import { SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
+import "@blocknote/mantine/style.css";
+import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Image as ImageIcon } from "lucide-react";
+import { Save, Loader2, ImagePlus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { CaseEvidence } from "@/types/supabase";
+import { CaseEditorProvider } from "./CaseEditorContext";
+import { EvidenceBlock } from "./EvidenceBlock";
 
 interface CaseEditorProps {
-  initialContent: PartialBlock[] | "loading" | undefined;
-  editable: boolean;
-  onChange: (content: PartialBlock[]) => void;
-  className?: string;
-  caseId?: string;
-  supabase?: typeof supabaseClient;
-}
-
-function EvidencePickerDialog({
-                                open,
-                                onOpenChange,
-                                caseId,
-                                supabase,
-                                onImageSelect,
-                              }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   caseId: string;
-  supabase: typeof supabaseClient;
-  onImageSelect: (item: CaseEvidence) => void;
-}) {
-  const [evidence, setEvidence] = React.useState<CaseEvidence[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    if (open) {
-      setIsLoading(true);
-      const fetchEvidence = async () => {
-        const { data, error } = await supabase
-          .from("case_evidence")
-          .select("*")
-          .eq("case_id", caseId)
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          toast.error("Bizonyítékok lekérése sikertelen", {
-            description: error.message,
-          });
-        } else {
-          setEvidence(data || []);
-        }
-        setIsLoading(false);
-      };
-      fetchEvidence();
-    } else {
-      setEvidence([]);
-    }
-  }, [open, caseId, supabase]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Bizonyíték Hivatkozása</DialogTitle>
-          <DialogDescription>
-            Válassz egy képet, hogy hivatkozást illessz be rá az aktába.
-          </DialogDescription>
-        </DialogHeader>
-        <ScrollArea className="h-96 w-full rounded-md border border-slate-700 bg-slate-800 p-4">
-          {isLoading ? (
-            <div className="flex h-full w-full items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-            </div>
-          ) : evidence.length === 0 ? (
-            <p className="text-center text-slate-400">
-              Nincsenek feltöltött bizonyítékok ehhez az aktához.
-            </p>
-          ) : (
-            <div className="grid grid-cols-3 gap-4">
-              {evidence.map((item) => {
-                const { data: publicUrlData } = supabase.storage
-                  .from("case_evidence")
-                  .getPublicUrl(item.file_path);
-
-                return (
-                  <div
-                    key={item.id}
-                    className="group relative cursor-pointer overflow-hidden rounded-lg border border-slate-600 aspect-video hover:border-blue-500 transition-colors"
-                    onClick={() => onImageSelect(item)}
-                  >
-                    <img
-                      src={publicUrlData.publicUrl}
-                      alt={item.description || item.file_name}
-                      className="h-full w-full object-cover transition-transform group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2">
-                      <p className="text-xs text-center text-white font-medium">
-                        Beillesztés: {item.file_name}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
-  );
+  initialContent: any;
+  readOnly?: boolean;
+  evidenceList: CaseEvidence[];
 }
 
-export function CaseEditor({
-                             initialContent,
-                             editable,
-                             onChange,
-                             className,
-                             caseId,
-                             supabase = supabaseClient,
-                           }: CaseEditorProps) {
-  const [isEvidencePickerOpen, setIsEvidencePickerOpen] = React.useState(false);
-
-  const insertEvidenceCommand = React.useMemo(
-    () => ({
-      title: "Bizonyíték (Kép)",
-      onItemClick: () => {
-        setIsEvidencePickerOpen(true);
-      },
-      aliases: ["kep", "kép", "bizonyitek", "evidence", "img", "foto"],
-      group: "Média",
-      icon: <ImageIcon size={18} />,
-      subtext: "Hivatkozás beszúrása egy feltöltött bizonyítékra",
-    }),
-    []
+// Segédfüggvény a menü szűréséhez
+const filterItems = (items: any[], query: string) => {
+  return items.filter((item: any) =>
+    item.title.toLowerCase().includes(query.toLowerCase()) ||
+    (item.aliases && item.aliases.some((alias: string) => alias.toLowerCase().includes(query.toLowerCase())))
   );
+};
 
-  const editor: BlockNoteEditor | null = useCreateBlockNote({
-    initialContent:
-      initialContent === "loading" || initialContent === undefined
-        ? undefined
-        : initialContent,
+// SÉMA LÉTREHOZÁSA KÍVÜL
+// JAVÍTÁS: Az EvidenceBlock-ot meg kell hívni (), mert az egy factory függvény!
+const schema = BlockNoteSchema.create({
+  blockSpecs: {
+    ...defaultBlockSpecs,
+    evidence: EvidenceBlock(), // <--- ITT VOLT A HIBA (zárójelek kellenek)
+  },
+});
+
+export function CaseEditor({ caseId, initialContent, readOnly = false, evidenceList }: CaseEditorProps) {
+  const { supabase } = useAuth();
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const safeContent = useMemo(() => {
+    if (Array.isArray(initialContent) && initialContent.length > 0) {
+      return initialContent as PartialBlock[];
+    }
+    return undefined;
+  }, [initialContent]);
+
+  // Editor létrehozása a külső sémával
+  const editor = useCreateBlockNote({
+    initialContent: safeContent,
+    schema: schema,
   });
 
-  const handleEvidenceSelect = (item: CaseEvidence) => {
-    if (!editor) return;
+  // Slash Menü
+  const getCustomSlashMenuItems = (editor: any) => [
+    ...getDefaultReactSlashMenuItems(editor),
+    {
+      title: "Bizonyíték Csatolása",
+      onItemClick: () => {
+        editor.insertBlocks(
+          [{ type: "evidence", props: { evidenceId: "" } }],
+          editor.getTextCursorPosition().block,
+          "after"
+        );
+      },
+      aliases: ["evidence", "kép", "bizonyíték", "fotó"],
+      group: "Média",
+      icon: <ImagePlus size={18} />,
+      subtext: "Feltöltött bizonyíték beillesztése a szövegbe."
+    }
+  ];
 
-    // #evidence-ID formátum
-    const evidenceLink = `#evidence-${item.id}`;
-    const linkText = `[Bizonyíték: ${item.description || item.file_name}]`;
+  useEffect(() => {
+    const unsubscribe = editor.onChange(() => {
+      setHasChanges(true);
+    });
+    return unsubscribe;
+  }, [editor]);
 
-    editor.insertBlocks(
-      [
-        {
-          type: "paragraph",
-          content: [
-            {
-              type: "link",
-              href: evidenceLink,
-              content: [
-                {
-                  type: "text",
-                  text: linkText,
-                  styles: { bold: true, textColor: "blue" },
-                },
-              ],
-            },
-            {
-              type: "text",
-              text: " ",
-              styles: {},
-            },
-          ],
-        },
-      ],
-      editor.getTextCursorPosition().block,
-      "after"
-    );
+  const handleSave = async () => {
+    if (!hasChanges) return;
+    setIsSaving(true);
 
-    setIsEvidencePickerOpen(false);
-    toast.success("Hivatkozás beillesztve!");
+    const content = editor.document;
+
+    try {
+      const { error } = await (supabase.from('cases' as any) as any).update({
+        body: content,
+        updated_at: new Date().toISOString()
+      }).eq('id', caseId);
+
+      if (error) throw error;
+
+      toast.success("Akta tartalma mentve.");
+      setHasChanges(false);
+    } catch (error) {
+      console.error(error);
+      toast.error("Hiba a mentés során.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  if (initialContent === "loading") {
-    return <div className="p-4 text-slate-400 bg-slate-900">Betöltés...</div>;
-  }
-
-  if (!editor) {
-    return (
-      <div className="p-4 text-slate-400 bg-slate-900">
-        Editor inicializálása...
-      </div>
-    );
-  }
-
   return (
-    <>
-      {/* CSS: Ha szerkeszthető (editable), akkor a linkekre NEM LEHET KATTINTANI */}
-      {editable && (
-        <style>{`
-          .bn-editor a {
-            pointer-events: none !important;
-            cursor: text !important;
-            opacity: 1; /* Maradjon látható */
-          }
-        `}</style>
-      )}
+    <CaseEditorProvider evidenceList={evidenceList} readOnly={readOnly}>
+      <div className="flex flex-col h-full bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden relative group backdrop-blur-sm">
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+          <BlockNoteView
+            editor={editor}
+            editable={!readOnly}
+            theme="dark"
+            slashMenu={false}
+            className="min-h-[500px]"
+          >
+            <SuggestionMenuController
+              triggerCharacter={"/"}
+              getItems={async (query) => filterItems(getCustomSlashMenuItems(editor), query)}
+            />
+          </BlockNoteView>
+        </div>
 
-      <BlockNoteView
-        editor={editor}
-        editable={editable}
-        slashMenu={false}
-        onChange={() => {
-          if (editor) {
-            onChange(editor.topLevelBlocks);
-          }
-        }}
-        theme="dark"
-        className={cn(
-          "h-full flex flex-col bg-slate-800 text-slate-200 rounded-b-md",
-          className
+        {!readOnly && hasChanges && (
+          <div className="absolute bottom-6 right-6 animate-in fade-in slide-in-from-bottom-2 z-50">
+            <Button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold shadow-lg shadow-yellow-900/20 transition-all hover:scale-105"
+            >
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+              Változások mentése
+            </Button>
+          </div>
         )}
-      >
-        <SuggestionMenuController
-          triggerCharacter={"/"}
-          getItems={async (query) =>
-            filterSuggestionItems(
-              editable && caseId
-                ? [
-                  insertEvidenceCommand,
-                  ...getDefaultReactSlashMenuItems(editor),
-                ]
-                : getDefaultReactSlashMenuItems(editor),
-              query
-            )
-          }
-        />
-      </BlockNoteView>
-
-      {editable && caseId && (
-        <EvidencePickerDialog
-          open={isEvidencePickerOpen}
-          onOpenChange={setIsEvidencePickerOpen}
-          caseId={caseId}
-          supabase={supabase}
-          onImageSelect={handleEvidenceSelect}
-        />
-      )}
-    </>
+      </div>
+    </CaseEditorProvider>
   );
 }
