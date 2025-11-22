@@ -1,172 +1,124 @@
 import * as React from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {Button} from "@/components/ui/button";
-import {Input} from "@/components/ui/input";
-import {Textarea} from "@/components/ui/textarea";
-import {Loader2} from "lucide-react";
-import {useAuth} from "@/context/AuthContext";
-import {toast} from "sonner";
-import type {Case} from "@/types/supabase";
-import type {PartialBlock} from "@blocknote/core";
+import { useAuth } from "@/context/AuthContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 interface NewCaseDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCaseCreated: (newCase: Case) => void;
+  onCaseCreated?: () => void;
 }
 
-export function NewCaseDialog({open, onOpenChange, onCaseCreated}: NewCaseDialogProps) {
-  const {profile, supabase} = useAuth();
-  const [title, setTitle] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [isLoading, setIsLoading] = React.useState(false);
+export function NewCaseDialog({ open, onOpenChange, onCaseCreated }: NewCaseDialogProps) {
+  const { supabase, profile } = useAuth();
+  const navigate = useNavigate();
+  const [loading, setLoading] = React.useState(false);
+  const [formData, setFormData] = React.useState({
+    title: "",
+    description: "",
+    priority: "medium",
+  });
 
   const handleSubmit = async () => {
-    if (!profile || !title.trim()) {
-      toast.error("Hiba", {description: "Az akta címe kötelező."});
+    if (!formData.title) {
+      toast.error("Az akta címét kötelező megadni.");
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
+    try {
+      // 1. Létrehozás
+      const { data, error } = await supabase.from('cases').insert({
+        title: formData.title,
+        description: formData.description,
+        priority: formData.priority as any,
+        status: 'open',
+        owner_id: profile?.id,
+        body: [] // Üres tömbbel hozzuk létre (a CaseEditor már kezeli)
+      }).select().single();
 
-    // --- Ez a helyes, FÜGGŐLEGES elrendezésű séma ---
-    const defaultBody: PartialBlock[] = [
-      {
-        type: "image",
-        props: {
-          url: "/mcb_logo.png", // Feltételezve, hogy a 'public/mcb_logo.png' létezik
-          textAlignment: "center",
-        },
-      },
-      {
-        type: "heading",
-        props: {
-          level: 1, // 'level' a 'props'-on belül
-          textAlignment: "center",
-        },
-        content: [
-          {
-            type: "text",
-            text: "Major Crime's Bureau",
-            styles: {},
-          },
-        ],
-      },
-      {
-        type: "heading",
-        props: {
-          level: 3, // 'level' a 'props'-on belül
-          textAlignment: "center",
-        },
-        content: [
-          {
-            type: "text",
-            text: "Detective Division",
-            styles: {},
-          },
-        ],
-      },
-      {
-        type: "paragraph",
-        props: {
-          textAlignment: "center",
-        },
-        content: [
-          {
-            type: "text",
-            text: "Cím: San Fierro, Downtown 1257",
-            styles: { italic: true },
-          },
-        ],
-      },
-      {
-        type: "divider", // 'horizontalRule' helyett 'divider'
-      },
-      {
-        type: "paragraph",
-        content: [], // Üres bekezdés
-      },
-    ];
-    // --- Kód vége ---
+      if (error) throw error;
 
-    const {data, error} = await supabase
-      .from("cases")
-      .insert({
-        title: title.trim(),
-        short_description: description.trim() || null,
-        owner_id: profile.id,
-        status: "open",
-        body: defaultBody,
-      })
-      .select()
-      .single();
+      toast.success("Akta sikeresen létrehozva!");
 
-    setIsLoading(false);
-
-    if (error) {
-      toast.error("Hiba történt az akta létrehozásakor", {
-        description: error.message,
-      });
-    } else {
-      toast.success("Akta sikeresen létrehozva", {
-        description: `#${data.case_number} - ${data.title}`,
-      });
-      onCaseCreated(data);
-      setTitle("");
-      setDescription("");
+      // 2. Reset és Bezárás
+      setFormData({ title: "", description: "", priority: "medium" });
       onOpenChange(false);
+
+      // 3. Navigálás vagy Lista frissítés
+      if (onCaseCreated) onCaseCreated();
+      // Opcionális: Azonnal odaugrunk
+      navigate(`/mcb/case/${data.id}`);
+
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Hiba történt:", { description: error.message });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-900 border-slate-700 text-white">
+      <DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Új Akta Létrehozása</DialogTitle>
+          <DialogTitle>Új Nyomozati Akta</DialogTitle>
           <DialogDescription>
-            Add meg az új nyomozati akta alapadatait. A részleteket később
-            szerkesztheted.
+            Hozzon létre egy új ügyiratot. A részleteket a létrehozás után tudja szerkeszteni.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <label htmlFor="title">Akta Címe</label>
+            <Label>Akta Megnevezése (Cím)</Label>
             <Input
-              id="title"
-              placeholder="pl. A 'Kígyó' fedőnevű díler"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              placeholder="pl. 'Vörös Sárkány' Bűnszervezet"
+              className="bg-slate-950 border-slate-800 focus-visible:ring-yellow-600/50"
+              value={formData.title}
+              onChange={e => setFormData({...formData, title: e.target.value})}
             />
           </div>
+
           <div className="space-y-2">
-            <label htmlFor="description">Rövid leírás (Opcionális)</label>
+            <Label>Rövid Leírás (Összefoglaló)</Label>
             <Textarea
-              id="description"
-              placeholder="Rövid összefoglaló az aktáról..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="min-h-24"
+              placeholder="Rövid összefoglaló a listanézethez..."
+              className="bg-slate-950 border-slate-800 resize-none h-20 focus-visible:ring-yellow-600/50"
+              value={formData.description}
+              onChange={e => setFormData({...formData, description: e.target.value})}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Prioritás</Label>
+            <Select
+              value={formData.priority}
+              onValueChange={(val) => setFormData({...formData, priority: val})}
+            >
+              <SelectTrigger className="bg-slate-950 border-slate-800">
+                <SelectValue placeholder="Válassz prioritást" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectItem value="low">Alacsony</SelectItem>
+                <SelectItem value="medium">Közepes</SelectItem>
+                <SelectItem value="high" className="text-orange-400">Magas</SelectItem>
+                <SelectItem value="critical" className="text-red-500 font-bold">KRITIKUS</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
         <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" disabled={isLoading}>
-              Mégse
-            </Button>
-          </DialogClose>
-          <Button onClick={handleSubmit} disabled={isLoading || !title.trim()}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Mégse</Button>
+          <Button onClick={handleSubmit} disabled={loading} className="bg-yellow-600 hover:bg-yellow-700 text-black font-semibold">
+            {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Létrehozás
           </Button>
         </DialogFooter>

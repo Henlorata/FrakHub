@@ -1,108 +1,99 @@
-import { Outlet, Navigate, useLocation, Link } from "react-router-dom"; // Link importálva
+import { Outlet, Navigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Shield, UserCog, LogOut } from "lucide-react"; // Ikonok importálva
-import { Button } from "@/components/ui/button"; // Button importálva
+import {Loader2, Shield, UserCog, LogOut, LayoutGrid, UserX} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export function McbLayout() {
-  const { profile, isLoading, session, logout } = useAuth();
+  const { profile, loading, session, signOut } = useAuth();
   const location = useLocation();
 
-  // --- DEBUG TESZTEK (ILLESZD BE A FÜGGVÉNY ELEJÉRE) ---
-  console.log("DEBUG 13: McbLayout: Renderelés INDUL. Állapotok:", {
-    isLoading, // Az AuthContext tölt?
-    hasSession: !!session,
-    hasProfile: !!profile,
-    profileRole: profile?.role,
-    path: location.pathname
-  });
-  // --- EDDIG ---
-
-  // 1. Töltés állapot
-  if (isLoading) {
-    console.log("DEBUG 14: McbLayout: DÖNTÉS -> 1. Töltés állapot (return Loader2)");
+  // 1. Töltés
+  if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center text-white">
-        <Loader2 className="h-16 w-16 animate-spin" />
+      <div className="flex h-screen w-full items-center justify-center bg-slate-950 text-white">
+        <Loader2 className="h-16 w-16 animate-spin text-yellow-500" />
       </div>
     );
   }
 
   // 2. Nincs bejelentkezve
-  if (!session) {
-    console.log("DEBUG 15: McbLayout: DÖNTÉS -> 2. Nincs session (return Navigate to /mcb/login)");
-    return <Navigate to="/mcb/login" state={{ from: location }} replace />;
+  if (!session || !profile) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // 3. Be van jelentkezve, de a profil még tölt (ritka eset) vagy nincs
-  if (!profile) {
-    // Az AuthContextnek ezt már kezelnie kellett volna (DEBUG 9),
-    // de ez egy biztonsági háló.
-    console.error("DEBUG 16: McbLayout: DÖNTÉS -> 3. Van session, de NINCS profil! (return Navigate to /mcb/login)");
-    logout(); // Kijelentkeztetés, hogy ne legyen hurok
-    return <Navigate to="/mcb/login" replace />;
+  // 3. JOGOSULTSÁG ELLENŐRZÉS (JAVÍTVA)
+  // Akkor léphet be, ha: MCB tag VAGY Admin VAGY Supervisor
+  const hasAccess =
+    profile.division === 'MCB' ||
+    profile.system_role === 'admin' ||
+    profile.system_role === 'supervisor';
+
+  if (!hasAccess) {
+    return <Navigate to="/dashboard" replace />;
   }
 
-  // 4. Be van jelentkezve, de "pending" státuszú
-  if (profile.role === "pending") {
-    // Ha a pending oldalon van, ott marad
-    if (location.pathname === "/mcb/pending") {
-      console.log("DEBUG 17: McbLayout: DÖNTÉS -> 4a. Pending státusz, /mcb/pending oldalon (return Outlet)");
-      return <Outlet />; // Engedjük a /mcb/pending oldalt megjelenni
-    }
-    // Ha máshova (pl. /mcb) akarna menni, átirányítjuk
-    console.log("DEBUG 18: McbLayout: DÖNTÉS -> 4b. Pending státusz, rossz oldalon (return Navigate to /mcb/pending)");
-    return <Navigate to="/mcb/pending" replace />;
+  // Admin link láthatósága (Admin vagy Supervisor)
+  const isAdmin = profile.system_role === 'admin' || profile.system_role === 'supervisor';
+
+  const mcbLinks = [
+    { path: "/mcb", label: "Áttekintés", icon: LayoutGrid },
+    { path: "/mcb/suspects", label: "Gyanúsítottak", icon: UserX },
+  ];
+
+  if (isAdmin) {
+    mcbLinks.push({ path: "/mcb/admin", label: "Adminisztráció", icon: UserCog });
   }
 
-  // 5. Be van jelentkezve, és rangja van (detective, lead_detective)
-  // DE véletlenül a /mcb/pending oldalra téved
-  if (location.pathname === "/mcb/pending") {
-    console.log("DEBUG 19: McbLayout: DÖNTÉS -> 5. Rangja van, de a /mcb/pending oldalon (return Navigate to /mcb)");
-    return <Navigate to="/mcb" replace />;
-  }
-
-  // MINDEN RENDBEN: Be van jelentkezve ÉS van rangja
-  console.log("DEBUG 20: McbLayout: DÖNTÉS -> 6. SIKER (return Outlet)");
   return (
-    <div className="text-white min-h-screen flex flex-col">
-      {/* JAVÍTOTT FEJLÉC NAVIGÁCIÓVAL */}
-      <header className="p-4 bg-slate-800 rounded-lg mb-4 flex justify-between items-center">
-        {/* Bal oldal: Navigáció */}
-        <nav className="flex items-center gap-4">
-          <Link
-            to="/mcb"
-            className="flex items-center gap-2 text-lg font-semibold text-white hover:text-slate-300"
-          >
-            <Shield className="w-5 h-5" /> MCB Irányítópult
-          </Link>
+    <div className="text-slate-100 min-h-screen flex flex-col bg-slate-950">
+      {/* Fejléc */}
+      <header className="p-4 md:p-6 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-40">
 
-          {/* KIZÁRÓLAG ADMINOKNAK MEGJELENŐ LINK */}
-          {profile.role === 'lead_detective' && (
-            <Link
-              to="/mcb/admin"
-              className="flex items-center gap-2 text-lg font-semibold text-white hover:text-slate-300"
-            >
-              <UserCog className="w-5 h-5" /> Felhasználókezelés
-            </Link>
-          )}
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="w-10 h-10 bg-yellow-500/10 rounded-lg flex items-center justify-center border border-yellow-500/20 shadow-[0_0_10px_rgba(234,179,8,0.1)]">
+            <Shield className="w-6 h-6 text-yellow-500" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white tracking-tight">Major Crimes Bureau</h1>
+            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Nyomozói Adatbázis</p>
+          </div>
+        </div>
 
-          {/* Ide jöhetnek majd a "Saját Akták" stb. linkek */}
+        {/* Navigáció */}
+        <nav className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide">
+          {mcbLinks.map(link => {
+            const isActive = location.pathname === link.path || (link.path !== '/mcb' && location.pathname.startsWith(link.path));
+            return (
+              <Link
+                key={link.path}
+                to={link.path}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all border whitespace-nowrap",
+                  isActive
+                    ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20 shadow-sm"
+                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-700"
+                )}
+              >
+                <link.icon className="w-4 h-4" />
+                {link.label}
+              </Link>
+            )
+          })}
         </nav>
 
-        {/* Jobb oldal: Profil és Kijelentkezés */}
-        <div className="flex items-center gap-4">
-           <span className="text-sm text-slate-400 hidden md:block">
-            Bejelentkezve: <strong>{profile.full_name}</strong>
-          </span>
-          <Button
-            variant="destructive"
-            onClick={logout}
-          >
-            <LogOut className="w-4 h-4 mr-2" /> Kijelentkezés
+        <div className="flex items-center gap-4 hidden md:flex">
+          <div className="text-right">
+            <p className="text-sm font-medium text-white">{profile.full_name}</p>
+            <p className="text-xs text-slate-500">{profile.faction_rank}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={signOut} className="text-slate-400 hover:text-red-400 hover:bg-red-950/20">
+            <LogOut className="w-5 h-5" />
           </Button>
         </div>
       </header>
-      <main className="flex-1 flex flex-col min-h-0">
+
+      <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 md:p-8 animate-in fade-in duration-500">
         <Outlet />
       </main>
     </div>

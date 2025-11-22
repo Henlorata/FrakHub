@@ -1,448 +1,257 @@
-// FrakHub/src/pages/mcb/CaseDetailPage.tsx
-
 import * as React from "react";
-import {useParams, Link} from "react-router-dom";
+import {useParams, useNavigate} from "react-router-dom";
 import {useAuth} from "@/context/AuthContext";
-import type {Case, Profile, CaseCollaborator} from "@/types/supabase";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
-import {Badge} from "@/components/ui/badge";
-import {
-  Loader2,
-  AlertTriangle,
-  ArrowLeft,
-  Users,
-  Shield,
-  Save,
-  Edit,
-} from "lucide-react";
+import {Loader2, ArrowLeft, Lock, Unlock, Archive, ShieldAlert} from "lucide-react";
 import {toast} from "sonner";
-import {CaseEditor} from "@/pages/mcb/components/CaseEditor.tsx";
-import type {PartialBlock} from "@blocknote/core";
-import {MantineProvider, createTheme} from "@mantine/core";
-import {AddCollaboratorDialog} from "@/pages/mcb/components/AddCollaboratorDialog.tsx";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter as DialogFooterComponent,
-} from "@/components/ui/dialog";
-
-// --- Típusok ---
-interface CaseDetailsData {
-  caseDetails: {
-    case: Case;
-    owner: Pick<Profile, 'full_name' | 'role'>;
-  };
-  collaborators: {
-    collaborator: CaseCollaborator;
-    user: Pick<Profile, 'full_name' | 'role'>;
-  }[];
-}
-
-type CollaboratorDetail = CaseDetailsData['collaborators'][number];
-
-// ... getStatusBadge (változatlan) ...
-const getStatusBadge = (status: string) => {
-  switch (status) {
-    case "open":
-      return <Badge variant="default" className="bg-green-600">Nyitott</Badge>;
-    case "closed":
-      return <Badge variant="secondary">Lezárt</Badge>;
-    case "archived":
-      return <Badge variant="outline">Archivált</Badge>;
-    default:
-      return <Badge variant="outline">{status}</Badge>;
-  }
-};
-// ... mantineTheme (változatlan) ...
-const mantineTheme = createTheme({});
-
+import {CaseEditor} from "./components/CaseEditor";
+import {AddSuspectDialog} from "./components/AddSuspectDialog";
+import {CaseInfoCard, CollaboratorsCard, EvidenceCard, SuspectsCard} from "./components/CaseSidebar";
+import {UploadEvidenceDialog} from "./components/UploadEvidenceDialog";
+import {CaseChat} from "./components/CaseChat";
+import {CaseWarrants} from "./components/CaseWarrants";
+import {Badge} from "@/components/ui/badge";
+import {AddCollaboratorDialog} from "./components/AddCollaboratorDialog";
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from "@/components/ui/dialog";
+import {canViewCaseDetails, canEditCase, isHighCommand} from "@/lib/utils";
+import type {Case, CaseCollaborator, CaseEvidence} from "@/types/supabase";
+import {SuspectDetailDialog} from "@/pages/mcb/components/SuspectDetailDialog.tsx";
+import {ImageViewerDialog} from "@/pages/mcb/components/ImageViewerDialog.tsx";
 
 export function CaseDetailPage() {
   const {caseId} = useParams<{ caseId: string }>();
   const {supabase, profile} = useAuth();
+  const navigate = useNavigate();
 
-  const [details, setDetails] = React.useState<CaseDetailsData | null>(null);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [caseData, setCaseData] = React.useState<Case | null>(null);
+  const [collaborators, setCollaborators] = React.useState<CaseCollaborator[]>([]);
+  const [evidence, setEvidence] = React.useState<CaseEvidence[]>([]);
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-
-  const [editorContent, setEditorContent] = React.useState<PartialBlock[] | undefined>(undefined);
-
-  const [isEditorOpen, setIsEditorOpen] = React.useState(false);
-  const [isSaving, setIsSaving] = React.useState(false);
-  const [tempEditorContent, setTempEditorContent] = React.useState<PartialBlock[] | undefined>(undefined);
-
+  const [caseSuspects, setCaseSuspects] = React.useState<any[]>([]);
+  const [isSuspectDialogOpen, setIsSuspectDialogOpen] = React.useState(false);
+  const [isAddSuspectOpen, setIsAddSuspectOpen] = React.useState(false);
+  const [viewSuspect, setViewSuspect] = React.useState<any>(null);
+  const [isUploadOpen, setIsUploadOpen] = React.useState(false);
   const [isAddCollabOpen, setIsAddCollabOpen] = React.useState(false);
+  const [viewEvidence, setViewEvidence] = React.useState<any>(null);
 
-  // --- VISSZAÁLLÍTVA: A JS-alapú magasság-számításhoz szükséges state és ref-ek ---
-  const rightColumnRef = React.useRef<HTMLDivElement>(null);
-  const leftHeaderRef = React.useRef<HTMLDivElement>(null);
-  const [editorCardHeight, setEditorCardHeight] = React.useState<string | number>('auto');
-
-  // ... fetchCaseDetails (változatlan) ...
-  const fetchCaseDetails = React.useCallback(async () => {
-    if (!caseId) {
-      setError("Nincs akta ID megadva.");
-      setIsLoading(false);
-      return;
+  // Jogosultság ellenőrzés (Betöltés előtt/közben nem tudjuk a caseData-t, de ha betöltött, ellenőrzünk)
+  React.useEffect(() => {
+    if (!loading && profile && caseData) {
+      if (!canViewCaseDetails(profile, caseData)) {
+        setError("Nincs jogosultságod megtekinteni az akta részleteit. (Supervisory Staff csak a listát láthatja)");
+      }
     }
-    if (!details) setIsLoading(true);
-    setError(null);
+  }, [loading, profile, caseData]);
+
+  // Szerkesztési jog (Memoizálva a segédfüggvénnyel)
+  const canEdit = React.useMemo(() => {
+    const isCollabEditor = collaborators.some(c => c.user_id === profile?.id && c.role === 'editor');
+    return canEditCase(profile, caseData, isCollabEditor);
+  }, [profile, caseData, collaborators]);
+
+  // Adatok betöltése
+  const fetchData = React.useCallback(async () => {
+    if (!caseId) return;
+    setLoading(true);
     try {
-      const {data, error} = await supabase.rpc('get_case_details', {
-        p_case_id: caseId,
-      });
+      // 1. Akta
+      const {
+        data: cData,
+        error: cError
+      } = await supabase.from('cases').select('*, owner:owner_id(full_name, badge_number)').eq('id', caseId).single();
+      if (cError) throw cError;
+      setCaseData(cData as unknown as Case);
 
-      if (error) {
-        if (error.message.includes("Hozzáférés megtagadva")) {
-          throw new Error("Nincs jogosultságod megtekinteni ezt az aktát, vagy az akta nem létezik.");
-        }
-        throw error;
-      }
+      // 2. Közreműködők
+      const {data: colData} = await supabase.from('case_collaborators').select('*, profile:user_id(full_name, badge_number, faction_rank)').eq('case_id', caseId);
+      setCollaborators(colData as unknown as CaseCollaborator[] || []);
 
-      const caseBody = data.caseDetails.case.body;
-      let validBody: PartialBlock[];
-      if (Array.isArray(caseBody)) {
-        validBody = caseBody.length > 0 ? caseBody : [{type: "paragraph", content: ""}];
-      } else {
-        console.warn("Hibás akta-törzs formátum észlelve (nem tömb). Visszaállítás alaphelyzetbe.");
-        validBody = [{type: "paragraph", content: ""}];
-      }
-      const validData: CaseDetailsData = {
-        ...data,
-        caseDetails: {
-          ...data.caseDetails,
-          case: {
-            ...data.caseDetails.case,
-            body: validBody,
-          },
-        },
-      };
+      // 3. Bizonyítékok
+      const {data: evData} = await supabase.from('case_evidence').select('*').eq('case_id', caseId);
+      setEvidence(evData as CaseEvidence[] || []);
 
-      setDetails(validData);
-      setEditorContent(validData.caseDetails.case.body);
+      // 4. Gyanúsítottak (ÚJ)
+      const {data: susData} = await supabase.from('case_suspects').select('*, suspect:suspect_id(*)').eq('case_id', caseId);
+      setCaseSuspects(susData || []);
 
-    } catch (err) {
-      const error = err as Error;
-      console.error(error);
-      setError(error.message);
-      toast.error("Hiba történt", {description: error.message});
+    } catch (err: any) {
+      setError(err.message);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [caseId, supabase, details]);
+  }, [caseId, supabase]);
+
+  // TÖRLÉS KEZELŐK
+  const handleDeleteSuspect = async (id: string) => {
+    if (!confirm("Biztosan eltávolítod ezt a személyt az aktából?")) return;
+    await supabase.from('case_suspects').delete().eq('id', id);
+    fetchData();
+  };
+
+  const handleDeleteCollaborator = async (id: string) => {
+    if (!confirm("Biztosan eltávolítod ezt a közreműködőt?")) return;
+    await supabase.from('case_collaborators').delete().eq('id', id);
+    fetchData();
+  };
+
+  const handleDeleteEvidence = async (id: string) => {
+    if (!confirm("Biztosan törlöd ezt a bizonyítékot?")) return;
+    await supabase.from('case_evidence').delete().eq('id', id);
+    // A fájlt is törölni kéne a storage-ból, de azt majd a napi cleanup intézi, vagy itt is lehetne.
+    fetchData();
+  };
+
+  // Képnézegető helper
+  const openEvidenceViewer = async (file: any) => {
+    if (file.file_type === 'image') {
+      const {data} = await supabase.storage.from('case_evidence').createSignedUrl(file.file_path, 3600);
+      if (data) setViewEvidence({...file, url: data.signedUrl});
+    } else {
+      toast.info("Ez a fájltípus nem támogatott a gyorsnézetben.");
+    }
+  };
 
   React.useEffect(() => {
-    fetchCaseDetails();
-  }, [fetchCaseDetails]);
+    fetchData();
+  }, [fetchData]);
 
-  // --- VISSZAÁLLÍTVA: A JS-alapú magasság-számítás ---
-  React.useLayoutEffect(() => {
-    const calculateHeight = () => {
-      // Mobilon ne számoljunk
-      if (window.innerWidth < 1024) {
-        setEditorCardHeight('auto');
-        return;
-      }
-
-      // Csak akkor számolunk, ha a ref-ek már léteznek
-      if (rightColumnRef.current && leftHeaderRef.current) {
-        const rightHeight = rightColumnRef.current.offsetHeight;
-        const leftHeaderHeight = leftHeaderRef.current.offsetHeight;
-
-        // A 'gap-6' értéke 1.5rem (24px)
-        const gap = 24;
-
-        // A bal oldali editor magassága =
-        // (Jobb oszlop teljes magassága) - (Bal oszlop fejléc-kártyájának magassága) - (A két kártya közti rés)
-        const newHeight = rightHeight - leftHeaderHeight - gap;
-
-        // Beállítunk egy ésszerű minimális magasságot, pl. 400px
-        setEditorCardHeight(newHeight > 400 ? newHeight : 400);
-      }
-    };
-
-    // Késleltetés, hogy a renderelés befejeződjön
-    const timer = setTimeout(calculateHeight, 50);
-
-    // Figyeljük az ablak átméretezését
-    window.addEventListener('resize', calculateHeight);
-
-    // Figyeljük a JOBB OLDALI sáv magasságának VÁLTOZÁSÁT
-    // Ez fog lefutni, amikor a közreműködők listája (az "ugrás" előtt) nő
-    const observer = new ResizeObserver(calculateHeight);
-    if (rightColumnRef.current) {
-      observer.observe(rightColumnRef.current);
-    }
-
-    // Takarítás
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', calculateHeight);
-      observer.disconnect();
-    };
-  }, [details, isLoading]); // Lefut, ha a betöltés befejeződött vagy a 'details' változik
-
-
-  // ... (a többi handler, canEdit, canManageCollaborators változatlan) ...
-  const handleEditorSave = async () => {
-    if (!caseId || !tempEditorContent) return;
-    setIsSaving(true);
-    const {error} = await supabase
-      .from("cases")
-      .update({body: tempEditorContent})
-      .eq("id", caseId);
-    setIsSaving(false);
-    if (error) {
-      toast.error("Hiba mentés közben", {description: error.message});
-    } else {
-      toast.success("Akta tartalma sikeresen mentve!");
-      setEditorContent(tempEditorContent);
-      if (details) {
-        setDetails({
-          ...details,
-          caseDetails: {
-            ...details.caseDetails,
-            case: {
-              ...details.caseDetails.case,
-              body: tempEditorContent,
-            },
-          },
-        });
-      }
-      setIsEditorOpen(false);
+  const handleStatusChange = async (newStatus: 'open' | 'closed' | 'archived') => {
+    if (!confirm(`Biztosan módosítod az akta státuszát?`)) return;
+    const {error} = await supabase.from('cases').update({status: newStatus}).eq('id', caseId!);
+    if (error) toast.error("Hiba történt.");
+    else {
+      toast.success("Státusz frissítve!");
+      setCaseData(prev => prev ? ({...prev, status: newStatus}) : null);
     }
   };
-  const handleEditorCancel = () => {
-    setIsEditorOpen(false);
-    setTempEditorContent(undefined);
-  };
-  const handleOpenEditor = () => {
-    setTempEditorContent(editorContent);
-    setIsEditorOpen(true);
-  };
-  const canEdit = React.useMemo(() => {
-    if (!profile || !details) return false;
-    if (profile.role === 'lead_detective') return true;
-    if (profile.id === details?.caseDetails.case.owner_id) return true;
-    return details.collaborators.some(
-      (c: CollaboratorDetail) => c.collaborator.user_id === profile.id && c.collaborator.status === 'approved'
-    );
-  }, [profile, details]);
-  const canManageCollaborators = React.useMemo(() => {
-    if (!profile || !details) return false;
-    if (profile.role === 'lead_detective') return true;
-    if (profile.id === details?.caseDetails.case.owner_id) return true;
-    return false;
-  }, [profile, details]);
 
-  // ... (Betöltés és Hiba nézet változatlan) ...
-  if (isLoading) {
+  if (loading) return <div className="flex h-[80vh] items-center justify-center"><Loader2
+    className="w-12 h-12 animate-spin text-yellow-500 opacity-50"/></div>;
+
+  if (error || !caseData) {
     return (
-      <div className="flex justify-center items-center py-16">
-        <Loader2 className="h-12 w-12 animate-spin text-slate-400"/>
+      <div className="flex flex-col items-center justify-center h-[80vh] text-slate-400">
+        <ShieldAlert className="w-20 h-20 mb-6 text-red-500/50"/>
+        <h2 className="text-2xl font-bold text-white mb-2">Hozzáférés Megtagadva</h2>
+        <p className="mb-6 max-w-md text-center">{error || "Az akta nem található, vagy nincs jogosultságod."}</p>
+        <Button variant="outline" onClick={() => navigate('/mcb')} className="border-slate-700 hover:bg-slate-800">Vissza
+          az irányítópultra</Button>
       </div>
     );
   }
-  if (error || !details) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-red-400">
-        <AlertTriangle className="h-12 w-12"/>
-        <p className="mt-4 text-lg font-semibold">Hiba történt</p>
-        <p className="text-sm text-red-300">{error || "Az akta nem található."}</p>
-        <Button asChild variant="outline" className="mt-4">
-          <Link to="/mcb">
-            <ArrowLeft className="w-4 h-4 mr-2"/> Vissza a listához
-          </Link>
-        </Button>
-      </div>
-    );
-  }
-
-  const {case: caseData, owner} = details.caseDetails;
-  const {collaborators} = details;
 
   return (
-    // JAVÍTÁS: Gyökér elem 'flex-1 flex flex-col', hogy kitöltse a 'main'-t
-    <div className="space-y-6 flex-1 flex flex-col">
+    <div className="space-y-6 pb-8 h-[calc(100vh-100px)] flex flex-col">
 
-      {/* 1. SOR: FEJLÉC GOMBOK (Változatlan) */}
-      <div className="flex justify-between items-center flex-shrink-0">
-        <Button asChild variant="outline" className="w-fit">
-          <Link to="/mcb">
-            <ArrowLeft className="w-4 h-4 mr-2"/> Vissza az aktákhoz
-          </Link>
-        </Button>
-        {canEdit && (
-          <Button onClick={handleOpenEditor}>
-            <Edit className="w-4 h-4 mr-2"/> Akta Szerkesztése
+      {/* DIALÓGUSOK */}
+      <AddSuspectDialog open={isAddSuspectOpen} onOpenChange={setIsAddSuspectOpen} caseId={caseId!}
+                        onSuspectAdded={fetchData} existingSuspectIds={caseSuspects.map(s => s.suspect_id)}/>
+      <SuspectDetailDialog open={!!viewSuspect} onOpenChange={(o) => !o && setViewSuspect(null)} suspect={viewSuspect}
+                           onUpdate={() => {
+                             fetchData();
+                             setViewSuspect(null);
+                           }}/>
+      <UploadEvidenceDialog open={isUploadOpen} onOpenChange={setIsUploadOpen} caseId={caseId!}
+                            onUploadComplete={fetchData}/>
+      <AddCollaboratorDialog open={isAddCollabOpen} onOpenChange={setIsAddCollabOpen} caseId={caseId!}
+                             onCollaboratorAdded={fetchData} existingUserIds={collaborators.map(c => c.user_id)}/>
+
+      {/* KÉPNÉZEGETŐ MODAL */}
+      <ImageViewerDialog
+        open={!!viewEvidence}
+        onOpenChange={(o) => !o && setViewEvidence(null)}
+        imageUrl={viewEvidence?.url}
+        fileName={viewEvidence?.file_name || "Bizonyíték"}
+      />
+
+      <div
+        className="flex justify-between items-start shrink-0 bg-slate-900/30 p-4 rounded-xl border border-slate-800/50">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/mcb')}
+                  className="text-slate-400 hover:text-white hover:bg-slate-800">
+            <ArrowLeft className="w-5 h-5"/>
           </Button>
-        )}
-      </div>
-
-      {/* 2. SOR: FŐ TARTALOM */}
-      {/* JAVÍTÁS: A grid 'flex-1' és 'lg:items-start' (ez tartja a jobb sávot felül) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 lg:items-start">
-
-        {/* BAL OSZLOP (Görgőző tartalom) */}
-        {/* JAVÍTÁS: 'flex flex-col' hogy a belső kártya nyúlhasson */}
-        <div className="lg:col-span-2 space-y-6 flex flex-col">
-          {/* JAVÍTÁS: Visszaállítva a 'leftHeaderRef' */}
-          <Card className="bg-slate-900 border-slate-700 text-white flex-shrink-0" ref={leftHeaderRef}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-3xl">#{caseData.case_number}: {caseData.title}</CardTitle>
-                  <CardDescription className="text-lg text-slate-400">
-                    {caseData.short_description || "Nincs rövid leírás megadva."}
-                  </CardDescription>
-                </div>
-                {getStatusBadge(caseData.status)}
-              </div>
-            </CardHeader>
-          </Card>
-
-          {/* Akta Tartalma Kártya (JAVÍTVA) */}
-          {/* JAVÍTÁS: Visszaállítva a 'style' és a belső görgetés */}
-          <Card
-            className="bg-slate-900 border-slate-700 text-white flex flex-col"
-            style={{ height: editorCardHeight }}
-          >
-            <CardHeader>
-              <h3 className="text-xl font-semibold">Akta Tartalma</h3>
-            </CardHeader>
-            <CardContent className="p-0 flex-1 flex flex-col min-h-0">
-              <div className="flex-1 min-h-0">
-                <MantineProvider theme={mantineTheme} forceColorScheme="dark">
-                  <CaseEditor
-                    key={JSON.stringify(editorContent)}
-                    initialContent={editorContent}
-                    editable={false}
-                    onChange={() => {
-                    }}
-                  />
-                </MantineProvider>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* JOBB OSZLOP (Ragadós oldalsáv) */}
-        {/* JAVÍTÁS: Visszaállítva a 'rightColumnRef' */}
-        <div className="lg:col-span-1 space-y-6" ref={rightColumnRef}>
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="p-4">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Shield className="w-5 h-5 text-blue-400"/> Akta Tulajdonosa
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <p className="text-base">{owner.full_name}</p>
-              <p className="text-sm text-slate-400">{owner.role}</p>
-            </CardContent>
-          </Card>
-
-          {/* === A VÉGLEGES JAVÍTÁS AZ "UGRÁLÁSRA" === */}
-          {/* JAVÍTÁS: A KÁRTYA fix 'h-[350px]' magasságot kap (lehet 300, 350, 400, ízlés szerint) */}
-          <Card className="bg-slate-800 border-slate-700 flex flex-col h-[350px]">
-            <CardHeader className="p-4 flex-shrink-0">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Users className="w-5 h-5 text-green-400"/> Közreműködők
-              </CardTitle>
-            </CardHeader>
-
-            {/* JAVÍTÁS: A CardContent 'flex-1 min-h-0'-t kap (max-h törölve) */}
-            <CardContent className="p-4 pt-0 space-y-3 flex-1 min-h-0 overflow-y-auto">
-              {collaborators.length === 0 ? (
-                <p className="text-sm text-slate-500 italic">Nincsenek közreműködők.</p>
-              ) : (
-                collaborators.map((collab: CollaboratorDetail) => (
-                  <div key={collab.user.full_name} className="flex items-center justify-between">
-                    <div>
-                      <p className="text-base">{collab.user.full_name}</p>
-                      <p className="text-sm text-slate-400">{collab.user.role}</p>
-                    </div>
-                    <Badge variant={collab.collaborator.status === 'approved' ? 'default' : 'secondary'}
-                           className={collab.collaborator.status === 'approved' ? 'bg-green-600' : ''}>
-                      {collab.collaborator.status === 'approved' ? 'Jóváhagyva' : 'Függőben'}
-                    </Badge>
-                  </div>
-                ))
-              )}
-            </CardContent>
-
-            {/* JAVÍTÁS: A Footer 'mt-auto'-t kap (hogy alulra tapadjon) és 'flex-shrink-0' */}
-            {canManageCollaborators && (
-              <CardFooter className="p-4 pt-0 mt-auto flex-shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => setIsAddCollabOpen(true)}
-                >
-                  Közreműködő hozzáadása
-                </Button>
-              </CardFooter>
-            )}
-          </Card>
-        </div>
-      </div>
-
-      {/* --- DIALÓGUSOK (Változatlan) --- */}
-      <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-        <DialogContent className="bg-slate-900 border-slate-700 text-white w-[95vw] max-w-[95vw] sm:max-w-[95vw] h-[95vh] flex flex-col p-4">
-          <DialogHeader>
-            <DialogTitle>Akta Szerkesztése: #{caseData.case_number}</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 -mx-4 min-h-0">
-            <MantineProvider theme={mantineTheme} forceColorScheme="dark">
-              <CaseEditor
-                key={isEditorOpen ? 'editor-open' : 'editor-closed'}
-                initialContent={tempEditorContent}
-                editable={true}
-                onChange={(content) => {
-                  setTempEditorContent(content);
-                }}
-                className="rounded-none h-full" // Ez felülírja a rounded-b-md-t
-              />
-            </MantineProvider>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">{caseData.title}</h1>
+              <Badge variant="outline" className="font-mono text-yellow-500 border-yellow-500/30 bg-yellow-500/10">
+                #{caseData.case_number.toString().padStart(4, '0')}
+              </Badge>
+            </div>
+            <p
+              className="text-slate-400 text-sm mt-0.5 max-w-2xl truncate">{caseData.description || "Nincs rövid leírás."}</p>
           </div>
-          <DialogFooterComponent className="">
-            <Button variant="outline" onClick={handleEditorCancel} disabled={isSaving}>Mégse</Button>
-            <Button onClick={handleEditorSave} disabled={isSaving}>
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin"/>
-              ) : (
-                <Save className="w-4 h-4 mr-2"/>
-              )}
-              Mentés
-            </Button>
-          </DialogFooterComponent>
-        </DialogContent>
-      </Dialog>
+        </div>
 
-      {canManageCollaborators && (
-        <AddCollaboratorDialog
-          caseId={caseId!}
-          ownerId={caseData.owner_id}
-          existingCollaborators={collaborators.map((c: CollaboratorDetail) => c.collaborator.user_id)}
-          open={isAddCollabOpen}
-          onOpenChange={setIsAddCollabOpen}
-          onCollaboratorAdded={() => {
-            toast.success("Közreműködői lista frissítve.");
-            fetchCaseDetails();
-          }}
-        />
-      )}
+        <div className="flex gap-2 self-end md:self-auto">
+          {canEdit ? (
+            <>
+              <Button variant="outline" size="sm" className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                      onClick={() => handleStatusChange('closed')}>
+                <Lock className="w-4 h-4 mr-2"/> Lezárás
+              </Button>
+              <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-950/20"
+                      onClick={() => handleStatusChange('archived')}>
+                <Archive className="w-4 h-4 mr-2"/> Archiválás
+              </Button>
+            </>
+          ) : (
+            caseData.status !== 'open' && isHighCommand(profile) && (
+              <Button variant="outline" size="sm"
+                      className="border-yellow-700/50 text-yellow-500 hover:bg-yellow-900/20"
+                      onClick={() => handleStatusChange('open')}>
+                <Unlock className="w-4 h-4 mr-2"/> Újranyitás
+              </Button>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* TARTALOM GRID */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
+
+        {/* BAL OSZLOP */}
+        <div className="lg:col-span-3 space-y-6 overflow-y-auto pr-1 custom-scrollbar h-full pb-10">
+          <CaseInfoCard caseData={caseData}/>
+
+          <SuspectsCard
+            suspects={caseSuspects}
+            onAdd={canEdit ? () => setIsAddSuspectOpen(true) : undefined}
+            onView={(s) => setViewSuspect(s)}
+            onDelete={canEdit ? handleDeleteSuspect : undefined} // <--- BEKÖTVE
+          />
+
+          <CollaboratorsCard
+            collaborators={collaborators}
+            onAdd={canEdit ? () => setIsAddCollabOpen(true) : undefined} // <--- BEKÖTVE
+            onDelete={canEdit ? handleDeleteCollaborator : undefined} // <--- BEKÖTVE
+          />
+        </div>
+
+        {/* KÖZÉPSŐ OSZLOP */}
+        <div className="lg:col-span-6 h-full min-h-[500px] flex flex-col">
+          <CaseEditor caseId={caseId!} initialContent={caseData.body} readOnly={!canEdit} evidenceList={evidence}/>
+        </div>
+
+        {/* JOBB OSZLOP */}
+        <div className="lg:col-span-3 h-full flex flex-col space-y-4 overflow-y-auto custom-scrollbar pb-10 pr-2">
+          <div className="min-h-[200px] max-h-[300px] flex flex-col shrink-0">
+            <EvidenceCard
+              evidence={evidence}
+              onUpload={canEdit ? () => setIsUploadOpen(true) : undefined}
+              onView={openEvidenceViewer} // <--- BEKÖTVE
+              onDelete={canEdit ? handleDeleteEvidence : undefined} // <--- BEKÖTVE
+            />
+          </div>
+          <CaseWarrants caseId={caseId!} suspects={caseSuspects}/>
+          <div className="flex-1 min-h-[300px] flex flex-col">
+            <CaseChat caseId={caseId!}/>
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }

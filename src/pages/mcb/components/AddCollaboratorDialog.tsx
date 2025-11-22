@@ -1,185 +1,143 @@
 import * as React from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog";
+import { useAuth } from "@/context/AuthContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, Plus, UserCheck } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search, Loader2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
-import type { UserRole } from "@/types/supabase";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-// Keresési eredmény típusa
-type SearchResultProfile = {
-  id: string;
-  full_name: string;
-  role: UserRole;
-}
+import type { Profile } from "@/types/supabase";
 
 interface AddCollaboratorDialogProps {
-  caseId: string;
-  ownerId: string;
-  existingCollaborators: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  caseId: string;
   onCollaboratorAdded: () => void;
+  existingUserIds: string[];
 }
 
-export function AddCollaboratorDialog({
-                                        caseId,
-                                        ownerId,
-                                        existingCollaborators,
-                                        open,
-                                        onOpenChange,
-                                        onCollaboratorAdded,
-                                      }: AddCollaboratorDialogProps) {
-  const { supabase, profile } = useAuth();
-  const [searchTerm, setSearchTerm] = React.useState("");
+export function AddCollaboratorDialog({ open, onOpenChange, caseId, onCollaboratorAdded, existingUserIds }: AddCollaboratorDialogProps) {
+  const { supabase } = useAuth();
+  const [search, setSearch] = React.useState("");
+  const [results, setResults] = React.useState<Profile[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [selectedUser, setSelectedUser] = React.useState<Profile | null>(null);
+  const [role, setRole] = React.useState("editor"); // editor, viewer
 
-  // --- JAVÍTOTT LOGIKA ---
-  const [isLoading, setIsLoading] = React.useState(false); // Ez már csak a teljes lista betöltését jelzi
-  const [allDetectives, setAllDetectives] = React.useState<SearchResultProfile[]>([]); // Itt tároljuk a teljes listát
-  const [filteredResults, setFilteredResults] = React.useState<SearchResultProfile[]>([]); // Itt a szűrt listát
-  // --- VÉGE ---
-
-  const [isAdding, setIsAdding] = React.useState<string | null>(null);
-
-  // JAVÍTÁS: Keresés helyett mostantól a 'searchTerm' változását figyeljük
   React.useEffect(() => {
-    if (searchTerm.trim() === "") {
-      setFilteredResults(allDetectives); // Ha üres a kereső, mutass mindent
-    } else {
-      const lowerSearch = searchTerm.toLowerCase();
-      const filtered = allDetectives.filter(user =>
-        user.full_name.toLowerCase().includes(lowerSearch)
-      );
-      setFilteredResults(filtered);
-    }
-  }, [searchTerm, allDetectives]); // Figyeljük a searchTerm ÉS az allDetectives változását
-
-  // JAVÍTÁS: Adatok lekérése a dialógus megnyitásakor
-  React.useEffect(() => {
-    if (open) {
-      // Csak akkor töltsük be, ha még nem tettük meg
-      if (allDetectives.length === 0) {
-        setIsLoading(true);
-        const fetchAllDetectives = async () => {
-          const { data, error } = await supabase
-            .from("profiles")
-            .select("id, full_name, role")
-            .neq("role", "pending") // Függőben lévőket ne
-            .neq("id", profile!.id) // Saját magunkat ne
-            .neq("id", ownerId)   // <-- JAVÍTÁS: Kiszűrjük az akta tulajdonosát is
-
-          if (error) {
-            toast.error("Hiba a nyomozók listájának lekérésekor", { description: error.message });
-          } else {
-            setAllDetectives(data as SearchResultProfile[]);
-            setFilteredResults(data as SearchResultProfile[]);
-          }
-          setIsLoading(false);
-        };
-        fetchAllDetectives();
+    const searchUsers = async () => {
+      if (search.length < 2) {
+        setResults([]);
+        return;
       }
-    } else {
-      // Dialógus bezárásakor resetelünk
-      setSearchTerm("");
-      setFilteredResults(allDetectives); // Reset a szűrésre
-    }
-  }, [open, supabase, profile, allDetectives.length]); // Figyeljük az 'open' állapotot
+      setLoading(true);
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .ilike('full_name', `%${search}%`)
+        .limit(5);
 
-  // Felhasználó hozzáadása (VÁLTOZATLAN)
-  const handleAddUser = async (user: SearchResultProfile) => {
-    setIsAdding(user.id);
-    const { error } = await supabase.from("case_collaborators").insert({
-      case_id: caseId,
-      user_id: user.id,
-      status: "approved",
-    });
-    setIsAdding(null);
-    if (error) {
-      toast.error("Hiba a hozzáadás közben", { description: error.message });
-    } else {
-      toast.success(`${user.full_name} hozzáadva az aktához.`);
+      if (data) {
+        setResults(data.filter(u => !existingUserIds.includes(u.id)));
+      }
+      setLoading(false);
+    };
+
+    const debounce = setTimeout(searchUsers, 500);
+    return () => clearTimeout(debounce);
+  }, [search, supabase, existingUserIds]);
+
+  const handleAdd = async () => {
+    if (!selectedUser) return;
+
+    try {
+      const { error } = await supabase.from('case_collaborators').insert({
+        case_id: caseId,
+        user_id: selectedUser.id,
+        role: role as any
+      });
+
+      if (error) throw error;
+
+      toast.success(`${selectedUser.full_name} hozzáadva.`);
       onCollaboratorAdded();
-      onOpenChange(false);
+      handleClose();
+
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Hiba történt.");
     }
   };
 
+  const handleClose = () => {
+    setSearch(""); setSelectedUser(null); setRole("editor");
+    onOpenChange(false);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-900 border-slate-700 text-white sm:max-w-md">
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Közreműködő Hozzáadása</DialogTitle>
-          <DialogDescription>
-            Keress rá a nyomozóra a neve alapján, és add hozzá az aktához.
-          </DialogDescription>
+          <DialogTitle>Közreműködő hozzáadása</DialogTitle>
+          <DialogDescription>Válassz munkatársat a listából.</DialogDescription>
         </DialogHeader>
 
-        {/* --- JAVÍTÁS: Keresőgomb eltávolítva --- */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input
-            id="search"
-            placeholder="Keresés a nyomozók között..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-
-        <ScrollArea className="h-64 w-full rounded-md border border-slate-700 bg-slate-800 p-4">
-          {isLoading ? (
-            <div className="flex justify-center items-center h-full">
-              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        {!selectedUser ? (
+          <div className="space-y-4 py-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Input
+                placeholder="Név keresése..."
+                className="pl-9 bg-slate-950 border-slate-800"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                autoFocus
+              />
             </div>
-          ) : filteredResults.length === 0 ? (
-            <p className="text-center text-sm text-slate-500 pt-4">
-              {allDetectives.length > 0 ? "Nincs találat." : "Nincsenek más nyomozók a rendszerben."}
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {filteredResults.map((user) => {
-                const isAlreadyAdded = existingCollaborators.includes(user.id);
-                return (
-                  <div key={user.id} className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{user.full_name}</p>
-                      <p className="text-sm text-slate-400">{user.role}</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="default"
-                      disabled={isAlreadyAdded || isAdding === user.id}
-                      onClick={() => handleAddUser(user)}
-                    >
-                      {isAdding === user.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : isAlreadyAdded ? (
-                        <UserCheck className="w-4 h-4 mr-2" />
-                      ) : (
-                        <Plus className="w-4 h-4 mr-2" />
-                      )}
-                      {isAlreadyAdded ? "Hozzáadva" : "Hozzáadás"}
-                    </Button>
+            <ScrollArea className="h-[200px] rounded-md border border-slate-800 bg-slate-950/50 p-2">
+              {loading ? <div className="flex justify-center p-4"><Loader2 className="animate-spin w-5 h-5 text-slate-500"/></div> :
+                results.length === 0 ? <p className="text-center text-xs text-slate-500 p-4">Nincs találat.</p> : (
+                  <div className="space-y-1">
+                    {results.map(user => (
+                      <button key={user.id} className="w-full flex items-center gap-3 p-2 rounded hover:bg-slate-800 transition-colors text-left" onClick={() => setSelectedUser(user)}>
+                        <Avatar className="h-8 w-8 border border-slate-700"><AvatarImage src={user.avatar_url} /><AvatarFallback className="bg-slate-900 text-xs">{user.full_name.charAt(0)}</AvatarFallback></Avatar>
+                        <div>
+                          <p className="text-sm font-medium text-white">{user.full_name}</p>
+                          <p className="text-xs text-slate-400">{user.badge_number} - {user.faction_rank}</p>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                );
-              })}
+                )}
+            </ScrollArea>
+          </div>
+        ) : (
+          <div className="space-y-4 py-2 animate-in fade-in slide-in-from-right-4">
+            <div className="flex items-center gap-3 p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <Avatar className="h-10 w-10 border border-slate-700"><AvatarImage src={selectedUser.avatar_url} /><AvatarFallback>{selectedUser.full_name.charAt(0)}</AvatarFallback></Avatar>
+              <div>
+                <p className="font-bold text-white">{selectedUser.full_name}</p>
+                <button onClick={() => setSelectedUser(null)} className="text-xs text-blue-400 hover:underline">Vissza</button>
+              </div>
             </div>
-          )}
-        </ScrollArea>
-
+            <div className="space-y-2">
+              <Label>Jogosultság</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger className="bg-slate-950 border-slate-800"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                  <SelectItem value="editor">Szerkesztő (Teljes hozzáférés)</SelectItem>
+                  <SelectItem value="viewer">Megfigyelő (Csak olvasás)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
         <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">Mégse</Button>
-          </DialogClose>
+          <Button variant="ghost" onClick={handleClose}>Mégse</Button>
+          <Button onClick={handleAdd} disabled={!selectedUser} className="bg-blue-600 hover:bg-blue-700 text-white">Hozzáadás</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

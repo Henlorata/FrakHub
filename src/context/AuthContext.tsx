@@ -1,142 +1,140 @@
-import * as React from "react";
-import { supabase } from "@/lib/supabaseClient";
-import type { AuthSession } from "@supabase/supabase-js";
-import type { Profile } from "@/types/supabase";
+import React, {createContext, useContext, useEffect, useState, useRef} from 'react';
+import {createClient, type Session, type User, SupabaseClient} from '@supabase/supabase-js';
+import type {Database, Profile} from '../types/supabase';
 
 interface AuthContextType {
-  session: AuthSession | null;
+  session: Session | null;
+  user: User | null;
   profile: Profile | null;
-  isLoading: boolean;
-  logout: () => Promise<void>;
-  supabase: typeof supabase;
+  supabase: SupabaseClient<Database>;
+  loading: boolean;
+  signOut: () => Promise<void>;
 }
 
-const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = React.useState<AuthSession | null>(null);
-  const [profile, setProfile] = React.useState<Profile | null>(null);
-  const [authLoading, setAuthLoading] = React.useState(true);
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
-  // Segédfüggvény a profil lekéréséhez
-  const getProfile = async (session: AuthSession): Promise<Profile | null> => {
+export function AuthProvider({children}: { children: React.ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const profileRef = useRef<Profile | null>(null);
+
+  const signOut = async () => {
     try {
-      const { data: userProfile, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-
-      if (error || !userProfile) {
-        throw new Error(error?.message || "Profil nem található.");
-      }
-      return userProfile;
-
-    } catch (error) {
-      console.error("AuthContext Hiba (getProfile):", (error as Error).message);
+      setLoading(true);
       await supabase.auth.signOut();
-      return null;
+    } catch (error) {
+      console.error("SignOut error:", error);
+    } finally {
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      profileRef.current = null;
+      setLoading(false);
+      localStorage.removeItem(`sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`);
     }
   };
 
-
-  React.useEffect(() => {
-    setAuthLoading(true);
-
-    // 1. LÉPÉS: Kezdeti munkamenet ellenőrzése
-    const fetchInitialSession = async () => {
-      const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+  const fetchProfile = async (userId: string) => {
+    try {
+      const {data, error} = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
       if (error) {
-        console.error("Hiba a kezdeti session lekérésekor:", error.message);
+        if (error.code === 'PGRST116') await signOut();
+      } else {
+        setProfile(data);
+        profileRef.current = data;
       }
+    } catch (error) {
+      console.error('Kritikus profil hiba:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      if (initialSession) {
-        const userProfile = await getProfile(initialSession);
-        setSession(initialSession);
-        setProfile(userProfile);
+  useEffect(() => {
+    let mounted = true;
+
+    const initSession = async () => {
+      const {data: {session}} = await supabase.auth.getSession();
+      if (mounted) {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          await fetchProfile(session.user.id);
+        } else {
+          setLoading(false);
+        }
       }
-      setAuthLoading(false);
     };
 
-    fetchInitialSession();
+    initSession();
 
-    // 2. LÉPÉS: Figyelő beállítása a VÁLTOZÁSOKRA
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
-
-        // --- A VÉGLEGES JAVÍTÁS ITT VAN ---
-
-        // Használjuk a setSession funkcionális frissítését,
-        // hogy megkapjuk a 'currentSession'-t anélkül,
-        // hogy a 'session'-t a useEffect függőségeihez adnánk.
-        setSession(currentSession => {
-
-          // 1. ESET: KIJELENTKEZÉS
-          // Ha nincs új session, kijelentkeztünk.
-          if (!newSession) {
-            setProfile(null);
-            return null;
+    const {data: {subscription}} = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      setTimeout(async () => {
+        if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          profileRef.current = null;
+          setLoading(false);
+          return;
+        }
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          setSession(session);
+          setUser(session?.user ?? null);
+          if (session?.user) {
+            // Mindig frissítünk belépéskor
+            await fetchProfile(session.user.id);
+          } else {
+            setLoading(false);
           }
+        }
+      }, 0);
+    });
 
-          // 2. ESET: FÜL-VÁLTÁS (TAB-SWITCH)
-          // Ha az új session ID-ja MEGEGYEZIK a jelenlegi session ID-jával,
-          // az azt jelenti, hogy ez csak egy háttér-frissítés (pl. fül-váltás).
-          // Ilyenkor csendben frissítjük a sessiont, de
-          // NEM indítunk globális töltést és NEM kérjük le újra a profilt.
-          if (currentSession && currentSession.user.id === newSession.user.id) {
-            return newSession; // Csendes frissítés
-          }
+    // ÚJ: Realtime feliratkozás a SAJÁT profil változásaira
+    let profileSubscription: any = null;
+    if (user?.id) {
+      profileSubscription = supabase
+        .channel(`public:profiles:id=eq.${user.id}`)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${user.id}`
+        }, (payload) => {
+          console.log("Profil frissült realtime:", payload.new);
+          setProfile(payload.new as Profile);
+        })
+        .subscribe();
+    }
 
-          // 3. ESET: VALÓDI ÚJ BEJELENTKEZÉS
-          // Ha a session ID más (vagy eddig nem volt session),
-          // akkor ez egy valódi bejelentkezés.
-          // Indítjuk a globális töltést és lekérjük a profilt.
-          setAuthLoading(true);
-          getProfile(newSession).then((userProfile) => {
-            if (userProfile) {
-              setProfile(userProfile);
-              setAuthLoading(false);
-            } else {
-              // Ha a profil lekérése hibára futott, a getProfile()
-              // már kijelentkeztetett minket, így null-t kapunk.
-              setProfile(null);
-              setAuthLoading(false);
-            }
-          });
-
-          return newSession;
-        });
-      }
-    );
-
-    // Takarítás
     return () => {
-      authListener?.subscription.unsubscribe();
+      mounted = false;
+      subscription.unsubscribe();
+      if (profileSubscription) supabase.removeChannel(profileSubscription);
     };
-  }, []); // Az üres dependency array itt helyes
+  }, [user?.id]);
 
-  const logout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  const value = {
-    session,
-    profile,
-    isLoading: authLoading,
-    logout,
-    supabase: supabase,
-  };
+  const value = {session, user, profile, supabase, loading, signOut};
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  const context = React.useContext(AuthContext);
-
-  if (context === undefined) {
-    throw new Error("useAuth kötelezően egy AuthProvider-en belül kell legyen");
-  }
-
+  const context = useContext(AuthContext);
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }

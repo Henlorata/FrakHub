@@ -1,14 +1,9 @@
 {
   "framework": "vite",
-  "devCommand": "vite",
-  "rewrites": [
+  "crons": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "path": "/api/cron/daily-cleanup",
+      "schedule": "0 3 * * *"
     }
   ]
 }
