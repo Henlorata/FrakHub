@@ -2,7 +2,7 @@ import type {VercelRequest, VercelResponse} from '@vercel/node';
 import {createClient} from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error("HIBA: Hiányzó Supabase URL vagy Service Key!");
@@ -23,6 +23,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   try {
     console.log("--- Napi karbantartás indítása ---");
 
+    // 1. Pénzügyi kérelmek (40 napnál régebbi lezártak)
     try {
       const financeThreshold = new Date();
       financeThreshold.setDate(financeThreshold.getDate() - 40);
@@ -36,20 +37,25 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       if (fetchError) throw fetchError;
 
       if (oldRequests && oldRequests.length > 0) {
+        // Képek törlése
         const filePaths = oldRequests.map(req => req.proof_image_path).filter(Boolean);
         if (filePaths.length > 0) {
           await supabaseAdmin.storage.from('finance_proofs').remove(filePaths);
         }
+        // Rekordok törlése
         const idsToDelete = oldRequests.map(req => req.id);
-        await supabaseAdmin.from('budget_requests').delete().in('id', idsToDelete);
-        results.financeDeleted = idsToDelete.length;
-        console.log(`Pénzügy: ${idsToDelete.length} régi elem törölve.`);
+        if (idsToDelete.length > 0) {
+          await supabaseAdmin.from('budget_requests').delete().in('id', idsToDelete);
+          results.financeDeleted = idsToDelete.length;
+          console.log(`Pénzügy: ${idsToDelete.length} régi elem törölve.`);
+        }
       }
     } catch (err: any) {
       console.error("Pénzügyi takarítás hiba:", err.message);
       results.errors.push(`Finance error: ${err.message}`);
     }
 
+    // 2. Járműigénylések (40 napnál régebbi lezártak)
     try {
       const vehicleThreshold = new Date();
       vehicleThreshold.setDate(vehicleThreshold.getDate() - 40);
@@ -69,9 +75,10 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       results.errors.push(`Vehicle error: ${err.message}`);
     }
 
+    // 3. Action Logs (24 óránál régebbi)
     try {
       const actionThreshold = new Date();
-      actionThreshold.setDate(actionThreshold.getDate() - 1);
+      actionThreshold.setDate(actionThreshold.getDate() - 1); // -1 nap
 
       const {error: actionDeleteError, count} = await supabaseAdmin
         .from('action_logs')

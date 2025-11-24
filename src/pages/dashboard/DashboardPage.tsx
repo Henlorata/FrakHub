@@ -183,9 +183,7 @@ export function DashboardPage() {
   const [isLoadingStats, setIsLoadingStats] = React.useState(true);
   const [isNewsDialogOpen, setIsNewsDialogOpen] = React.useState(false);
 
-  // ÚJ: Utolsó frissítés ideje
-  const [lastUpdated, setLastUpdated] = React.useState(new Date());
-  // Ez a state segít a másodpercenkénti frissítésben a "Most"-hoz
+  const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null);
   const [tick, setTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -195,6 +193,12 @@ export function DashboardPage() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Segédfüggvény a dátum frissítéséhez
+  const updateLastUpdated = (newDateStr: string) => {
+    const newDate = new Date(newDateStr);
+    setLastUpdated(prev => (!prev || newDate > prev) ? newDate : prev);
+  };
 
   const fetchNews = async () => {
     const {data} = await supabase
@@ -207,8 +211,12 @@ export function DashboardPage() {
     if (data) {
       setAnnouncements(data);
       if (data.length > 0) {
-        const latestNewsDate = new Date(data[0].created_at);
-        setLastUpdated(prev => latestNewsDate > prev ? latestNewsDate : prev);
+        // JAVÍTÁS: Nem csak az elsőt nézzük (mert az lehet egy régi pinned), hanem megkeressük a legfrissebbet
+        const latestNews = data.reduce((latest, current) => {
+          return new Date(current.created_at) > new Date(latest) ? current.created_at : latest;
+        }, data[0].created_at);
+
+        updateLastUpdated(latestNews);
       }
     }
   };
@@ -233,8 +241,7 @@ export function DashboardPage() {
         if (actions) {
           setRecentActions(actions);
           if (actions.length > 0) {
-            const latestActionDate = new Date(actions[0].created_at);
-            setLastUpdated(prev => latestActionDate > prev ? latestActionDate : prev);
+            updateLastUpdated(actions[0].created_at);
           }
         }
 
@@ -248,15 +255,15 @@ export function DashboardPage() {
 
     const channel = supabase
       .channel('dashboard_combined')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'action_logs' }, async (payload) => {
+      .on('postgres_changes', {event: 'INSERT', schema: 'public', table: 'action_logs'}, async (payload) => {
         const {data: newAction} = await supabase.from('action_logs').select('*, profiles(full_name, badge_number)').eq('id', payload.new.id).single();
         if (newAction) {
           setRecentActions(prev => [newAction, ...prev].slice(0, 20));
-          setLastUpdated(new Date()); // Új eseménynél frissüljön a számláló
+          updateLastUpdated(payload.new.created_at);
         }
       })
       .on('postgres_changes', {event: '*', schema: 'public', table: 'announcements'}, () => {
-        fetchNews(); // A fetchNews beállítja a lastUpdated-et
+        fetchNews();
       })
       .subscribe();
 
@@ -537,10 +544,12 @@ export function DashboardPage() {
                 </div>
               </ScrollArea>
             </div>
-            {/* JAVÍTÁS: Élő "Utolsó frissítés" felirat */}
             <CardFooter className="p-2 border-t border-slate-800 bg-slate-950/30 justify-center">
               <p className="text-[10px] text-slate-500">
-                Utolsó frissítés: {formatDistanceToNow(lastUpdated, {addSuffix: true, locale: hu})}
+                Utolsó frissítés: {lastUpdated ? formatDistanceToNow(lastUpdated, {
+                addSuffix: true,
+                locale: hu
+              }) : "Nincs adat"}
               </p>
             </CardFooter>
           </Card>
