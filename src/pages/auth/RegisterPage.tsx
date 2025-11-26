@@ -140,7 +140,7 @@ export function RegisterPage() {
                 <select
                   className="w-full h-10 rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200"
                   value={selectedDivision} onChange={(e) => setSelectedDivision(e.target.value as any)}>
-                  <option value="TSB">TSB (Járőr)</option>
+                  <option value="TSB">Field Staff (Járőr)</option>
                   <option value="SEB">SEB (Taktikai)</option>
                   <option value="MCB">MCB (Nyomozó)</option>
                 </select>
