@@ -21,7 +21,7 @@ import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/compon
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
-} from "@/components/ui/alert-dialog"; // ÚJ IMPORT
+} from "@/components/ui/alert-dialog";
 import {toast} from "sonner";
 import {
   CheckCircle2,
@@ -57,14 +57,14 @@ const HIGH_COMMAND_RANKS = ['Commander', 'Deputy Commander', 'Captain III.', 'Ca
 const SUPERVISORY_RANKS = ['Sergeant II.', 'Sergeant I.'];
 const CORPORAL_INDEX = FACTION_RANKS.indexOf('Corporal');
 
-// --- EDIT DIALOG (Kicsit tisztítva, a kick logic kiszervezve) ---
+// --- EDIT DIALOG ---
 function EditUserDialog({user, open, onOpenChange, onUpdate, viewerRank, onKickRequest}: {
   user: Profile | null,
   open: boolean,
   onOpenChange: (o: boolean) => void,
   onUpdate: () => void,
   viewerRank: 'admin' | 'supervisor',
-  onKickRequest: () => void // ÚJ PROP
+  onKickRequest: () => void
 }) {
   const [loading, setLoading] = React.useState(false);
   const [formData, setFormData] = React.useState<Partial<Profile>>({});
@@ -245,7 +245,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, viewerRank, onKickR
   )
 }
 
-// --- LISTA KOMPONENS (Javított táblázat) ---
+// --- LISTA KOMPONENS ---
 function StaffSection({title, icon: Icon, users, colorClass, onEdit}: any) {
   if (users.length === 0) return null;
 
@@ -374,7 +374,9 @@ export function HrPage() {
   const handlePendingAction = async (userId: string, action: 'approve' | 'reject') => {
     try {
       const endpoint = action === 'approve' ? '/api/admin/update-role' : '/api/admin/delete-user';
-      const body = action === 'approve' ? {userId, system_role: 'user'} : {userId};
+      // JAVÍTÁS: Nem küldünk system_role-t, a backend kiszámolja a rangból
+      const body = action === 'approve' ? {userId} : {userId};
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}`},
@@ -400,7 +402,7 @@ export function HrPage() {
       if (!response.ok) throw new Error();
       toast.warning(`${userToKick.full_name} elbocsátva.`);
       fetchUsers();
-      setEditingUser(null); // Bezárjuk az editert is
+      setEditingUser(null);
     } catch {
       toast.error("Hiba az elbocsátás során.");
     } finally {
@@ -424,7 +426,6 @@ export function HrPage() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500 pb-10">
 
-      {/* Szép Confirm Dialog */}
       <AlertDialog open={isKickAlertOpen} onOpenChange={setIsKickAlertOpen}>
         <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
           <AlertDialogHeader>
@@ -456,7 +457,6 @@ export function HrPage() {
         }}
       />
 
-      {/* ... Header és Pending rész változatlan marad, a StaffSection-ök kapják a fix táblázatot ... */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Személyügy (HR)</h1>
@@ -483,7 +483,7 @@ export function HrPage() {
         </div>
       </div>
 
-      {/* PENDING USERS - Egyszerűbb UI */}
+      {/* PENDING USERS */}
       {pendingUsers.length > 0 && (
         <div className="bg-yellow-950/20 border border-yellow-600/30 rounded-xl p-6 animate-pulse-border">
           <div className="flex items-center gap-3 mb-4">

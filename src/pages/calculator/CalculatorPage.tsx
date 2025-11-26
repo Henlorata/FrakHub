@@ -29,17 +29,11 @@ import {
 } from "@/components/ui/card";
 import {Slider} from "@/components/ui/slider";
 import {Textarea} from "@/components/ui/textarea";
-import {Toaster} from "@/components/ui/sonner";
 import {toast} from "sonner";
 import {
   Drawer,
   DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
   DrawerTrigger,
-  DrawerFooter,
-  DrawerClose,
-  DrawerDescription,
 } from "@/components/ui/drawer";
 import {
   Dialog,
@@ -69,7 +63,6 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import {cn} from "@/lib/utils";
-import {ScrollArea} from "@/components/ui/scroll-area";
 import {Badge} from "@/components/ui/badge";
 
 // --- Típusok ---

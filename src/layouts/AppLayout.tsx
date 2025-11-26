@@ -17,7 +17,7 @@ import {
   Gavel,
   Bell,
   User,
-  ChevronUp, ClipboardPen
+  ChevronUp, ClipboardPen, ClipboardList
 } from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {cn} from "@/lib/utils";
@@ -90,6 +90,7 @@ export function AppLayout() {
 
   const menuItems = [
     {icon: LayoutDashboard, label: "Irányítópult", path: "/dashboard", show: true},
+    {icon: ClipboardList, label: "Vizsgaközpont", path: "/exams", show: true},
     {icon: Gavel, label: "Büntetés Kalkulátor", path: "/calculator", show: true},
     {icon: ClipboardPen, label: "Jelentés Generátor", path: "/reports", show: true},
     {
