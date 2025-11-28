@@ -1,15 +1,16 @@
 import {type ClassValue, clsx} from "clsx"
 import {twMerge} from "tailwind-merge"
-import {type Profile, type FactionRank, type Case, FACTION_RANKS, type Qualification} from "@/types/supabase"
-import type {Exam} from "@/types/exams";
+import {FACTION_RANKS, type FactionRank, type Profile} from "@/types/supabase"
+import type {Exam} from "@/types/exams"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-const EXECUTIVE_STAFF: FactionRank[] = ['Commander', 'Deputy Commander'];
-const COMMAND_STAFF: FactionRank[] = ['Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.'];
-const SUPERVISORY_STAFF: FactionRank[] = ['Sergeant II.', 'Sergeant I.'];
+// --- RANG DEFINÍCIÓK ÉS HIERARCHIA ---
+export const EXECUTIVE_STAFF: FactionRank[] = ['Commander', 'Deputy Commander'];
+export const COMMAND_STAFF: FactionRank[] = ['Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.'];
+export const SUPERVISORY_STAFF: FactionRank[] = ['Sergeant II.', 'Sergeant I.'];
 
 export const isExecutive = (p?: Profile | null) => p ? EXECUTIVE_STAFF.includes(p.faction_rank) : false;
 export const isCommand = (p?: Profile | null) => p ? COMMAND_STAFF.includes(p.faction_rank) : false;
@@ -19,6 +20,83 @@ export const isHighCommand = (p?: Profile | null) => isExecutive(p) || isCommand
 export const isInvestigatorIII = (p?: Profile | null) => p?.division === 'MCB' && p?.division_rank === 'Investigator III.';
 export const isMcbMember = (p?: Profile | null) => p?.division === 'MCB';
 
+
+// 1. Ki szerkesztheti a másikat? (Név, Jelvény, Adatlap megnyitása)
+export const canEditUser = (editor: Profile, target: Profile): boolean => {
+  // Bureau Manager mindent vihet
+  if (editor.is_bureau_manager) return true;
+
+  // Saját magát senki ne szerkessze itt (arra ott a profil) - vagy ha igen, akkor return true
+  if (editor.id === target.id) return false;
+
+  const editorRankIdx = getRankPriority(editor.faction_rank);
+  const targetRankIdx = getRankPriority(target.faction_rank);
+
+  // Executive Staff: Bárkit szerkeszthet (kivéve Bureau Managert, ha ők nem azok)
+  if (isExecutive(editor)) {
+    return !target.is_bureau_manager;
+  }
+
+  // Command Staff: Csak Command Staff ALATT (Supervisory és lefelé)
+  // Tehát target index > Lieutenant I. indexe
+  if (isCommand(editor)) {
+    const lowestCommandIdx = getRankPriority('Lieutenant I.');
+    return targetRankIdx > lowestCommandIdx;
+  }
+
+  // Supervisory Staff: Csak Corporalig (Corporal és lefelé)
+  if (isSupervisory(editor)) {
+    const corporalIdx = getRankPriority('Corporal');
+    return targetRankIdx >= corporalIdx;
+  }
+
+  // TB Staff (Training Bureau): Csak Trainee-t szerkeszthet (és csak előléptetésre, de itt az edit jogot nézzük)
+  if (editor.qualifications?.includes('TB') && target.faction_rank === 'Deputy Sheriff Trainee') {
+    return true;
+  }
+
+  return false;
+};
+
+// 2. Milyen rangra léptethet elő a felhasználó?
+// Visszaadja az engedélyezett rangokat a legördülőhöz
+export const getAllowedPromotionRanks = (editor: Profile): FactionRank[] => {
+  if (editor.is_bureau_manager) return [...FACTION_RANKS];
+
+  if (isExecutive(editor)) {
+    // Executive mindent adhat, kivéve Bureau Manager specifikus dolgokat (de rangot igen)
+    return [...FACTION_RANKS];
+  }
+
+  if (isCommand(editor)) {
+    // Command Staff alattig (Supervisory-tól lefelé)
+    const sergeantII_Idx = getRankPriority('Sergeant II.');
+    return FACTION_RANKS.slice(sergeantII_Idx);
+  }
+
+  if (isSupervisory(editor)) {
+    // Corporalig (Corporal-tól lefelé)
+    const corporalIdx = getRankPriority('Corporal');
+    return FACTION_RANKS.slice(corporalIdx);
+  }
+
+  if (editor.qualifications?.includes('TB')) {
+    // TB Staff: Csak Deputy Sheriff I. és Trainee
+    return ['Deputy Sheriff I.', 'Deputy Sheriff Trainee'];
+  }
+
+  return [];
+};
+
+// 3. Ki adhat kitüntetést?
+export const canAwardRibbon = (editor: Profile) => {
+  return editor.is_bureau_manager || isExecutive(editor);
+}
+
+// 4. Ki jelölhet ki parancsnokokat? (Division Commander, Bureau Commander)
+export const canManageCommanders = (editor: Profile) => {
+  return !!editor.is_bureau_manager;
+}
 
 // --- VIZSGA JOGOSULTSÁGOK ---
 

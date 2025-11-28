@@ -6,12 +6,7 @@ import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Input} from "@/components/ui/input";
@@ -24,27 +19,20 @@ import {
 } from "@/components/ui/alert-dialog";
 import {toast} from "sonner";
 import {
-  CheckCircle2,
-  Loader2,
-  UserPlus,
-  UserCog,
-  Trash2,
-  Search,
-  Crown,
-  Star,
-  Users,
-  CalendarClock, Award, ShieldCheck
+  CheckCircle2, Loader2, Trash2, Search, Crown, Star, Users,
+  CalendarClock, Award, ShieldCheck, Medal, PenTool, ShieldAlert
 } from "lucide-react";
 import {
-  FACTION_RANKS,
-  type Profile,
-  type DepartmentDivision,
-  type Qualification,
-  type InvestigatorRank,
-  type OperatorRank
+  FACTION_RANKS, type Profile, type DepartmentDivision, type Qualification,
+  type InvestigatorRank, type OperatorRank
 } from "@/types/supabase";
-import {cn} from "@/lib/utils";
+import {
+  cn, canEditUser, getAllowedPromotionRanks, canAwardRibbon,
+  isExecutive
+} from "@/lib/utils";
 import {differenceInDays} from "date-fns";
+import {GiveAwardDialog} from "@/pages/profile/components/GiveAwardDialog";
+import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 
 // --- KONFIGURÁCIÓ ---
 const DIVISIONS: DepartmentDivision[] = ['TSB', 'SEB', 'MCB'];
@@ -52,20 +40,13 @@ const QUALIFICATIONS: Qualification[] = ['SAHP', 'AB', 'MU', 'GW', 'FAB', 'SIB',
 const INVESTIGATOR_RANKS: InvestigatorRank[] = ['Investigator III.', 'Investigator II.', 'Investigator I.'];
 const OPERATOR_RANKS: OperatorRank[] = ['Operator III.', 'Operator II.', 'Operator I.'];
 
-// Részletes rang felosztás
 const EXECUTIVE_RANKS = ['Commander', 'Deputy Commander'];
 const COMMAND_RANKS = ['Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.'];
-// High Command = Executive + Command (a szűréshez)
+const SUPERVISORY_RANKS = ['Sergeant II.', 'Sergeant I.'];
 const HIGH_COMMAND_RANKS = [...EXECUTIVE_RANKS, ...COMMAND_RANKS];
 
-const SUPERVISORY_RANKS = ['Sergeant II.', 'Sergeant I.'];
-const CORPORAL_INDEX = FACTION_RANKS.indexOf('Corporal');
-
 // --- SEGÉDFÜGGVÉNYEK ---
-
-// Stílus és Címke meghatározása TSB speciális eseteivel
 const getDivisionStyleAndLabel = (division: string, rank: string) => {
-  // Ha NEM TSB, akkor a szokásos logika
   if (division !== 'TSB') {
     return {
       label: division,
@@ -74,37 +55,39 @@ const getDivisionStyleAndLabel = (division: string, rank: string) => {
           'bg-slate-800 text-slate-400'
     };
   }
-
-  // Ha TSB, akkor rang alapján döntünk
-  if (EXECUTIVE_RANKS.includes(rank)) {
-    return {label: 'Executive Staff', className: 'bg-red-900/20 text-red-300 border-red-700/50'};
-  }
-  if (COMMAND_RANKS.includes(rank)) {
-    return {label: 'Command Staff', className: 'bg-yellow-900/20 text-yellow-300 border-yellow-700/50'};
-  }
-  if (SUPERVISORY_RANKS.includes(rank)) {
-    return {label: 'Supervisory Staff', className: 'bg-green-900/20 text-green-300 border-green-700/50'};
-  }
-
-  // Alap eset (Field Staff)
+  if (EXECUTIVE_RANKS.includes(rank)) return {
+    label: 'Executive Staff',
+    className: 'bg-red-900/20 text-red-300 border-red-700/50'
+  };
+  if (COMMAND_RANKS.includes(rank)) return {
+    label: 'Command Staff',
+    className: 'bg-yellow-900/20 text-yellow-300 border-yellow-700/50'
+  };
+  if (SUPERVISORY_RANKS.includes(rank)) return {
+    label: 'Supervisory Staff',
+    className: 'bg-green-900/20 text-green-300 border-green-700/50'
+  };
   return {label: 'Field Staff', className: 'bg-slate-800 text-slate-400 border-slate-700'};
 };
 
 // --- EDIT DIALOG ---
-function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRequest}: {
+function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKickRequest}: {
   user: Profile | null,
   open: boolean,
   onOpenChange: (o: boolean) => void,
   onUpdate: () => void,
-  canManage: boolean,
+  currentUser: Profile | null,
   onKickRequest: () => void
 }) {
+  const {supabase} = useAuth();
   const [loading, setLoading] = React.useState(false);
   const [formData, setFormData] = React.useState<Partial<Profile>>({});
 
   React.useEffect(() => {
     if (user && open) {
       setFormData({
+        full_name: user.full_name,
+        badge_number: user.badge_number,
         faction_rank: user.faction_rank,
         division: user.division,
         division_rank: user.division_rank,
@@ -116,58 +99,105 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRe
     }
   }, [user, open]);
 
-  const isTargetProtected = React.useMemo(() => {
-    if (!user) return true;
-    // Ha nem vagyunk biztosak a jogkörben, a szerver úgyis visszadobja
-    const userRankIndex = FACTION_RANKS.indexOf(user.faction_rank);
-    return userRankIndex < CORPORAL_INDEX; // Csak a magas rangúakat védjük a sima supervisortól
-  }, [user]);
+  // JOGOSULTSÁG ELLENŐRZŐ (MEZŐNKÉNT)
+  const isFieldDisabled = (field: 'rank' | 'division' | 'div_rank' | 'qual' | 'manager') => {
+    if (!currentUser || !user) return true;
+    if (currentUser.is_bureau_manager) return false; // Manager mindent írhat
+
+    switch (field) {
+      case 'rank': // Név, Jelvény, Főrang
+        if (isExecutive(currentUser) && currentUser.id === user.id) return false;
+        return !canEditUser(currentUser, user);
+
+      case 'division': // Osztály váltása
+        if (currentUser.is_bureau_commander) return false;
+        return true;
+
+      case 'div_rank': // Osztályrang
+        if (currentUser.is_bureau_commander) return false;
+        return true;
+
+      case 'qual': // Képesítések
+        if (currentUser.is_bureau_commander) return false;
+        if (currentUser.commanded_divisions && currentUser.commanded_divisions.length > 0) return false;
+        return true;
+
+      case 'manager':
+        return !currentUser.is_bureau_manager;
+
+      default:
+        return true;
+    }
+  };
+
+  const allowedRanks = currentUser ? getAllowedPromotionRanks(currentUser) : [];
 
   const handleSave = async () => {
-    if (!user) return;
-    // Extra kliens oldali védelem, de a szerver a döntő
+    if (!user || !currentUser) return;
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/update-role', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({userId: user.id, ...formData}),
+      const {error: rpcError} = await supabase.rpc('hr_update_user_profile_v2', {
+        _target_user_id: user.id,
+        _full_name: formData.full_name,
+        _badge_number: formData.badge_number,
+        _faction_rank: formData.faction_rank,
+        _division: formData.division,
+        _division_rank: formData.division_rank,
+        _qualifications: formData.qualifications
       });
-      if (!response.ok) throw new Error("API hiba");
+
+      if (rpcError) throw rpcError;
+
+      if (currentUser.is_bureau_manager) {
+        const updates: any = {};
+        if (formData.is_bureau_manager !== user.is_bureau_manager) updates.is_bureau_manager = formData.is_bureau_manager;
+        if (formData.is_bureau_commander !== user.is_bureau_commander) updates.is_bureau_commander = formData.is_bureau_commander;
+        if (JSON.stringify(formData.commanded_divisions) !== JSON.stringify(user.commanded_divisions)) updates.commanded_divisions = formData.commanded_divisions;
+
+        if (Object.keys(updates).length > 0) {
+          const {error: updateError} = await supabase.from('profiles').update(updates).eq('id', user.id);
+          if (updateError) throw updateError;
+        }
+      }
+
       toast.success("Felhasználó frissítve!");
       onUpdate();
       onOpenChange(false);
-    } catch {
-      toast.error("Hiba a mentés során.");
+    } catch (e: any) {
+      toast.error("Hiba a mentés során: " + e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const availableRanks = FACTION_RANKS; // Minden rang elérhető a listában, a szerver validál
-
   const toggleQual = (q: Qualification) => {
+    let canToggle = false;
+    if (currentUser?.is_bureau_manager) canToggle = true;
+    else if (currentUser?.is_bureau_commander) canToggle = true;
+    else if (currentUser?.commanded_divisions?.includes(q)) canToggle = true;
+
+    if (!canToggle) return;
+
     const current = formData.qualifications || [];
     setFormData({...formData, qualifications: current.includes(q) ? current.filter(x => x !== q) : [...current, q]});
   };
 
-  // Division Commander logika: Ha bejelölöd, megkapja a sima kvalifikációt is
   const toggleCommandedDivision = (q: Qualification) => {
+    // Ezt csak Manager vagy Bureau Commander nyomkodhatja
+    if (!(currentUser?.is_bureau_manager || currentUser?.is_bureau_commander)) return;
+
     const currentCmd = formData.commanded_divisions || [];
-    const currentQual = formData.qualifications || [];
+    const currentQuals = formData.qualifications || [];
 
     if (currentCmd.includes(q)) {
-      // Levétel
-      setFormData({
-        ...formData,
-        commanded_divisions: currentCmd.filter(x => x !== q)
-      });
+      setFormData({...formData, commanded_divisions: currentCmd.filter(x => x !== q)});
     } else {
-      // Hozzáadás + Sima kvalifikáció hozzáadása is
+      // JAVÍTÁS: Ha kinevezzük parancsnoknak, adjuk hozzá a képesítést is!
+      const newQuals = currentQuals.includes(q) ? currentQuals : [...currentQuals, q];
       setFormData({
         ...formData,
         commanded_divisions: [...currentCmd, q],
-        qualifications: currentQual.includes(q) ? currentQual : [...currentQual, q]
+        qualifications: newQuals
       });
     }
   };
@@ -179,21 +209,40 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRe
       <DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">Adatlap Kezelése</DialogTitle>
-          <DialogDescription>{user.full_name} [#{user.badge_number}]</DialogDescription>
+          <DialogDescription>Módosítások végrehajtása.</DialogDescription>
         </DialogHeader>
+
         <div className="space-y-4 py-2">
+          {/* 1. SZEMÉLYES ADATOK */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Teljes Név</Label>
+              <Input value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})}
+                     className="bg-slate-950 border-slate-700 disabled:opacity-50" disabled={isFieldDisabled('rank')}/>
+            </div>
+            <div className="space-y-2">
+              <Label>Jelvényszám</Label>
+              <Input value={formData.badge_number}
+                     onChange={e => setFormData({...formData, badge_number: e.target.value})}
+                     className="bg-slate-950 border-slate-700 disabled:opacity-50" disabled={isFieldDisabled('rank')}/>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label>Frakció Rang</Label>
             <Select value={formData.faction_rank}
                     onValueChange={(val: any) => setFormData({...formData, faction_rank: val})}
-                    disabled={!canManage}>
+                    disabled={isFieldDisabled('rank')}>
               <SelectTrigger
                 className="bg-slate-950 border-slate-700 disabled:opacity-50"><SelectValue/></SelectTrigger>
               <SelectContent className="bg-slate-900 border-slate-800 text-white max-h-[300px]">
-                {availableRanks.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                {allowedRanks.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
               </SelectContent>
             </Select>
+            <p className="text-[10px] text-slate-500">Csak a jogosultságodnak megfelelő rangok láthatóak.</p>
           </div>
+
+          {/* 2. OSZTÁLY & ALOSZTÁLY RANG */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Osztály</Label>
@@ -201,20 +250,12 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRe
                 ...formData,
                 division: val,
                 division_rank: val === 'TSB' ? null : formData.division_rank,
-                is_bureau_commander: val === 'TSB' ? false : formData.is_bureau_commander // TSB-nél kivesszük a Bureau Commandert
-              })} disabled={!canManage}>
+                is_bureau_commander: val === 'TSB' ? false : formData.is_bureau_commander
+              })} disabled={isFieldDisabled('division')}>
                 <SelectTrigger
                   className="bg-slate-950 border-slate-700 disabled:opacity-50"><SelectValue/></SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                  {DIVISIONS.map(d => {
-                    // A lista megjelenítésénél a kiválasztott rang alapján döntjük el a TSB nevét
-                    let label = d;
-                    if (d === 'TSB' && formData.faction_rank) {
-                      const style = getDivisionStyleAndLabel('TSB', formData.faction_rank);
-                      label = style.label;
-                    }
-                    return <SelectItem key={d} value={d}>{label}</SelectItem>;
-                  })}
+                  {DIVISIONS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -223,7 +264,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRe
               <Select value={formData.division_rank || "none"} onValueChange={(val) => setFormData({
                 ...formData,
                 division_rank: val === "none" ? null : val as any
-              })} disabled={formData.division === 'TSB' || !canManage}>
+              })} disabled={formData.division === 'TSB' || isFieldDisabled('div_rank')}>
                 <SelectTrigger className="bg-slate-950 border-slate-700 disabled:opacity-50"><SelectValue
                   placeholder="Nincs"/></SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-800 text-white">
@@ -237,10 +278,35 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRe
             </div>
           </div>
 
-          {canManage && (
-            <div className="p-4 border border-yellow-600/30 rounded-lg bg-yellow-950/10 space-y-4">
+          {/* 3. KÉPESÍTÉSEK */}
+          <div className="space-y-2">
+            <Label>Képesítések</Label>
+            <div
+              className={`flex flex-wrap gap-2 p-3 bg-slate-950 border border-slate-700 rounded-lg ${isFieldDisabled('qual') ? 'opacity-50 pointer-events-none' : ''}`}>
+              {QUALIFICATIONS.map(q => {
+                const isSelected = formData.qualifications?.includes(q);
+
+                // Külön ellenőrzés a stílushoz (hogy lássa, melyikre nyomhat)
+                const canToggle = currentUser?.is_bureau_manager ||
+                  currentUser?.is_bureau_commander ||
+                  currentUser?.commanded_divisions?.includes(q);
+
+                return (
+                  <Badge key={q} variant={isSelected ? "default" : "outline"}
+                         className={cn("select-none", canToggle ? "cursor-pointer hover:bg-yellow-700" : "opacity-50 cursor-not-allowed")}
+                         onClick={() => toggleQual(q)}>{q}</Badge>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 4. VEZETŐI ZÓNA (Manager / Bureau Commander) */}
+          {!isFieldDisabled('manager') && (
+            <div
+              className="p-4 border border-yellow-600/30 rounded-lg bg-yellow-950/10 space-y-4 animate-in slide-in-from-bottom-2">
               <h4 className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-2"><Crown
                 className="w-3 h-3"/> Vezetői Kinevezések</h4>
+
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label className="text-base font-medium text-slate-200 cursor-pointer"
@@ -249,8 +315,11 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRe
                   <p className="text-xs text-slate-400">Minden osztály és divízió felügyelete.</p>
                 </div>
                 <Switch checked={formData.is_bureau_manager}
-                        onCheckedChange={(checked) => setFormData({...formData, is_bureau_manager: checked})}/>
+                        onCheckedChange={(checked) => setFormData({...formData, is_bureau_manager: checked})}
+                        disabled={!currentUser?.is_bureau_manager} // Csak Manager adhat Managert
+                />
               </div>
+
               <div
                 className={`flex items-center justify-between border-t border-white/5 pt-3 ${formData.division === 'TSB' ? 'opacity-50 grayscale' : ''}`}>
                 <div className="space-y-0.5">
@@ -259,15 +328,15 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRe
                            ...formData,
                            is_bureau_commander: !formData.is_bureau_commander
                          })}>Bureau Commander</Label>
-                  <p className="text-xs text-slate-400">A jelenlegi osztály ({formData.division}) parancsnoka. (TSB-nél
-                    nem elérhető)</p>
+                  <p className="text-xs text-slate-400">A jelenlegi osztály ({formData.division}) parancsnoka.</p>
                 </div>
                 <Switch
                   checked={formData.is_bureau_commander}
                   onCheckedChange={(checked) => setFormData({...formData, is_bureau_commander: checked})}
-                  disabled={formData.division === 'TSB'}
+                  disabled={formData.division === 'TSB' || !currentUser?.is_bureau_manager} // Csak Manager adhat Commandert
                 />
               </div>
+
               <div className="border-t border-white/5 pt-3 space-y-2">
                 <Label className="text-base font-medium text-slate-200">Division Commander</Label>
                 <p className="text-xs text-slate-400">Jelöld be, melyik kvalifikációkért felel.</p>
@@ -281,31 +350,19 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRe
               </div>
             </div>
           )}
-
-          <div className="space-y-2">
-            <Label>Képesítések</Label>
-            <div
-              className={`flex flex-wrap gap-2 p-3 bg-slate-950 border border-slate-700 rounded-lg ${!canManage ? 'opacity-50 pointer-events-none' : ''}`}>
-              {QUALIFICATIONS.map(q => (
-                <Badge key={q} variant={formData.qualifications?.includes(q) ? "default" : "outline"}
-                       className="cursor-pointer select-none hover:bg-yellow-700"
-                       onClick={() => toggleQual(q)}>{q}</Badge>))}
-            </div>
-          </div>
         </div>
         <DialogFooter className="flex justify-between gap-2">
-          {canManage && (
-            <Button type="button" variant="destructive" onClick={onKickRequest} disabled={loading}><Trash2
-              className="w-4 h-4 mr-2"/> Elbocsátás</Button>
-          )}
-          <div className={!canManage ? "w-full flex justify-end" : ""}>
-            {canManage ? (
-              <Button onClick={handleSave} disabled={loading}
-                      className="bg-yellow-600 text-black hover:bg-yellow-700"><CheckCircle2
-                className="w-4 h-4 mr-2"/> Mentés</Button>
-            ) : (
-              <Button onClick={() => onOpenChange(false)} variant="outline">Bezárás</Button>
-            )}
+          {/* ELBOCSÁTÁS GOMB: Ranghoz kötött, vagy ha Bureau Commander a saját osztályában */}
+          <Button type="button" variant="destructive" onClick={onKickRequest}
+                  disabled={loading || (isFieldDisabled('rank') && !(currentUser?.is_bureau_commander && currentUser?.division === user.division))}
+          >
+            <Trash2 className="w-4 h-4 mr-2"/> Elbocsátás
+          </Button>
+          <div className="w-full flex justify-end gap-2">
+            <Button onClick={() => onOpenChange(false)} variant="outline">Mégse</Button>
+            <Button onClick={handleSave} disabled={loading}
+                    className="bg-yellow-600 text-black hover:bg-yellow-700"><CheckCircle2
+              className="w-4 h-4 mr-2"/> Mentés</Button>
           </div>
         </DialogFooter>
       </DialogContent>
@@ -314,7 +371,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, canManage, onKickRe
 }
 
 // --- LISTA KOMPONENS ---
-function StaffSection({title, icon: Icon, users, colorClass, onEdit, canManage}: any) {
+function StaffSection({title, icon: Icon, users, colorClass, onEdit, currentUser, onGiveAward}: any) {
   if (users.length === 0) return null;
 
   return (
@@ -334,15 +391,36 @@ function StaffSection({title, icon: Icon, users, colorClass, onEdit, canManage}:
               <TableHead className="w-[150px] text-slate-400 font-semibold text-center">Szolgálati idő</TableHead>
               <TableHead className="w-[200px] text-slate-400 font-semibold">Osztály</TableHead>
               <TableHead className="text-slate-400 font-semibold">Kvalifikációk</TableHead>
-              <TableHead className="w-[60px] text-right"></TableHead>
+              <TableHead className="w-[100px] text-right"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {users.map((user: any) => {
               const daysInRank = user.last_promotion_date ? differenceInDays(new Date(), new Date(user.last_promotion_date)) : differenceInDays(new Date(), new Date(user.created_at));
-
-              // Badge stílus kiszámítása
               const badgeInfo = getDivisionStyleAndLabel(user.division, user.faction_rank);
+
+              // GOMBOK LÁTHATÓSÁGA
+              const isMe = currentUser?.id === user.id;
+              let showEdit = false;
+
+              if (currentUser) {
+                // 1. Manager mindent lát
+                if (currentUser.is_bureau_manager) showEdit = true;
+
+                // 2. Executive Staff saját magát (és másokat)
+                else if (isExecutive(currentUser)) showEdit = true;
+
+                // 3. Bureau Commander bárkit
+                else if (currentUser.is_bureau_commander) showEdit = true;
+
+                // 4. Division Commander bárkit (hogy tudjon qualt adni)
+                else if (currentUser.commanded_divisions?.length > 0) showEdit = true;
+
+                // 5. Alap rang jog
+                else if (!isMe && canEditUser(currentUser, user)) showEdit = true;
+              }
+
+              const canAward = currentUser && canAwardRibbon(currentUser) && !isMe;
 
               return (
                 <TableRow key={user.id} className="border-white/5 hover:bg-white/5 group transition-colors">
@@ -350,33 +428,29 @@ function StaffSection({title, icon: Icon, users, colorClass, onEdit, canManage}:
                     className="font-mono font-bold text-white/70 group-hover:text-white pl-4">#{user.badge_number}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
+                      <Avatar className="h-8 w-8 border border-slate-700">
+                        <AvatarImage src={user.avatar_url}/>
+                        <AvatarFallback
+                          className="bg-slate-950 text-slate-400 font-bold text-xs">{user.full_name.charAt(0)}</AvatarFallback>
+                      </Avatar>
                       <span className="font-medium text-white">{user.full_name}</span>
-
-                      {/* VEZETŐI IKONOK TOOLTIP-PEL */}
                       <TooltipProvider>
-                        {user.is_bureau_manager && (
-                          <Tooltip><TooltipTrigger><Crown
-                            className="w-4 h-4 text-yellow-500 fill-yellow-500/20"/></TooltipTrigger><TooltipContent>Bureau
-                            Manager</TooltipContent></Tooltip>
-                        )}
-                        {user.is_bureau_commander && (
-                          <Tooltip><TooltipTrigger><Award
-                            className="w-4 h-4 text-blue-400 fill-blue-400/20"/></TooltipTrigger><TooltipContent>Bureau
-                            Commander ({user.division})</TooltipContent></Tooltip>
-                        )}
-                        {(user.commanded_divisions || []).length > 0 && (
-                          <Tooltip><TooltipTrigger><ShieldCheck
-                            className="w-4 h-4 text-purple-400"/></TooltipTrigger><TooltipContent>Div. Commander
-                            ({user.commanded_divisions.join(', ')})</TooltipContent></Tooltip>
-                        )}
+                        {user.is_bureau_manager && <Tooltip><TooltipTrigger><Crown
+                          className="w-3.5 h-3.5 text-purple-400"/></TooltipTrigger><TooltipContent>Bureau
+                          Manager</TooltipContent></Tooltip>}
+                        {user.is_bureau_commander && <Tooltip><TooltipTrigger><Award
+                          className="w-3.5 h-3.5 text-blue-400"/></TooltipTrigger><TooltipContent>Bureau
+                          Commander</TooltipContent></Tooltip>}
+                        {(user.commanded_divisions || []).length > 0 && <Tooltip><TooltipTrigger><ShieldCheck
+                          className="w-3.5 h-3.5 text-yellow-500"/></TooltipTrigger><TooltipContent>Division
+                          Commander</TooltipContent></Tooltip>}
                       </TooltipProvider>
                     </div>
                   </TableCell>
                   <TableCell className="text-slate-300">{user.faction_rank}</TableCell>
                   <TableCell className="text-center">
                     <div
-                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-slate-400"
-                      title="Napok száma a jelenlegi rangon">
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-slate-400">
                       <CalendarClock className="w-3 h-3 text-yellow-600"/><span>{daysInRank} nap</span>
                     </div>
                   </TableCell>
@@ -389,12 +463,7 @@ function StaffSection({title, icon: Icon, users, colorClass, onEdit, canManage}:
                             {badgeInfo.label}
                           </Badge>
                         </TooltipTrigger>
-                        {/* Tooltip csak akkor, ha van alosztály rang */}
-                        {user.division_rank && (
-                          <TooltipContent>
-                            <p>Rang: {user.division_rank}</p>
-                          </TooltipContent>
-                        )}
+                        {user.division_rank && <TooltipContent><p>Rang: {user.division_rank}</p></TooltipContent>}
                       </Tooltip>
                     </TooltipProvider>
                   </TableCell>
@@ -405,11 +474,21 @@ function StaffSection({title, icon: Icon, users, colorClass, onEdit, canManage}:
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="ghost"
-                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10 hover:text-yellow-500"
-                            onClick={() => onEdit(user)}>
-                      {canManage ? <UserCog className="w-4 h-4"/> : <Search className="w-4 h-4"/>}
-                    </Button>
+                    <div
+                      className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {canAward && (
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-yellow-500 hover:bg-yellow-900/20"
+                                onClick={() => onGiveAward(user)} title="Kitüntetés">
+                          <Medal className="w-4 h-4"/>
+                        </Button>
+                      )}
+                      {showEdit && (
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-400 hover:bg-blue-900/20"
+                                onClick={() => onEdit(user)} title="Szerkesztés">
+                          <PenTool className="w-4 h-4"/>
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -430,7 +509,10 @@ export function HrPage() {
   const [searchTerm, setSearchTerm] = React.useState("");
   const [editingUser, setEditingUser] = React.useState<Profile | null>(null);
 
-  // Confirm Dialog State
+  // Kitüntetés
+  const [awardTarget, setAwardTarget] = React.useState<{ id: string, name: string } | null>(null);
+
+  // Kick
   const [isKickAlertOpen, setIsKickAlertOpen] = React.useState(false);
   const [userToKick, setUserToKick] = React.useState<Profile | null>(null);
 
@@ -502,10 +584,8 @@ export function HrPage() {
   const fieldUsers = filteredUsers.filter(u => !HIGH_COMMAND_RANKS.includes(u.faction_rank) && !SUPERVISORY_RANKS.includes(u.faction_rank));
   const pendingUsers = users.filter(u => u.system_role === 'pending');
 
-  // Jogosultság ellenőrzése: Admin vagy Supervisor szerkeszthet
-  const canManage = profile?.system_role === 'admin' || profile?.system_role === 'supervisor';
-  // TGF gombot csak admin láthatja
   const canManageRecruitment = profile?.system_role === 'admin';
+  const canManagePending = profile?.system_role === 'admin' || profile?.system_role === 'supervisor';
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500 pb-10">
@@ -534,12 +614,17 @@ export function HrPage() {
         open={!!editingUser}
         onOpenChange={(o) => !o && setEditingUser(null)}
         onUpdate={fetchUsers}
-        canManage={canManage}
+        currentUser={profile}
         onKickRequest={() => {
           setUserToKick(editingUser);
           setIsKickAlertOpen(true);
         }}
       />
+
+      {awardTarget && <GiveAwardDialog open={!!awardTarget} onOpenChange={(o) => !o && setAwardTarget(null)}
+                                       targetUserId={awardTarget.id} targetUserName={awardTarget.name}
+                                       onSuccess={() => {
+                                       }}/>}
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -549,9 +634,8 @@ export function HrPage() {
         <div className="flex items-center gap-4">
           {canManageRecruitment && (
             <div className="flex items-center gap-3 bg-slate-900 p-2 px-4 rounded-full border border-slate-800">
-               <span className={`text-xs font-bold uppercase ${recruitmentOpen ? 'text-green-500' : 'text-red-500'}`}>
-                 {recruitmentOpen ? 'TGF Nyitva' : 'Létszámstop'}
-               </span>
+              <span
+                className={`text-xs font-bold uppercase ${recruitmentOpen ? 'text-green-500' : 'text-red-500'}`}>{recruitmentOpen ? 'TGF Nyitva' : 'Létszámstop'}</span>
               <Button size="sm" variant={recruitmentOpen ? "default" : "destructive"} className="h-6 text-xs"
                       onClick={toggleRecruitment}>
                 {recruitmentOpen ? 'Lezárás' : 'Megnyitás'}
@@ -567,11 +651,10 @@ export function HrPage() {
         </div>
       </div>
 
-      {/* PENDING USERS - Csak ha van jogosultság */}
-      {canManage && pendingUsers.length > 0 && (
+      {canManagePending && pendingUsers.length > 0 && (
         <div className="bg-yellow-950/20 border border-yellow-600/30 rounded-xl p-6 animate-pulse-border">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-yellow-600/20 rounded-lg text-yellow-500"><UserPlus className="w-6 h-6"/></div>
+            <div className="p-2 bg-yellow-600/20 rounded-lg text-yellow-500"><ShieldAlert className="w-6 h-6"/></div>
             <div><h3 className="text-lg font-bold text-yellow-500">Jóváhagyásra Vár ({pendingUsers.length})</h3><p
               className="text-xs text-yellow-200/60">Új regisztrációk.</p></div>
           </div>
@@ -599,14 +682,33 @@ export function HrPage() {
           className="w-10 h-10 animate-spin mb-3 text-yellow-600"/><p>Állomány betöltése...</p></div>
       ) : (
         <>
-          <StaffSection title="Vezérkar (Executive / Command Staff)" icon={Crown} users={highCommandUsers}
-                        colorClass="border-yellow-600/40 shadow-yellow-900/10" onEdit={setEditingUser}
-                        canManage={canManage}/>
-          <StaffSection title="Vezetőség (Supervisory Staff)" icon={Star} users={supervisoryUsers}
-                        colorClass="border-green-600/30 shadow-green-900/5" onEdit={setEditingUser}
-                        canManage={canManage}/>
-          <StaffSection title="Állomány (Field Staff)" icon={Users} users={fieldUsers} colorClass="border-slate-800"
-                        onEdit={setEditingUser} canManage={canManage}/>
+          <StaffSection
+            title="Vezérkar (Executive / Command Staff)"
+            icon={Crown}
+            users={highCommandUsers}
+            colorClass="border-yellow-600/40 shadow-yellow-900/10"
+            onEdit={setEditingUser}
+            currentUser={profile}
+            onGiveAward={(user: any) => setAwardTarget({id: user.id, name: user.full_name})}
+          />
+          <StaffSection
+            title="Vezetőség (Supervisory Staff)"
+            icon={Star}
+            users={supervisoryUsers}
+            colorClass="border-green-600/30 shadow-green-900/5"
+            onEdit={setEditingUser}
+            currentUser={profile}
+            onGiveAward={(user: any) => setAwardTarget({id: user.id, name: user.full_name})}
+          />
+          <StaffSection
+            title="Állomány (Field Staff)"
+            icon={Users}
+            users={fieldUsers}
+            colorClass="border-slate-800"
+            onEdit={setEditingUser}
+            currentUser={profile}
+            onGiveAward={(user: any) => setAwardTarget({id: user.id, name: user.full_name})}
+          />
         </>
       )}
     </div>
