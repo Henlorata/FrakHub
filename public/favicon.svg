@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <defs>
+        <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#fcd34d;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#b45309;stop-opacity:1" />
+        </linearGradient>
+    </defs>
+    <path d="M256 0L318 152L481 152L365 256L427 419L256 336L85 419L147 256L31 152L194 152L256 0Z"
+          fill="url(#gold)" stroke="#78350f" stroke-width="15"/>
+    <circle cx="256" cy="270" r="60" fill="#1e293b" />
+    <text x="256" y="290" font-family="Arial, sans-serif" font-weight="bold" font-size="40" text-anchor="middle" fill="#fcd34d">SFSD</text>
+</svg>

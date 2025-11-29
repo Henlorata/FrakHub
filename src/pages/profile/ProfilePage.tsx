@@ -155,7 +155,7 @@ export function ProfilePage() {
       {/* VÍZJEL */}
       <div
         className="absolute right-0 bottom-0 opacity-10 pointer-events-none translate-x-1/4 translate-y-1/4 rotate-12">
-        <img src="/mcb_logo.png" className="w-80 h-80 grayscale contrast-150" alt="Logo"/>
+        <img src="/mcb.png" className="w-80 h-80 grayscale contrast-150" alt="Logo"/>
       </div>
 
       {/* JOBB FELSŐ SAROK: KÉPESÍTÉSEK (Átdolgozva) */}
