@@ -17,6 +17,7 @@ import {
 import type {ExamSubmission} from "@/types/exams";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
+import {canGradeExam} from "@/lib/utils.ts";
 
 // Score Ring Component
 const ScoreRing = ({score, max, percent}: { score: number, max: number, percent: number }) => {
@@ -69,15 +70,48 @@ export function ExamGradingPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!submissionId) return;
+      // Fontos: Ha még nincs betöltve a profil (pl. oldalfrissítésnél), várjunk,
+      // különben a jogosultság ellenőrzés hibásan false-t adhat.
+      if (!profile) return;
+
       setLoading(true);
       try {
         const {data: subData, error: subError} = await supabase
           .from('exam_submissions')
-          .select(`*, exams (title, passing_percentage, exam_questions (id, question_text, question_type, points, order_index, page_number, exam_options (id, option_text, is_correct)))`)
+          .select(`
+            *, 
+            exams (
+              title, 
+              passing_percentage, 
+              type,            
+              division,        
+              required_rank,   
+              exam_questions (
+                id, 
+                question_text, 
+                question_type, 
+                points, 
+                order_index, 
+                page_number, 
+                exam_options (id, option_text, is_correct)
+              )
+            )
+          `)
           .eq('id', submissionId)
           .single();
 
         if (subError) throw subError;
+
+        // --- JOGOSULTSÁG ELLENŐRZÉS ---
+        const isOwnSubmission = subData.user_id === profile.id;
+        const hasRights = canGradeExam(profile, subData.exams as any);
+
+        if (!isOwnSubmission && !hasRights) {
+          toast.error("Nincs jogosultságod ezt a vizsgát megtekinteni.");
+          navigate('/exams');
+          return;
+        }
+        // ------------------------------
 
         const {
           data: ansData,
@@ -97,12 +131,14 @@ export function ExamGradingPage() {
       } catch (err: any) {
         console.error(err);
         toast.error("Hiba: " + err.message);
+        navigate('/exams'); // Hiba esetén is biztonságosabb visszadobni
       } finally {
         setLoading(false);
       }
     };
+
     fetchData();
-  }, [submissionId, supabase]);
+  }, [submissionId, supabase, profile, navigate]);
 
   // Pontszámítás (Auto + Manuális)
   const {score, maxScore, questionStats} = useMemo(() => {

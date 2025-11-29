@@ -72,11 +72,12 @@ export function NewBudgetRequestDialog({open, onOpenChange, onSuccess}: NewBudge
       uploadedPaths.push(...paths);
 
       // 2. Adatbázis bejegyzés
+      // JAVÍTÁS: A kulcs neve 'proof_image_path', nem 'proof_images'
       const insertData: any = {
         user_id: user.id,
         amount: parseInt(amount),
         reason: reason,
-        proof_images: uploadedPaths, // Tömböt küldünk
+        proof_image_path: uploadedPaths, // Típus: string[] (a DB tömbként kezeli)
         status: 'pending'
       };
 

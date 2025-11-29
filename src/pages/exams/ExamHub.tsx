@@ -27,6 +27,8 @@ import {Input} from "@/components/ui/input";
 import {ExamAccessDialog} from "./components/ExamAccessDialog";
 import {AdminExamAssignDialog} from "./components/AdminExamAssignDialog";
 
+const MAIN_DIVISIONS = ['TSB', 'SEB', 'MCB'];
+
 export function ExamHub() {
   const {supabase, profile} = useAuth();
   const navigate = useNavigate();
@@ -40,7 +42,7 @@ export function ExamHub() {
 
   // Dialog state-ek
   const [accessExam, setAccessExam] = useState<Exam | null>(null);
-  const [isAdminAssignOpen, setIsAdminAssignOpen] = useState(false); // ÚJ
+  const [isAdminAssignOpen, setIsAdminAssignOpen] = useState(false);
 
   const [historyUsers, setHistoryUsers] = useState<any[]>([]);
   const [selectedHistoryUser, setSelectedHistoryUser] = useState<string>("all");
@@ -55,8 +57,6 @@ export function ExamHub() {
 
   // Jogosultságok
   const hasGradingRights = (profile && (pendingGrading.length > 0 || canCreateAnyExam(profile) || profile.qualifications?.includes('TB') || ['Sergeant I.', 'Sergeant II.'].includes(profile.faction_rank)));
-
-  // Supervisor+ jog a kézi hozzárendeléshez
   const canAssignExams = profile && (isSupervisory(profile) || isCommand(profile) || isExecutive(profile) || profile.is_bureau_manager);
 
   const fetchHistory = useCallback(async (page: number, userIdFilter: string) => {
@@ -85,39 +85,106 @@ export function ExamHub() {
     if (!profile) return;
     setLoading(true);
     try {
+      // 1. Elérhető vizsgák lekérése
       const {data: exams} = await supabase.from('exams').select('*').order('created_at', {ascending: false});
+      // Lekérjük a felhasználóra vonatkozó kivételeket (overrides)
       const {data: myOverrides} = await supabase.from('exam_overrides').select('exam_id, access_type').eq('user_id', profile.id);
 
       const filteredExams = (exams as unknown as Exam[] || []).filter(exam => {
-        if (canManageExamAccess(profile, exam)) return true;
+        // 1. JOGOSULTSÁG KIVÉTEL (Override) - Ez az ABSZOLÚT szabály
         const override = myOverrides?.find(o => o.exam_id === exam.id);
-        if (override) return override.access_type === 'allow';
+        if (override) {
+          return override.access_type === 'allow';
+        }
+
+        // 2. MENEDZSMENT JOG (Szerkesztő/Javító mindent lát)
+        if (canManageExamAccess(profile, exam)) return true;
+
+        // 3. INAKTÍV VIZSGA (Ha nem menedzser/override, rejtve)
         if (!exam.is_active) return false;
+
+        // 4. BUREAU MANAGER (Mindent lát)
         if (profile.is_bureau_manager) return true;
+
+        // 5. PUBLIKUS VIZSGÁK (Vendég vizsgák)
         if (exam.is_public) return true;
+
+        // --- SPECIFIKUS SZABÁLYOK ---
+
+        // "Trainee vizsgát csak külsősök tehetnek." -> Bejelentkezve rejtve
+        // KIVÉVE: Ha menedzsment joga van (fentebb), akkor látja, hogy kezelhesse.
+        if (exam.type === 'trainee') return false;
+
+        // "DPI. vizsgát csak trainee tehet."
+        // De a menedzsereknek látniuk kell, hogy kezeljék.
+        // Ha nem Trainee és nem Menedzser, akkor nem látja.
+        // (A menedzsment jogot már a 2-es pont lekezelte, tehát itt már csak a sima user van)
+        if (exam.type === 'deputy_i') {
+          return profile.faction_rank === 'Deputy Sheriff Trainee';
+        }
+
+        // 6. OSZTÁLY vs KÉPESÍTÉS LOGIKA
+        if (exam.division) {
+          const isMainDivisionExam = MAIN_DIVISIONS.includes(exam.division);
+
+          if (isMainDivisionExam) {
+            // Ha a felhasználó TSB-s (Field Staff), akkor LÁTHATJA a többi osztály vizsgáit is
+            if (profile.division === 'TSB') {
+              // Mehet tovább
+            }
+            // Ha viszont már speciális osztály tagja -> CSAK SAJÁT
+            else if (profile.division !== exam.division) {
+              return false;
+            }
+          } else {
+            // Képesítés vizsga: Nincs divízió korlát
+          }
+        }
+
+        // 7. RANG KÖVETELMÉNY
         if (exam.required_rank) {
           const userRankIndex = FACTION_RANKS.indexOf(profile.faction_rank);
           const reqRankIndex = FACTION_RANKS.indexOf(exam.required_rank as any);
+
           if (reqRankIndex !== -1 && userRankIndex > reqRankIndex) return false;
         }
-        if (exam.division && exam.division !== profile.division) return false;
+
         return true;
       });
       setAvailableExams(filteredExams);
 
+      // 2. Saját kitöltések
       const {data: subs} = await supabase.from('exam_submissions').select('*, exams(title)').eq('user_id', profile.id).order('start_time', {ascending: false});
       setMySubmissions(subs as any || []);
 
+      // 3. Javításra váró vizsgák
       if (hasGradingRights) {
-        // Itt a view-t kérdezzük le, ami már szűri a jogosultságokat (RLS)
-        const {data: pending, error} = await supabase.from('exam_submissions_view')
-          .select('*')
+        const {data: pendingRaw, error} = await supabase
+          .from('exam_submissions')
+          .select('*, exams(*)')
           .eq('status', 'pending')
           .order('end_time', {ascending: true});
 
-        if (!error) setPendingGrading(pending as any[] || []);
+        if (!error && pendingRaw) {
+          const userIds = [...new Set(pendingRaw.map(p => p.user_id))];
+          let profilesMap: Record<string, any> = {};
+          if (userIds.length > 0) {
+            const {data: profiles} = await supabase.from('profiles').select('id, full_name, badge_number').in('id', userIds);
+            profiles?.forEach(p => profilesMap[p.id] = p);
+          }
 
-        // Felhasználók betöltése a szűrőhöz
+          const finalPending = pendingRaw
+            .filter((sub: any) => sub.exams && canGradeExam(profile, sub.exams))
+            .map((sub: any) => ({
+              ...sub,
+              exam_title: sub.exams?.title,
+              user_full_name: profilesMap[sub.user_id]?.full_name || sub.applicant_name || 'Ismeretlen',
+              user_badge_number: profilesMap[sub.user_id]?.badge_number || '?',
+            }));
+
+          setPendingGrading(finalPending);
+        }
+
         const {data: users} = await supabase.from('profiles').select('id, full_name').order('full_name');
         setHistoryUsers(users || []);
         fetchHistory(0, "all");
@@ -129,7 +196,7 @@ export function ExamHub() {
     } finally {
       setLoading(false);
     }
-  }, [profile?.id, profile?.faction_rank, profile?.division, supabase, fetchHistory, hasGradingRights]);
+  }, [profile, supabase, fetchHistory, hasGradingRights]);
 
   useEffect(() => {
     fetchData();
@@ -157,7 +224,6 @@ export function ExamHub() {
   const filteredAvailable = availableExams.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredHistoryUsers = historyUsers.filter(u => u.full_name.toLowerCase().includes(userSearch.toLowerCase()));
 
-  // BELSŐ KOMPONENS: ExamCard
   const ExamCard = ({exam}: { exam: Exam }) => {
     const lastSubmission = mySubmissions.find(s => s.exam_id === exam.id);
     const isBlocked = lastSubmission?.status === 'failed' && lastSubmission.retry_allowed_at && new Date(lastSubmission.retry_allowed_at) > new Date();
@@ -166,6 +232,23 @@ export function ExamHub() {
     const canEditContent = profile && canManageExamContent(profile, exam);
     const canAccessManage = profile && canManageExamAccess(profile, exam);
     const canShare = profile && canGradeExam(profile, exam) && exam.allow_sharing;
+
+    // --- KITÖLTÉSI JOGOSULTSÁG LOGIKA ---
+    const canTake = (() => {
+      // 1. Trainee vizsgát bejelentkezve SENKI nem tölthet ki (csak a külső linken)
+      if (exam.type === 'trainee') return false;
+
+      // 2. DPI vizsgát CSAK a Deputy Sheriff Trainee rangúak tölthetik ki
+      if (exam.type === 'deputy_i') {
+        return profile?.faction_rank === 'Deputy Sheriff Trainee';
+      }
+
+      // 3. Ha valaki szerkesztő (pl. Bureau Manager), akkor NE töltse ki (csak szerkessze/menedzselje)
+      if (canEditContent) return false;
+
+      // Minden egyéb esetben, ha már látja a kártyát, akkor ki is töltheti
+      return true;
+    })();
 
     return (
       <div
@@ -207,7 +290,8 @@ export function ExamHub() {
             )}
           </div>
 
-          {!canEditContent && (
+          {/* CSAK AKKOR JELENIK MEG, HA KITÖLTHETI (canTake) */}
+          {canTake && (
             <div className="mt-2">
               {isBlocked ? (
                 <Button size="sm" disabled
@@ -233,7 +317,6 @@ export function ExamHub() {
 
   return (
     <div className="min-h-screen bg-slate-950 pb-20">
-      {/* DIALÓGUSOK */}
       {accessExam &&
         <ExamAccessDialog open={!!accessExam} onOpenChange={(o) => !o && setAccessExam(null)} exam={accessExam}/>}
       <AdminExamAssignDialog open={isAdminAssignOpen} onOpenChange={setIsAdminAssignOpen}/>
@@ -255,7 +338,6 @@ export function ExamHub() {
                      onChange={(e) => setSearchTerm(e.target.value)}/>
             </div>
 
-            {/* ÚJ GOMB: KÉZI HOZZÁRENDELÉS (Csak vezetőknek) */}
             {canAssignExams && (
               <Button variant="outline" className="border-slate-700 text-slate-300 hover:text-white"
                       onClick={() => setIsAdminAssignOpen(true)}>
@@ -331,9 +413,9 @@ export function ExamHub() {
                     <div className="flex items-start gap-4">
                       <div
                         className="w-12 h-12 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 font-bold">{sub.user_badge_number || "?"}</div>
-                      <div><h4 className="font-bold text-white text-lg">{sub.exam_title}</h4><p
+                      <div><h4 className="font-bold text-white text-lg">{(sub as any).exam_title}</h4><p
                         className="text-sm text-slate-400">Kitöltő: <span
-                        className="text-white">{sub.user_full_name || sub.applicant_name}</span> •
+                        className="text-white">{(sub as any).user_full_name}</span> •
                         Beadva: {formatDistanceToNow(new Date(sub.end_time || ''), {locale: hu, addSuffix: true})}</p>
                       </div>
                     </div>
@@ -400,9 +482,9 @@ export function ExamHub() {
                     <div className="flex gap-4 items-center">
                       <Badge variant={item.status === 'passed' ? 'default' : 'destructive'}
                              className={item.status === 'passed' ? 'bg-green-900/30 text-green-400 border-green-900' : 'bg-red-900/30 text-red-400 border-red-900'}>{item.status === 'passed' ? 'SIKERES' : 'SIKERTELEN'}</Badge>
-                      <div><p className="font-bold text-white">{item.exam_title}</p><p
+                      <div><p className="font-bold text-white">{(item as any).exam_title}</p><p
                         className="text-xs text-slate-400">Kitöltő: <span
-                        className="text-slate-300">{item.user_full_name}</span> • {item.created_at ? new Date(item.created_at).toLocaleDateString('hu-HU') : 'Ismeretlen dátum'}
+                        className="text-slate-300">{(item as any).user_full_name}</span> • {item.created_at ? new Date(item.created_at).toLocaleDateString('hu-HU') : 'Ismeretlen dátum'}
                       </p></div>
                     </div>
                     <div className="text-right">

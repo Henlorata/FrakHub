@@ -146,7 +146,10 @@ export function FinancePage() {
   };
 
   const handleViewImage = async (path: string) => {
-    const {data} = await supabase.storage.from('finance_proofs').createSignedUrl(path, 3600);
+    // Tisztítjuk a path-t, ha esetleg idézőjelek maradtak volna benne
+    const cleanPath = path.replace(/['"]+/g, '');
+
+    const {data} = await supabase.storage.from('finance_proofs').createSignedUrl(cleanPath, 3600);
     if (data?.signedUrl) {
       setViewImage({url: data.signedUrl, name: 'Bizonyíték'});
       setViewerOpen(true);
@@ -174,6 +177,29 @@ export function FinancePage() {
                       className="bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 border border-yellow-600/30 animate-pulse"><Clock
           className="w-3 h-3 mr-1"/> Függőben</Badge>;
     }
+  };
+
+  // Bizonyítékok normalizálása (Array vagy String kezelése)
+  const getProofPaths = (req: any): string[] => {
+    const raw = req.proof_image_path;
+    if (!raw) return [];
+
+    // Ha már tömb
+    if (Array.isArray(raw)) return raw;
+
+    // Ha string, de JSON tömbnek néz ki
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {
+        // Nem JSON, sima string path
+        return [raw];
+      }
+    }
+
+    // Fallback: egy elemű tömb
+    return [String(raw)];
   };
 
   if (isLoading && requests.length === 0) return <div className="flex h-screen items-center justify-center"><Loader2
@@ -271,7 +297,7 @@ export function FinancePage() {
           <CardContent className="p-0 flex-1 min-h-0 overflow-hidden relative">
             <ScrollArea className="h-full w-full">
               <Table className="table-fixed w-full">
-                <TableHeader className="bg-slate-950 sticky top-0 z-10 shadow-sm">
+                <TableHeader className="bg-slate-900 sticky top-0 z-10 shadow-sm">
                   <TableRow className="border-slate-800 hover:bg-transparent">
                     <TableHead className="w-[120px] text-slate-400 font-semibold">Státusz</TableHead>
                     <TableHead className="w-[200px] text-slate-400 font-semibold">Igénylő</TableHead>
@@ -283,75 +309,73 @@ export function FinancePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRequests.map((req) => (
-                    <TableRow key={req.id} className="border-slate-800 hover:bg-slate-800/50 transition-colors group">
-                      <TableCell className="align-top pt-4">{getStatusBadge(req.status)}</TableCell>
-                      <TableCell className="align-top pt-4">
-                        <div className="font-medium text-white truncate pr-2">{req.profiles?.full_name}</div>
-                        <div className="text-xs text-slate-500 font-mono">#{req.profiles?.badge_number}</div>
-                      </TableCell>
-                      <TableCell className="font-mono font-bold text-green-400 text-base align-top pt-4">
-                        ${req.amount.toLocaleString()}
-                      </TableCell>
+                  {filteredRequests.map((req) => {
+                    const paths = getProofPaths(req);
 
-                      <TableCell className="align-top pt-4">
-                        <div
-                          className="break-all whitespace-pre-wrap text-sm text-slate-300 w-full max-w-[300px] md:max-w-none">
-                          {req.reason}
-                        </div>
-                        {req.admin_comment && (
+                    return (
+                      <TableRow key={req.id} className="border-slate-800 hover:bg-slate-800/50 transition-colors group">
+                        <TableCell className="align-top pt-4">{getStatusBadge(req.status)}</TableCell>
+                        <TableCell className="align-top pt-4">
+                          <div className="font-medium text-white truncate pr-2">{req.profiles?.full_name}</div>
+                          <div className="text-xs text-slate-500 font-mono">#{req.profiles?.badge_number}</div>
+                        </TableCell>
+                        <TableCell className="font-mono font-bold text-green-400 text-base align-top pt-4">
+                          ${req.amount.toLocaleString()}
+                        </TableCell>
+
+                        <TableCell className="align-top pt-4">
                           <div
-                            className="text-xs text-red-400 mt-2 italic break-all whitespace-pre-wrap w-full bg-red-950/20 p-1.5 rounded border border-red-900/20">
-                            Megj: {req.admin_comment}
+                            className="break-all whitespace-pre-wrap text-sm text-slate-300 w-full max-w-[300px] md:max-w-none">
+                            {req.reason}
                           </div>
-                        )}
-                      </TableCell>
-
-                      <TableCell className="align-top pt-4">
-                        <div className="flex flex-wrap gap-1">
-                          {req.proof_images && req.proof_images.length > 0 ? (
-                            req.proof_images.map((path, idx) => (
-                              <Button key={idx} size="sm" variant="outline"
-                                      className="h-6 text-[10px] border-slate-700 hover:bg-slate-800 px-2 mb-1 text-slate-400 hover:text-white"
-                                      onClick={() => handleViewImage(path)}>
-                                <Eye className="w-3 h-3 mr-1"/> {idx + 1}.
-                              </Button>
-                            ))
-                          ) : req.proof_image_path ? (
-                            <Button size="sm" variant="outline"
-                                    className="h-6 text-[10px] border-slate-700 hover:bg-slate-800 px-2 text-slate-400 hover:text-white"
-                                    onClick={() => handleViewImage(req.proof_image_path)}>
-                              <Eye className="w-3 h-3 mr-1"/> Megtekint
-                            </Button>
-                          ) : <span className="text-xs text-slate-500 italic">Nincs</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-slate-500 text-xs text-right font-mono align-top pt-4">
-                        {new Date(req.created_at).toLocaleDateString('hu-HU')}
-                      </TableCell>
-
-                      {isExecutive ? (
-                        <TableCell className="text-right space-x-1 align-top pt-3 whitespace-nowrap">
-                          {req.status === 'pending' && (
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button size="icon" variant="ghost"
-                                      className="h-8 w-8 text-green-500 hover:text-green-400 hover:bg-green-900/20"
-                                      onClick={() => {
-                                        setSelectedRequest(req);
-                                        setActionType('approve');
-                                      }}><CheckCircle2 className="w-5 h-5"/></Button>
-                              <Button size="icon" variant="ghost"
-                                      className="h-8 w-8 text-red-500 hover:text-red-400 hover:bg-red-900/20"
-                                      onClick={() => {
-                                        setSelectedRequest(req);
-                                        setActionType('reject');
-                                      }}><XCircle className="w-5 h-5"/></Button>
+                          {req.admin_comment && (
+                            <div
+                              className="text-xs text-red-400 mt-2 italic break-all whitespace-pre-wrap w-full bg-red-950/20 p-1.5 rounded border border-red-900/20">
+                              Megj: {req.admin_comment}
                             </div>
                           )}
                         </TableCell>
-                      ) : null}
-                    </TableRow>
-                  ))}
+
+                        <TableCell className="align-top pt-4">
+                          <div className="flex flex-wrap gap-1">
+                            {paths.length > 0 ? (
+                              paths.map((path, idx) => (
+                                <Button key={idx} size="sm" variant="outline"
+                                        className="h-6 text-[10px] border-slate-700 hover:bg-slate-800 px-2 mb-1 text-slate-400 hover:text-white"
+                                        onClick={() => handleViewImage(path)}>
+                                  <Eye className="w-3 h-3 mr-1"/> {idx + 1}.
+                                </Button>
+                              ))
+                            ) : <span className="text-xs text-slate-500 italic">Nincs</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-slate-500 text-xs text-right font-mono align-top pt-4">
+                          {new Date(req.created_at).toLocaleDateString('hu-HU')}
+                        </TableCell>
+
+                        {isExecutive ? (
+                          <TableCell className="text-right space-x-1 align-top pt-3 whitespace-nowrap">
+                            {req.status === 'pending' && (
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button size="icon" variant="ghost"
+                                        className="h-8 w-8 text-green-500 hover:text-green-400 hover:bg-green-900/20"
+                                        onClick={() => {
+                                          setSelectedRequest(req);
+                                          setActionType('approve');
+                                        }}><CheckCircle2 className="w-5 h-5"/></Button>
+                                <Button size="icon" variant="ghost"
+                                        className="h-8 w-8 text-red-500 hover:text-red-400 hover:bg-red-900/20"
+                                        onClick={() => {
+                                          setSelectedRequest(req);
+                                          setActionType('reject');
+                                        }}><XCircle className="w-5 h-5"/></Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </ScrollArea>
@@ -374,7 +398,6 @@ export function FinancePage() {
             {actionType === 'reject' && (
               <div className="space-y-2">
                 <Label>Elutasítás Indoka</Label>
-                {/* JAVÍTOTT TEXTAREA: break-all és resize-none */}
                 <Textarea
                   placeholder="Elutasítás indoka..."
                   className="bg-slate-950 border-slate-700 resize-none h-24 break-all"

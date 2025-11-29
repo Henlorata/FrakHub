@@ -1,6 +1,6 @@
 import {type ClassValue, clsx} from "clsx"
 import {twMerge} from "tailwind-merge"
-import {FACTION_RANKS, type FactionRank, type Profile} from "@/types/supabase"
+import {type Case, FACTION_RANKS, type FactionRank, type Profile} from "@/types/supabase"
 import type {Exam} from "@/types/exams"
 
 export function cn(...inputs: ClassValue[]) {
@@ -109,15 +109,29 @@ export const getRankPriority = (rank: FactionRank | string | null | undefined): 
 
 // Vizsga TARTALMI szerkesztése (Editor)
 export const canManageExamContent = (user: Profile, exam: Exam) => {
+  // 1. Bureau Manager mindent vihet
   if (user.is_bureau_manager) return true;
 
-  // Trainee és Deputy I vizsgát csak a Bureau Manager szerkesztheti (a kérésed alapján)
+  // 2. Trainee és Deputy I. vizsgák: KIZÁRÓLAG Bureau Manager
   if (exam.type === 'trainee' || exam.type === 'deputy_i') return false;
   if (exam.required_rank === 'Deputy Sheriff Trainee' || exam.required_rank === 'Deputy Sheriff I.') return false;
 
-  // Egyébként Division Commander vagy Bureau Commander
-  if (user.is_bureau_commander) return true;
-  return !!(exam.division && user.commanded_divisions?.includes(exam.division));
+  // 3. Osztály / Képesítés vizsgák SZIGORÚ ELLENŐRZÉSE
+
+  // A) Division Commander (Képesítés vezető): Csak akkor, ha a vizsga az ő "commanded" listájában van.
+  if (exam.division && user.commanded_divisions?.includes(exam.division)) {
+    return true;
+  }
+
+  // B) Bureau Commander (Osztályvezető): Csak akkor, ha a vizsga az Ő saját osztályához tartozik.
+  // Fontos: Ha a vizsga egy Képesítéshez tartozik (pl. 'TB'), de a User a 'TSB' Bureau Commandere,
+  // akkor ez FALSE lesz, ami helyes, mert a képesítés vizsgáját csak a képesítés vezetője szerkesztheti (fenti A pont).
+  if (user.is_bureau_commander && user.division === exam.division) {
+    return true;
+  }
+
+  // Minden más esetben (pl. sima Supervisory Staff, vagy illetéktelen parancsnok)
+  return false;
 }
 
 // Vizsga létrehozása (Új gomb)
@@ -126,25 +140,23 @@ export const canCreateAnyExam = (user: Profile) => {
 }
 
 export const canManageExamAccess = (p: Profile, exam: Exam) => {
-  if (exam.type === 'trainee') {
+  // Trainee és Deputy I vizsgák speciális kezelése
+  if (exam.type === 'trainee' || exam.type === 'deputy_i') {
+    // TB tagok láthatják/javíthatják
     if (p.qualifications?.includes('TB')) return true;
-    if (isSupervisory(p)) return true;
-    if (p.is_bureau_manager) return true;
-    if (p.is_bureau_commander) return true;
-    return false;
+    // Supervisory Staff láthatja/javíthatja
+    if (isSupervisory(p) || isHighCommand(p)) return true;
+
+    return !!p.is_bureau_manager;
   }
 
+  // Egyéb vizsgáknál ugyanaz a jog, mint a szerkesztésnél
   return canManageExamContent(p, exam);
 };
 
+// Vizsga JAVÍTÁSA (Ugyanaz, mint a hozzáférés kezelés)
 export const canGradeExam = (p: Profile, exam: Exam) => {
-  if (canManageExamAccess(p, exam)) return true;
-
-  if (exam.type === 'trainee') {
-    if (p.qualifications?.includes('TB')) return true;
-  }
-
-  return false;
+  return canManageExamAccess(p, exam);
 };
 
 export const canManageExam = canManageExamContent;

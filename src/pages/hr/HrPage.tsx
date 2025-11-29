@@ -28,7 +28,7 @@ import {
 } from "@/types/supabase";
 import {
   cn, canEditUser, getAllowedPromotionRanks, canAwardRibbon,
-  isExecutive
+  isExecutive, isSupervisory, isCommand
 } from "@/lib/utils";
 import {differenceInDays} from "date-fns";
 import {GiveAwardDialog} from "@/pages/profile/components/GiveAwardDialog";
@@ -79,7 +79,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
   currentUser: Profile | null,
   onKickRequest: () => void
 }) {
-  const {supabase} = useAuth();
+  const {supabase, session} = useAuth();
   const [loading, setLoading] = React.useState(false);
   const [formData, setFormData] = React.useState<Partial<Profile>>({});
 
@@ -104,22 +104,40 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
     if (!currentUser || !user) return true;
     if (currentUser.is_bureau_manager) return false; // Manager mindent írhat
 
+    // Staff jogok ellenőrzése (Supervisory+ és rangban alatta lévők)
+    const hasStaffRights = (isSupervisory(currentUser) || isCommand(currentUser) || isExecutive(currentUser)) && canEditUser(currentUser, user);
+
     switch (field) {
       case 'rank': // Név, Jelvény, Főrang
         if (isExecutive(currentUser) && currentUser.id === user.id) return false;
         return !canEditUser(currentUser, user);
 
       case 'division': // Osztály váltása
-        if (currentUser.is_bureau_commander) return false;
+        // Bureau Commander védelem: Csak Manager állíthatja át a Bureau Commander osztályát
+        if (user.is_bureau_commander && !currentUser.is_bureau_manager) return true;
+
+        // JAVÍTÁS: Bureau Commander engedélyezése
+        // Akkor szerkesztheti, ha ő a parancsnok, ÉS a célpont vagy a sajátja, vagy TSB-s (hogy felvehesse)
+        if (currentUser.is_bureau_commander) {
+          if (user.division === currentUser.division || user.division === 'TSB') {
+            return false;
+          }
+        }
+
+        // Ha Staff jogai vannak (Supervisory+) - akkor is válthat, ha rangban alatta van
+        if (hasStaffRights) return false;
+
         return true;
 
       case 'div_rank': // Osztályrang
-        if (currentUser.is_bureau_commander) return false;
+        if (currentUser.is_bureau_commander && user.division === currentUser.division) return false;
+        if (hasStaffRights) return false;
         return true;
 
       case 'qual': // Képesítések
-        if (currentUser.is_bureau_commander) return false;
-        if (currentUser.commanded_divisions && currentUser.commanded_divisions.length > 0) return false;
+        if (currentUser.is_bureau_commander && user.division === currentUser.division) return false;
+        if (currentUser.commanded_divisions && currentUser.commanded_divisions.length > 0) return false; // Div Commander
+        if (hasStaffRights) return false;
         return true;
 
       case 'manager':
@@ -131,6 +149,24 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
   };
 
   const allowedRanks = currentUser ? getAllowedPromotionRanks(currentUser) : [];
+
+  // Elérhető osztályok szűrése
+  const allowedDivisions = React.useMemo(() => {
+    if (!currentUser) return [];
+
+    // 1. Bureau Manager mindent lát
+    if (currentUser.is_bureau_manager) return DIVISIONS;
+
+    // 2. Staff (Supervisory+) mindent lát
+    if (isSupervisory(currentUser) || isCommand(currentUser) || isExecutive(currentUser)) return DIVISIONS;
+
+    // 3. Bureau Commander: Csak a sajátját és a TSB-t
+    if (currentUser.is_bureau_commander) {
+      return DIVISIONS.filter(d => d === 'TSB' || d === currentUser.division);
+    }
+
+    return [];
+  }, [currentUser]);
 
   const handleSave = async () => {
     if (!user || !currentUser) return;
@@ -155,8 +191,22 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
         if (JSON.stringify(formData.commanded_divisions) !== JSON.stringify(user.commanded_divisions)) updates.commanded_divisions = formData.commanded_divisions;
 
         if (Object.keys(updates).length > 0) {
-          const {error: updateError} = await supabase.from('profiles').update(updates).eq('id', user.id);
-          if (updateError) throw updateError;
+          const response = await fetch('/api/admin/update-role', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token}`
+            },
+            body: JSON.stringify({
+              userId: user.id,
+              ...updates
+            }),
+          });
+
+          if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || "Hiba a jogosultságok mentésekor");
+          }
         }
       }
 
@@ -171,10 +221,21 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
   };
 
   const toggleQual = (q: Qualification) => {
+    if (!currentUser || !user) return;
+
     let canToggle = false;
-    if (currentUser?.is_bureau_manager) canToggle = true;
-    else if (currentUser?.is_bureau_commander) canToggle = true;
-    else if (currentUser?.commanded_divisions?.includes(q)) canToggle = true;
+
+    if (currentUser.is_bureau_manager) canToggle = true;
+    else if (currentUser.is_bureau_commander && user.division === currentUser.division) canToggle = true;
+    else if (currentUser.commanded_divisions?.includes(q)) canToggle = true;
+    else if ((isSupervisory(currentUser) || isCommand(currentUser) || isExecutive(currentUser)) && canEditUser(currentUser, user)) canToggle = true;
+
+    // VÉDELEM
+    if (user.commanded_divisions?.includes(q)) {
+      if (!currentUser.is_bureau_manager) {
+        canToggle = false;
+      }
+    }
 
     if (!canToggle) return;
 
@@ -183,7 +244,6 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
   };
 
   const toggleCommandedDivision = (q: Qualification) => {
-    // Ezt csak Manager vagy Bureau Commander nyomkodhatja
     if (!(currentUser?.is_bureau_manager || currentUser?.is_bureau_commander)) return;
 
     const currentCmd = formData.commanded_divisions || [];
@@ -192,7 +252,6 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
     if (currentCmd.includes(q)) {
       setFormData({...formData, commanded_divisions: currentCmd.filter(x => x !== q)});
     } else {
-      // JAVÍTÁS: Ha kinevezzük parancsnoknak, adjuk hozzá a képesítést is!
       const newQuals = currentQuals.includes(q) ? currentQuals : [...currentQuals, q];
       setFormData({
         ...formData,
@@ -213,7 +272,6 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* 1. SZEMÉLYES ADATOK */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Teljes Név</Label>
@@ -242,7 +300,6 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
             <p className="text-[10px] text-slate-500">Csak a jogosultságodnak megfelelő rangok láthatóak.</p>
           </div>
 
-          {/* 2. OSZTÁLY & ALOSZTÁLY RANG */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Osztály</Label>
@@ -255,7 +312,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
                 <SelectTrigger
                   className="bg-slate-950 border-slate-700 disabled:opacity-50"><SelectValue/></SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                  {DIVISIONS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {allowedDivisions.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -278,7 +335,6 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
             </div>
           </div>
 
-          {/* 3. KÉPESÍTÉSEK */}
           <div className="space-y-2">
             <Label>Képesítések</Label>
             <div
@@ -286,10 +342,15 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
               {QUALIFICATIONS.map(q => {
                 const isSelected = formData.qualifications?.includes(q);
 
-                // Külön ellenőrzés a stílushoz (hogy lássa, melyikre nyomhat)
-                const canToggle = currentUser?.is_bureau_manager ||
-                  currentUser?.is_bureau_commander ||
-                  currentUser?.commanded_divisions?.includes(q);
+                let canToggle = false;
+                if (currentUser?.is_bureau_manager) canToggle = true;
+                else if (currentUser?.is_bureau_commander && user.division === currentUser.division) canToggle = true;
+                else if (currentUser?.commanded_divisions?.includes(q)) canToggle = true;
+                else if ((isSupervisory(currentUser) || isCommand(currentUser) || isExecutive(currentUser)) && canEditUser(currentUser!, user!)) canToggle = true;
+
+                if (user?.commanded_divisions?.includes(q) && !currentUser?.is_bureau_manager) {
+                  canToggle = false;
+                }
 
                 return (
                   <Badge key={q} variant={isSelected ? "default" : "outline"}
@@ -300,7 +361,6 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
             </div>
           </div>
 
-          {/* 4. VEZETŐI ZÓNA (Manager / Bureau Commander) */}
           {!isFieldDisabled('manager') && (
             <div
               className="p-4 border border-yellow-600/30 rounded-lg bg-yellow-950/10 space-y-4 animate-in slide-in-from-bottom-2">
@@ -316,7 +376,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
                 </div>
                 <Switch checked={formData.is_bureau_manager}
                         onCheckedChange={(checked) => setFormData({...formData, is_bureau_manager: checked})}
-                        disabled={!currentUser?.is_bureau_manager} // Csak Manager adhat Managert
+                        disabled={!currentUser?.is_bureau_manager}
                 />
               </div>
 
@@ -333,7 +393,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
                 <Switch
                   checked={formData.is_bureau_commander}
                   onCheckedChange={(checked) => setFormData({...formData, is_bureau_commander: checked})}
-                  disabled={formData.division === 'TSB' || !currentUser?.is_bureau_manager} // Csak Manager adhat Commandert
+                  disabled={formData.division === 'TSB' || !currentUser?.is_bureau_manager}
                 />
               </div>
 
@@ -352,7 +412,6 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
           )}
         </div>
         <DialogFooter className="flex justify-between gap-2">
-          {/* ELBOCSÁTÁS GOMB: Ranghoz kötött, vagy ha Bureau Commander a saját osztályában */}
           <Button type="button" variant="destructive" onClick={onKickRequest}
                   disabled={loading || (isFieldDisabled('rank') && !(currentUser?.is_bureau_commander && currentUser?.division === user.division))}
           >
@@ -370,7 +429,6 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
   )
 }
 
-// --- LISTA KOMPONENS ---
 function StaffSection({title, icon: Icon, users, colorClass, onEdit, currentUser, onGiveAward}: any) {
   if (users.length === 0) return null;
 
@@ -399,24 +457,14 @@ function StaffSection({title, icon: Icon, users, colorClass, onEdit, currentUser
               const daysInRank = user.last_promotion_date ? differenceInDays(new Date(), new Date(user.last_promotion_date)) : differenceInDays(new Date(), new Date(user.created_at));
               const badgeInfo = getDivisionStyleAndLabel(user.division, user.faction_rank);
 
-              // GOMBOK LÁTHATÓSÁGA
               const isMe = currentUser?.id === user.id;
               let showEdit = false;
 
               if (currentUser) {
-                // 1. Manager mindent lát
                 if (currentUser.is_bureau_manager) showEdit = true;
-
-                // 2. Executive Staff saját magát (és másokat)
                 else if (isExecutive(currentUser)) showEdit = true;
-
-                // 3. Bureau Commander bárkit
                 else if (currentUser.is_bureau_commander) showEdit = true;
-
-                // 4. Division Commander bárkit (hogy tudjon qualt adni)
                 else if (currentUser.commanded_divisions?.length > 0) showEdit = true;
-
-                // 5. Alap rang jog
                 else if (!isMe && canEditUser(currentUser, user)) showEdit = true;
               }
 
@@ -500,7 +548,6 @@ function StaffSection({title, icon: Icon, users, colorClass, onEdit, currentUser
   );
 }
 
-// --- FŐ OLDAL ---
 export function HrPage() {
   const {supabase, profile, session} = useAuth();
   const {recruitmentOpen, toggleRecruitment} = useSystemStatus();
@@ -508,11 +555,7 @@ export function HrPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState("");
   const [editingUser, setEditingUser] = React.useState<Profile | null>(null);
-
-  // Kitüntetés
   const [awardTarget, setAwardTarget] = React.useState<{ id: string, name: string } | null>(null);
-
-  // Kick
   const [isKickAlertOpen, setIsKickAlertOpen] = React.useState(false);
   const [userToKick, setUserToKick] = React.useState<Profile | null>(null);
 
