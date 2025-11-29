@@ -26,7 +26,8 @@ import {
   ChevronRight,
   Share2,
   Globe,
-  AlertTriangle
+  AlertTriangle,
+  Percent
 } from "lucide-react";
 import {toast} from "sonner";
 import {FACTION_RANKS} from "@/types/supabase";
@@ -46,7 +47,7 @@ import {
 
 const tempId = () => `temp-${Math.random().toString(36).substr(2, 9)}`;
 
-// --- OPTION ITEM COMPONENT (Memoizált a lag ellen) ---
+// --- OPTION ITEM COMPONENT ---
 const OptionItem = memo(({opt, index, qId, qType, onUpdate, onRemove}: any) => {
   const [localText, setLocalText] = useState(opt.option_text);
 
@@ -93,7 +94,7 @@ const OptionItem = memo(({opt, index, qId, qType, onUpdate, onRemove}: any) => {
   );
 });
 
-// --- QUESTION CARD COMPONENT (Memoizált a lag ellen) ---
+// --- QUESTION CARD COMPONENT ---
 const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveOption, onUpdateOption}: any) => {
   const [localText, setLocalText] = useState(q.question_text);
   const [localPoints, setLocalPoints] = useState(q.points);
@@ -235,7 +236,7 @@ export function ExamEditor() {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [submissionCount, setSubmissionCount] = useState(0);
 
-  // FIX: Ref a betöltött examId követésére, hogy ne töltsük újra fókuszváltáskor
+  // Ref az újratöltés elkerülésére
   const loadedExamIdRef = useRef<string | null>(null);
 
   const [examData, setExamData] = useState<Partial<Exam>>({
@@ -246,7 +247,7 @@ export function ExamEditor() {
     required_rank: "Deputy Sheriff Trainee",
     min_days_in_rank: 0,
     time_limit_minutes: 60,
-    passing_percentage: 80,
+    passing_percentage: 80, // Alapértelmezett 80%
     is_public: false,
     is_active: true,
     allow_sharing: false,
@@ -262,7 +263,6 @@ export function ExamEditor() {
   }, [profile, examId, navigate]);
 
   useEffect(() => {
-    // Csak akkor töltünk adatot, ha van ID, van profil, és MÉG NEM töltöttük be ezt az ID-t
     if (examId && profile && loadedExamIdRef.current !== examId) {
       const fetchExam = async () => {
         setIsLoading(true);
@@ -280,7 +280,6 @@ export function ExamEditor() {
             return;
           }
 
-          // Kitöltések számának lekérése
           const {count} = await supabase.from('exam_submissions').select('*', {
             count: 'exact',
             head: true
@@ -296,7 +295,6 @@ export function ExamEditor() {
             page_number: q.page_number ?? 1
           })));
 
-          // SIKERES BETÖLTÉS UTÁN BEÁLLÍTJUK A REF-ET
           loadedExamIdRef.current = examId;
         }
         setIsLoading(false);
@@ -413,6 +411,14 @@ export function ExamEditor() {
     if (val < 1) val = 1;
     if (val > 60) val = 60;
     setExamData(prev => ({...prev, time_limit_minutes: val}));
+  };
+
+  // --- ÚJ: VALIDÁCIÓ A SZÁZALÉKHOZ ---
+  const handleScoreBlur = () => {
+    let val = examData.passing_percentage || 80;
+    if (val < 1) val = 1;
+    if (val > 100) val = 100;
+    setExamData(prev => ({...prev, passing_percentage: val}));
   };
 
   const handleSave = async () => {
@@ -628,6 +634,20 @@ export function ExamEditor() {
                                                                          })} onBlur={handleTimeBlur}
                                                                          className="bg-slate-950 border-slate-700"/>
               </div>
+
+              {/* --- ITT VAN AZ ÚJ MEZŐ: MINIMUM SZÁZALÉK --- */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2"><Percent className="w-4 h-4"/> Sikeres vizsga határa
+                  (%)</Label>
+                <Input type="number" min={1} max={100}
+                       value={examData.passing_percentage}
+                       onChange={e => setExamData({
+                         ...examData,
+                         passing_percentage: parseInt(e.target.value)
+                       })} onBlur={handleScoreBlur}
+                       className="bg-slate-900 border-slate-700"/>
+              </div>
+
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4 border-t border-slate-800">
               <div
