@@ -342,27 +342,196 @@
 
 /* --- REGISTER PAGE ANIMÁCIÓK (Tactical & Patrol) --- */
 
-/* 1. TSB: SEARCHLIGHT (Keresőfény) */
-@keyframes spotlight-pan {
+/* 1. Keresőfény Mozgása (Nagyobb ívben) */
+@keyframes search-patrol {
     0% {
-        transform: translate(-30%, -30%) rotate(0deg) scale(1);
-        opacity: 0.5;
+        left: 10%;
+        top: 10%;
+        transform: scale(1);
+    }
+    25% {
+        left: 60%;
+        top: 20%;
+        transform: scale(1.1);
     }
     50% {
-        transform: translate(10%, 10%) rotate(-10deg) scale(1.2);
-        opacity: 0.7;
+        left: 30%;
+        top: 60%;
+        transform: scale(0.9);
+    }
+    75% {
+        left: 70%;
+        top: 50%;
+        transform: scale(1.15);
     }
     100% {
-        transform: translate(-30%, -30%) rotate(0deg) scale(1);
-        opacity: 0.5;
+        left: 10%;
+        top: 10%;
+        transform: scale(1);
     }
 }
 
-.searchlight-beam {
-    background: radial-gradient(circle at center, rgba(234, 179, 8, 0.2) 0%, rgba(234, 179, 8, 0.05) 45%, transparent 70%);
-    filter: blur(70px);
-    animation: spotlight-pan 18s ease-in-out infinite;
+/* 2. Háttérben lévő piros-kék fények "lélegzése" */
+@keyframes ambient-pulse {
+    0%, 100% {
+        opacity: 0.15;
+    }
+    50% {
+        opacity: 0.3;
+    }
+    /* Soha nem tűnik el teljesen, de nem is vakít */
+}
+
+/* 3. Eső */
+/* Eső Zuhanás (Természetes sebesség) */
+@keyframes rain-fall-natural {
+    0% {
+        background-position: 0 0;
+    }
+    100% {
+        background-position: -20px 100vh;
+    }
+    /* Enyhébb dőlés */
+}
+
+/* KÖZÖS ALAP */
+.rain-base {
+    position: absolute;
+    inset: -50%;
+    width: 200%;
+    height: 200%;
+
+    background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
     mix-blend-mode: screen;
+    pointer-events: none;
+}
+
+/* TÁVOLI ESŐ (Háttérben, alig látható, sűrűbb) */
+.rain-layer-far {
+    background-size: 400px 400px; /* Ritkítottuk (előzőleg 300px volt) */
+    opacity: 0.25; /* Halványabb */
+    animation: rain-fall-natural 1.5s linear infinite; /* Lassú */
+
+    /* Enyhe nyújtás: Csepp forma, nem csík */
+    transform: rotate(-10deg) scaleY(4);
+}
+
+/* KÖZELI ESŐ (Előtérben, látható csíkok, de nem durvák) */
+.rain-layer-near {
+    background-size: 800px 800px; /* Sokkal ritkább (előzőleg 500-600px volt) -> KEVESEBB CSEPP */
+    opacity: 0.5; /* Nem vakít, belesimul a fénybe */
+
+    /* Természetesebb zuhanás (előzőleg 0.4s volt) -> LASSABB */
+    animation: rain-fall-natural 0.8s linear infinite;
+
+    /* Közepes nyújtás: Egyértelmű csík, de nem lézerkard (előzőleg 30 volt) -> FINOMABB */
+    transform: rotate(-10deg) scaleY(12);
+
+    /* Lágyabb élek */
+    filter: blur(0.5px);
+}
+
+/* Pára a földön (Opcionális, maradhat halványan) */
+.rain-mist {
+    position: absolute;
+    inset: 0;
+    background-image: url("https://www.transparenttextures.com/patterns/noise.png");
+    opacity: 0.05; /* Nagyon finom */
+    mix-blend-mode: overlay;
+    animation: rain-fall-natural 0.5s steps(3) infinite;
+}
+
+/* 4. Köd */
+@keyframes fog-flow {
+    0% {
+        background-position: 0 0;
+    }
+    100% {
+        background-position: 100% 0;
+    }
+}
+
+/* ALAP HÁTTÉR (Aszfalt) */
+.night-asphalt-bg {
+    position: absolute;
+    inset: 0;
+    background-color: #080a0f; /* Kékes-feketés alap */
+    background-image: url("https://www.transparenttextures.com/patterns/asfalt-dark.png");
+    background-size: 500px 500px;
+    z-index: 0;
+}
+
+/* ÚJ ELEM: Ambient Járőr Fények (Hogy ne legyen üres a sötét) */
+.ambient-patrol-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    /* Két hatalmas elmosott folt: Balra lent Piros, Jobbra fent Kék */
+    background: radial-gradient(circle at 10% 90%, rgba(220, 38, 38, 0.4), transparent 50%),
+    radial-gradient(circle at 90% 10%, rgba(37, 99, 235, 0.4), transparent 50%);
+    filter: blur(80px); /* Nagyon elmosva, mintha ködös lenne */
+    animation: ambient-pulse 8s ease-in-out infinite; /* Lassú lüktetés */
+    mix-blend-mode: screen;
+}
+
+/* KERESŐFÉNY KONTÉNER - NAGYOBB MÉRET */
+.searchlight-container {
+    position: absolute;
+    /* Növeltük a méretet, így kevesebb a holttér */
+    width: 100vw;
+    height: 100vw;
+    max-width: 1200px; /* Desktop limit is nagyobb */
+    max-height: 1200px;
+
+    animation: search-patrol 35s infinite ease-in-out; /* Lassabb, mert nagyobb a terület */
+    will-change: left, top, transform;
+    pointer-events: none;
+    z-index: 10;
+
+    /* Lágy szélű maszk */
+    -webkit-mask-image: radial-gradient(circle, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, rgba(0, 0, 0, 0) 65%);
+    mask-image: radial-gradient(circle, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, rgba(0, 0, 0, 0) 65%);
+}
+
+/* Réteg 1: Megvilágítás (Sárga) */
+.searchlight-illumination {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+            circle,
+            rgba(255, 230, 160, 0.25) 0%,
+            rgba(234, 179, 8, 0.15) 35%,
+            transparent 70%
+    );
+    mix-blend-mode: screen; /* Világosít, nem éget */
+}
+
+/* Réteg 2: Volumetrikus Köd */
+.volumetric-fog {
+    position: absolute;
+    inset: -50%;
+    width: 200%;
+    height: 200%;
+    background-image: url("https://www.transparenttextures.com/patterns/smoke.png");
+    background-size: 800px 800px;
+    animation: fog-flow 50s linear infinite;
+    opacity: 0.25;
+    mix-blend-mode: overlay;
+}
+
+/* Réteg 3: Eső (Fényes) */
+.rain-layer {
+    position: absolute;
+    inset: -100%;
+    width: 300%;
+    height: 300%;
+    background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
+    background-attachment: fixed;
+    background-size: 450px 450px;
+    animation: rain-fall 0.7s linear infinite;
+    opacity: 0.6;
+    mix-blend-mode: color-dodge;
 }
 
 /* 2. SEB: DRONE SCANNER (Vörös lézer) */

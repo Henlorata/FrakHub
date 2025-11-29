@@ -73,15 +73,29 @@ const DynamicSheriffBackground = ({
             </div>
           </>
         );
-      default: // TSB
+      default: // TSB (Patrol)
         return (
           <>
-            <div className="absolute inset-[-50%] pointer-events-none">
-              <div className="w-full h-full searchlight-beam"/>
-            </div>
-            <div className="absolute inset-0 pointer-events-none opacity-40">
-              <div
-                className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-blue-900/20 via-transparent to-red-900/20 animate-pulse"></div>
+            {/* 1. ALAP ASZFALT */}
+            <div className="night-asphalt-bg"></div>
+
+            {/* 2. AMBIENT PATROL FÉNYEK (Piros/Kék háttér) */}
+            <div className="ambient-patrol-bg"></div>
+
+            {/* 3. KERESŐFÉNY & ESŐ */}
+            <div className="searchlight-container">
+              {/* Fény effekt */}
+              <div className="searchlight-illumination"></div>
+
+              {/* Pára */}
+              <div className="rain-mist"></div>
+
+              {/* Füst/Köd */}
+              <div className="volumetric-fog"></div>
+
+              {/* --- BALANCED RAIN --- */}
+              <div className="rain-base rain-layer-far"></div>
+              <div className="rain-base rain-layer-near"></div>
             </div>
           </>
         );
