@@ -1,20 +1,32 @@
 import * as React from "react";
-import { useAuth } from "@/context/AuthContext";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { User, Car, Home, Plus, X, History, FileText, Link as LinkIcon } from "lucide-react";
-import { toast } from "sonner";
-import type { Suspect, SuspectVehicle, SuspectProperty, SuspectAssociate } from "@/types/supabase";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useNavigate } from "react-router-dom";
-import {canViewCaseDetails, cn} from "@/lib/utils.ts"; // Ha át akarunk ugrani az aktára
+import {useAuth} from "@/context/AuthContext";
+import {Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter} from "@/components/ui/dialog";
+import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
+import {Label} from "@/components/ui/label";
+import {Textarea} from "@/components/ui/textarea";
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
+import {Tabs, TabsList, TabsTrigger, TabsContent} from "@/components/ui/tabs";
+import {
+  User,
+  Car,
+  Home,
+  Plus,
+  X,
+  History,
+  FileText,
+  Link as LinkIcon,
+  ShieldAlert,
+  Fingerprint,
+  Database
+} from "lucide-react";
+import {toast} from "sonner";
+import type {Suspect, SuspectVehicle, SuspectProperty, SuspectAssociate} from "@/types/supabase";
+import {ScrollArea} from "@/components/ui/scroll-area";
+import {Badge} from "@/components/ui/badge";
+import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
+import {useNavigate} from "react-router-dom";
+import {canViewCaseDetails, cn} from "@/lib/utils";
 
 interface SuspectDetailDialogProps {
   suspect: Suspect | null;
@@ -23,9 +35,9 @@ interface SuspectDetailDialogProps {
   onUpdate: () => void;
 }
 
-export function SuspectDetailDialog({ suspect, open, onOpenChange, onUpdate }: SuspectDetailDialogProps) {
-  const { supabase, profile } = useAuth();
-  const navigate = useNavigate(); // Navigációhoz
+export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: SuspectDetailDialogProps) {
+  const {supabase, profile} = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = React.useState(false);
   const [isEditing, setIsEditing] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState("details");
@@ -34,16 +46,14 @@ export function SuspectDetailDialog({ suspect, open, onOpenChange, onUpdate }: S
   const [formData, setFormData] = React.useState<Partial<Suspect>>({});
   const [vehicles, setVehicles] = React.useState<SuspectVehicle[]>([]);
   const [properties, setProperties] = React.useState<SuspectProperty[]>([]);
-
-  // ÚJ ADATOK
   const [associates, setAssociates] = React.useState<SuspectAssociate[]>([]);
-  const [criminalRecord, setCriminalRecord] = React.useState<any[]>([]); // Akták
-  const [allSuspects, setAllSuspects] = React.useState<Suspect[]>([]); // Kereséshez
+  const [criminalRecord, setCriminalRecord] = React.useState<any[]>([]);
+  const [allSuspects, setAllSuspects] = React.useState<Suspect[]>([]);
 
   // Új elemek state
-  const [newVehicle, setNewVehicle] = React.useState({ plate: "", type: "", color: "", notes: "" });
-  const [newProperty, setNewProperty] = React.useState({ address: "", type: "house", notes: "" });
-  const [newAssociate, setNewAssociate] = React.useState({ targetId: "", relation: "", notes: "" });
+  const [newVehicle, setNewVehicle] = React.useState({plate: "", type: "", color: "", notes: ""});
+  const [newProperty, setNewProperty] = React.useState({address: "", type: "house", notes: ""});
+  const [newAssociate, setNewAssociate] = React.useState({targetId: "", relation: "", notes: ""});
 
   const canEdit = profile?.system_role === 'admin' || profile?.system_role === 'supervisor' || profile?.division === 'MCB';
 
@@ -65,32 +75,15 @@ export function SuspectDetailDialog({ suspect, open, onOpenChange, onUpdate }: S
 
   const fetchRelatedData = async () => {
     if (!suspect) return;
-
-    // 1. Járművek & Ingatlanok
-    const { data: vData } = await supabase.from('suspect_vehicles').select('*').eq('suspect_id', suspect.id);
+    const {data: vData} = await supabase.from('suspect_vehicles').select('*').eq('suspect_id', suspect.id);
     if (vData) setVehicles(vData);
-
-    const { data: pData } = await supabase.from('suspect_properties').select('*').eq('suspect_id', suspect.id);
+    const {data: pData} = await supabase.from('suspect_properties').select('*').eq('suspect_id', suspect.id);
     if (pData) setProperties(pData);
-
-    // 2. Kapcsolatok (Associates) - Joinoljuk a társ adatait
-    const { data: aData } = await supabase
-      .from('suspect_associates')
-      .select('*, associate:associate_id(full_name, alias, mugshot_url)')
-      .eq('suspect_id', suspect.id);
+    const {data: aData} = await supabase.from('suspect_associates').select('*, associate:associate_id(full_name, alias, mugshot_url)').eq('suspect_id', suspect.id);
     if (aData) setAssociates(aData);
-
-    // 3. Előélet (Akták) - Keressük a case_suspects táblában
-    const { data: cData } = await supabase
-      .from('case_suspects')
-      .select('*, case:case_id(id, case_number, title, status, created_at)')
-      .eq('suspect_id', suspect.id)
-      .order('added_at', { ascending: false });
+    const {data: cData} = await supabase.from('case_suspects').select('*, case:case_id(id, case_number, title, status, created_at)').eq('suspect_id', suspect.id).order('added_at', {ascending: false});
     if (cData) setCriminalRecord(cData);
-
-    // 4. Összes gyanúsított betöltése (a kapcsolathoz hozzáadáshoz)
-    // Csak a nevük és ID-jük kell
-    const { data: sData } = await supabase.from('suspects').select('id, full_name').neq('id', suspect.id);
+    const {data: sData} = await supabase.from('suspects').select('id, full_name').neq('id', suspect.id);
     if (sData) setAllSuspects(sData);
   }
 
@@ -98,9 +91,12 @@ export function SuspectDetailDialog({ suspect, open, onOpenChange, onUpdate }: S
     if (!suspect) return;
     setLoading(true);
     try {
-      const { error } = await supabase.from('suspects').update({ ...formData, updated_at: new Date().toISOString() }).eq('id', suspect.id);
+      const {error} = await supabase.from('suspects').update({
+        ...formData,
+        updated_at: new Date().toISOString()
+      }).eq('id', suspect.id);
       if (error) throw error;
-      toast.success("Adatok frissítve.");
+      toast.success("Profil frissítve.");
       onUpdate();
       setIsEditing(false);
     } catch (error: any) {
@@ -111,338 +107,367 @@ export function SuspectDetailDialog({ suspect, open, onOpenChange, onUpdate }: S
   };
 
   const handleDelete = async () => {
-    if (!suspect || !confirm("Biztosan TÖRÖLNI akarod ezt a személyt?")) return;
+    if (!suspect || !confirm("Végleges törlés?")) return;
     setLoading(true);
     try {
       await supabase.from('suspects').delete().eq('id', suspect.id);
-      toast.success("Személy törölve.");
+      toast.success("Adatlap törölve.");
       onUpdate();
       onOpenChange(false);
-    } catch { toast.error("Hiba történt."); }
-    finally { setLoading(false); }
+    } catch {
+      toast.error("Hiba történt.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // --- JÁRMŰVEK KEZELÉSE ---
+  // Sub-items handlers
   const addVehicle = async () => {
-    if (!newVehicle.plate || !newVehicle.type) return toast.error("Rendszám és Típus kötelező!");
-    const { error } = await supabase.from('suspect_vehicles').insert({ suspect_id: suspect!.id, plate_number: newVehicle.plate, vehicle_type: newVehicle.type, color: newVehicle.color, notes: newVehicle.notes });
-    if (!error) { toast.success("Jármű hozzáadva."); setNewVehicle({ plate: "", type: "", color: "", notes: "" }); fetchRelatedData(); }
+    if (!newVehicle.plate) return toast.error("Rendszám hiányzik!");
+    const {error} = await supabase.from('suspect_vehicles').insert({
+      suspect_id: suspect!.id,
+      plate_number: newVehicle.plate,
+      vehicle_type: newVehicle.type,
+      color: newVehicle.color,
+      notes: newVehicle.notes
+    });
+    if (!error) {
+      toast.success("Jármű rögzítve.");
+      setNewVehicle({plate: "", type: "", color: "", notes: ""});
+      fetchRelatedData();
+    }
   };
-  const deleteVehicle = async (id: string) => { await supabase.from('suspect_vehicles').delete().eq('id', id); fetchRelatedData(); };
+  const deleteVehicle = async (id: string) => {
+    await supabase.from('suspect_vehicles').delete().eq('id', id);
+    fetchRelatedData();
+  };
 
-  // --- INGATLANOK KEZELÉSE ---
   const addProperty = async () => {
-    if (!newProperty.address) return toast.error("Cím kötelező!");
-    const { error } = await supabase.from('suspect_properties').insert({ suspect_id: suspect!.id, address: newProperty.address, property_type: newProperty.type as any, notes: newProperty.notes });
-    if (!error) { toast.success("Ingatlan hozzáadva."); setNewProperty({ address: "", type: "house", notes: "" }); fetchRelatedData(); }
+    if (!newProperty.address) return toast.error("Cím hiányzik!");
+    const {error} = await supabase.from('suspect_properties').insert({
+      suspect_id: suspect!.id,
+      address: newProperty.address,
+      property_type: newProperty.type as any,
+      notes: newProperty.notes
+    });
+    if (!error) {
+      toast.success("Ingatlan rögzítve.");
+      setNewProperty({address: "", type: "house", notes: ""});
+      fetchRelatedData();
+    }
   };
-  const deleteProperty = async (id: string) => { await supabase.from('suspect_properties').delete().eq('id', id); fetchRelatedData(); };
+  const deleteProperty = async (id: string) => {
+    await supabase.from('suspect_properties').delete().eq('id', id);
+    fetchRelatedData();
+  };
 
-  // --- KAPCSOLATOK KEZELÉSE ---
   const addAssociate = async () => {
-    if (!newAssociate.targetId || !newAssociate.relation) return toast.error("Válassz személyt és kapcsolatot!");
-
-    // Kétirányú kapcsolat? Egyelőre csak egyirányút hozunk létre, de logikus lenne mindkettő.
-    // Most az egyszerűség kedvéért csak A -> B kapcsolatot rögzítünk.
-    const { error } = await supabase.from('suspect_associates').insert({
+    if (!newAssociate.targetId) return toast.error("Személy hiányzik!");
+    const {error} = await supabase.from('suspect_associates').insert({
       suspect_id: suspect!.id,
       associate_id: newAssociate.targetId,
       relationship: newAssociate.relation,
       notes: newAssociate.notes
     });
-
     if (!error) {
       toast.success("Kapcsolat rögzítve.");
-      setNewAssociate({ targetId: "", relation: "", notes: "" });
+      setNewAssociate({targetId: "", relation: "", notes: ""});
       fetchRelatedData();
-    } else {
-      toast.error("Hiba (lehet, hogy már létezik ez a kapcsolat?)");
     }
   };
-  const deleteAssociate = async (id: string) => { await supabase.from('suspect_associates').delete().eq('id', id); fetchRelatedData(); };
-
+  const deleteAssociate = async (id: string) => {
+    await supabase.from('suspect_associates').delete().eq('id', id);
+    fetchRelatedData();
+  };
 
   if (!suspect) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0">
-        <DialogHeader className="p-6 pb-2 bg-slate-950/50 shrink-0">
-          <DialogTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700 overflow-hidden">
-                {formData.mugshot_url ? <img src={formData.mugshot_url} className="w-full h-full object-cover"/> : <User className="w-6 h-6 text-slate-400"/>}
-              </div>
-              <div>
-                <h3 className="text-xl font-bold">{formData.full_name}</h3>
-                <div className="flex items-center gap-2 text-sm text-slate-400">
-                  <span>{formData.alias ? `"${formData.alias}"` : "Nincs alias"}</span>
-                  {/* Státusz címke */}
-                  <Badge variant="outline" className={
-                    formData.status === 'wanted' ? 'text-red-500 border-red-900 bg-red-950/30' :
-                      formData.status === 'jailed' ? 'text-orange-500 border-orange-900' : 'text-slate-500'
-                  }>
-                    {formData.status === 'wanted' ? 'KÖRÖZÖTT' : formData.status === 'jailed' ? 'BÖRTÖNBEN' : formData.status === 'deceased' ? 'ELHUNYT' : 'SZABADLÁBON'}
-                  </Badge>
-                </div>
+      <DialogContent
+        className="bg-[#050a14] border border-slate-800 text-white sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0 shadow-2xl">
+
+        {/* --- HEADER STRIP --- */}
+        <div
+          className="bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between shrink-0 relative overflow-hidden">
+          {/* Background Pattern */}
+          <div className="absolute inset-0 opacity-10" style={{
+            backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)',
+            backgroundSize: '10px 10px'
+          }}></div>
+
+          <div className="flex items-center gap-4 relative z-10">
+            <div className="w-12 h-12 bg-slate-950 border border-slate-700 rounded flex items-center justify-center">
+              <ShieldAlert className="w-6 h-6 text-red-500"/>
+            </div>
+            <div>
+              <DialogTitle className="text-xl font-black uppercase tracking-tighter font-mono">CRIMINAL RECORD
+                #{suspect.id.slice(0, 8)}</DialogTitle>
+              <div className="flex items-center gap-2 mt-1">
+                <Badge variant="outline" className={cn("font-mono border-opacity-50",
+                  formData.status === 'wanted' ? 'text-red-500 border-red-500 bg-red-500/10 animate-pulse' :
+                    formData.status === 'jailed' ? 'text-orange-500 border-orange-500 bg-orange-500/10' : 'text-green-500 border-green-500 bg-green-500/10')}>
+                  {formData.status === 'wanted' ? 'KÖRÖZÖTT' : formData.status === 'jailed' ? 'BÖRTÖNBEN' : formData.status === 'deceased' ? 'ELHUNYT' : 'SZABADLÁBON'}
+                </Badge>
+                <span
+                  className="text-[10px] text-slate-500 font-mono uppercase">Last Update: {new Date().toLocaleDateString()}</span>
               </div>
             </div>
-            {!isEditing && canEdit && activeTab === 'details' && (
-              <Button variant="outline" size="sm" className="border-yellow-600/50 text-yellow-500 hover:bg-yellow-900/20" onClick={() => setIsEditing(true)}>
-                Szerkesztés
-              </Button>
-            )}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-hidden flex flex-col">
-          <div className="px-6 bg-slate-950 border-b border-slate-800">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="bg-transparent p-0 h-auto gap-6">
-                <TabsTrigger value="details" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-yellow-500 rounded-none px-0 py-3">Adatok</TabsTrigger>
-                <TabsTrigger value="record" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-yellow-500 rounded-none px-0 py-3">Előélet</TabsTrigger>
-                <TabsTrigger value="associates" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-yellow-500 rounded-none px-0 py-3">Kapcsolatok</TabsTrigger>
-                <TabsTrigger value="assets" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-yellow-500 rounded-none px-0 py-3">Vagyon</TabsTrigger>
-              </TabsList>
-            </Tabs>
           </div>
 
-          <ScrollArea className="flex-1 p-6">
-            <Tabs value={activeTab} className="w-full space-y-6">
-
-              {/* --- 1. ADATOK --- */}
-              <TabsContent value="details" className="space-y-4 m-0">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Teljes Név</Label>
-                    <Input disabled={!isEditing} value={formData.full_name || ""} onChange={e => setFormData({...formData, full_name: e.target.value})} className="bg-slate-950 border-slate-800 disabled:opacity-80"/>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Alias</Label>
-                    <Input disabled={!isEditing} value={formData.alias || ""} onChange={e => setFormData({...formData, alias: e.target.value})} className="bg-slate-950 border-slate-800 disabled:opacity-80"/>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Státusz</Label>
-                    <Select disabled={!isEditing} value={formData.status} onValueChange={(val: any) => setFormData({...formData, status: val})}>
-                      <SelectTrigger className="bg-slate-950 border-slate-800 disabled:opacity-80"><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                        <SelectItem value="free">Szabadlábon</SelectItem>
-                        <SelectItem value="wanted">Körözött</SelectItem>
-                        <SelectItem value="jailed">Börtönben</SelectItem>
-                        <SelectItem value="deceased">Elhunyt</SelectItem>
-                        <SelectItem value="unknown">Ismeretlen</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nem</Label>
-                    <Select disabled={!isEditing} value={formData.gender || "male"} onValueChange={(val) => setFormData({...formData, gender: val})}>
-                      <SelectTrigger className="bg-slate-950 border-slate-800 disabled:opacity-80"><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                        <SelectItem value="male">Férfi</SelectItem>
-                        <SelectItem value="female">Nő</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Banda / Szervezet</Label>
-                  <Input disabled={!isEditing} value={formData.gang_affiliation || ""} onChange={e => setFormData({...formData, gang_affiliation: e.target.value})} className="bg-slate-950 border-slate-800 disabled:opacity-80"/>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Leírás / Ismertetőjelek</Label>
-                  <Textarea disabled={!isEditing} value={formData.description || ""} onChange={e => setFormData({...formData, description: e.target.value})} className="bg-slate-950 border-slate-800 h-32 resize-none disabled:opacity-80"/>
-                </div>
-              </TabsContent>
-
-              {/* --- 2. ELŐÉLET (Rekordok) --- */}
-              <TabsContent value="record" className="space-y-4 m-0">
-                {criminalRecord.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-slate-500 border border-dashed border-slate-800 rounded-lg">
-                    <History className="w-10 h-10 mb-3 opacity-20" />
-                    <p>Nincs rögzített ügye a rendszerben.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {criminalRecord.map((record) => {
-                      // Ellenőrizzük a hozzáférést
-                      // Megjegyzés: Itt nem tudjuk, hogy collaborator-e, mert a criminalRecord query nem hozza le a case_collaborators-t.
-                      // Ezért itt egy "szigorúbb" ellenőrzést futtatunk a UI-hoz:
-                      // Ha Inv I/II és nem tulajdonos -> Lehet, hogy collab, de nem tudjuk -> Engedjük kattintani, de a DetailPage majd kidobja ha nem.
-                      // VAGY: Ha HighCommand/InvIII -> Biztos zöld út.
-
-                      const hasClearAccess = canViewCaseDetails(profile, record.case as any, false);
-                      // A 'false' a collab paraméter, mert nem tudjuk.
-                      // Ezért Inv I/II-nél false-t adhat vissza akkor is, ha collab.
-                      // De sebaj, a kattintást engedélyezzük, max hibaüzenetet kap.
-
-                      return (
-                        <div key={record.id}
-                             className={cn(
-                               "p-3 rounded-lg bg-slate-950/50 border border-slate-800 flex items-center justify-between transition-colors",
-                               "hover:border-slate-600 cursor-pointer"
-                             )}
-                             onClick={() => {
-                               // Navigálás
-                               onOpenChange(false);
-                               navigate(`/mcb/case/${record.case_id}`);
-                             }}
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded bg-slate-900 flex items-center justify-center border border-slate-800 text-slate-500">
-                              <FileText className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                #{record.case?.case_number} {record.case?.title}
-                                {/* Ha gyanús, hogy nem fér hozzá (pl. lezárt és nem ő a tulaj), jelezzük */}
-                                {record.case?.status !== 'open' && <Lock className="w-3 h-3 text-red-500"/>}
-                              </h4>
-                              <div className="flex gap-2 text-xs text-slate-400 mt-0.5">
-                                <span className="uppercase font-semibold text-yellow-600">{record.involvement_type}</span>
-                                <span>•</span>
-                                <span>{new Date(record.added_at).toLocaleDateString('hu-HU')}</span>
-                              </div>
-                              {record.notes && <p className="text-xs text-slate-500 mt-1 italic">"{record.notes}"</p>}
-                            </div>
-                          </div>
-                          <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300">
-                            Ugrás <LinkIcon className="w-3 h-3 ml-1" />
-                          </Button>
-                        </div>
-                      )})}
-                  </div>
-                )}
-              </TabsContent>
-
-              {/* --- 3. KAPCSOLATOK --- */}
-              <TabsContent value="associates" className="space-y-4 m-0">
-                {/* Hozzáadás */}
-                {canEdit && (
-                  <div className="p-3 bg-slate-950/50 rounded-lg border border-slate-800 space-y-2">
-                    <div className="flex gap-2">
-                      <Select value={newAssociate.targetId} onValueChange={val => setNewAssociate({...newAssociate, targetId: val})}>
-                        <SelectTrigger className="h-9 bg-slate-900 border-slate-700 flex-1"><SelectValue placeholder="Válassz személyt..." /></SelectTrigger>
-                        <SelectContent className="bg-slate-900 border-slate-800 max-h-[200px]">
-                          {allSuspects.map(s => (
-                            <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input placeholder="Kapcsolat (pl. Testvér)" value={newAssociate.relation} onChange={e => setNewAssociate({...newAssociate, relation: e.target.value})} className="h-9 bg-slate-900 border-slate-700 w-1/3"/>
-                    </div>
-                    <div className="flex gap-2">
-                      <Input placeholder="Megjegyzés..." value={newAssociate.notes} onChange={e => setNewAssociate({...newAssociate, notes: e.target.value})} className="h-9 bg-slate-900 border-slate-700 flex-1"/>
-                      <Button size="sm" className="h-9 bg-blue-600 hover:bg-blue-700" onClick={addAssociate}><Plus className="w-4 h-4 mr-1"/> Hozzáadás</Button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  {associates.length === 0 ? (
-                    <p className="text-xs text-slate-500 text-center py-8">Nincsenek ismert kapcsolatok.</p>
-                  ) : (
-                    associates.map(assoc => (
-                      <div key={assoc.id} className="flex items-center gap-3 p-3 rounded bg-slate-950/30 border border-slate-800/60">
-                        <Avatar className="h-10 w-10 border border-slate-700">
-                          <AvatarImage src={assoc.associate?.mugshot_url || undefined} />
-                          <AvatarFallback className="text-xs bg-slate-900">{assoc.associate?.full_name?.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <p className="text-sm font-bold text-white">{assoc.associate?.full_name}</p>
-                          <p className="text-xs text-yellow-500 font-medium uppercase tracking-wide">{assoc.relationship}</p>
-                          {assoc.notes && <p className="text-xs text-slate-500 mt-0.5">{assoc.notes}</p>}
-                        </div>
-                        {canEdit && <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-red-500" onClick={() => deleteAssociate(assoc.id)}><X className="w-4 h-4"/></Button>}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </TabsContent>
-
-              {/* --- 4. VAGYON (Jármű/Ingatlan egyben) --- */}
-              <TabsContent value="assets" className="space-y-6 m-0">
-                {/* JÁRMŰVEK */}
-                <div className="space-y-3">
-                  <h3 className="text-sm font-bold text-slate-400 flex items-center gap-2"><Car className="w-4 h-4"/> Járművek</h3>
-                  {canEdit && (
-                    <div className="flex gap-2">
-                      <Input placeholder="Rendszám" value={newVehicle.plate} onChange={e => setNewVehicle({...newVehicle, plate: e.target.value})} className="h-8 text-xs w-24 bg-slate-950 border-slate-800"/>
-                      <Input placeholder="Típus" value={newVehicle.type} onChange={e => setNewVehicle({...newVehicle, type: e.target.value})} className="h-8 text-xs flex-1 bg-slate-950 border-slate-800"/>
-                      <Input placeholder="Szín" value={newVehicle.color} onChange={e => setNewVehicle({...newVehicle, color: e.target.value})} className="h-8 text-xs w-24 bg-slate-950 border-slate-800"/>
-                      <Button size="sm" className="h-8 w-8 p-0 bg-slate-800 hover:bg-slate-700" onClick={addVehicle}><Plus className="w-4 h-4"/></Button>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {vehicles.map(v => (
-                      <div key={v.id} className="flex justify-between items-center p-2 rounded bg-slate-950/30 border border-slate-800">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="font-mono text-yellow-500 border-yellow-900/30">{v.plate_number}</Badge>
-                            <span className="text-sm font-medium">{v.vehicle_type}</span>
-                            <span className="text-xs text-slate-500">{v.color}</span>
-                          </div>
-                        </div>
-                        {canEdit && <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-600 hover:text-red-500" onClick={() => deleteVehicle(v.id)}><X className="w-3 h-3"/></Button>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* INGATLANOK */}
-                <div className="space-y-3 pt-4 border-t border-slate-800">
-                  <h3 className="text-sm font-bold text-slate-400 flex items-center gap-2"><Home className="w-4 h-4"/> Ingatlanok</h3>
-                  {canEdit && (
-                    <div className="flex gap-2">
-                      <Input placeholder="Cím" value={newProperty.address} onChange={e => setNewProperty({...newProperty, address: e.target.value})} className="h-8 text-xs flex-1 bg-slate-950 border-slate-800"/>
-                      <Select value={newProperty.type} onValueChange={val => setNewProperty({...newProperty, type: val})}>
-                        <SelectTrigger className="w-28 h-8 text-xs bg-slate-950 border-slate-800"><SelectValue /></SelectTrigger>
-                        <SelectContent className="bg-slate-900 border-slate-800">
-                          <SelectItem value="house">Ház</SelectItem>
-                          <SelectItem value="garage">Garázs</SelectItem>
-                          <SelectItem value="business">Üzlet</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button size="sm" className="h-8 w-8 p-0 bg-slate-800 hover:bg-slate-700" onClick={addProperty}><Plus className="w-4 h-4"/></Button>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {properties.map(p => (
-                      <div key={p.id} className="flex justify-between items-center p-2 rounded bg-slate-950/30 border border-slate-800">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="text-[10px] h-5">{p.property_type === 'house' ? 'Ház' : p.property_type === 'garage' ? 'Garázs' : 'Üzlet'}</Badge>
-                          <span className="text-sm">{p.address}</span>
-                        </div>
-                        {canEdit && <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-600 hover:text-red-500" onClick={() => deleteProperty(p.id)}><X className="w-3 h-3"/></Button>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </TabsContent>
-
-            </Tabs>
-          </ScrollArea>
+          {!isEditing && canEdit && activeTab === 'details' && (
+            <Button variant="outline" size="sm" className="relative z-10 border-slate-700 hover:bg-slate-800"
+                    onClick={() => setIsEditing(true)}>Adatok Szerkesztése</Button>
+          )}
         </div>
 
-        {activeTab === 'details' && isEditing && (
-          <DialogFooter className="p-6 pt-4 border-t border-slate-800 bg-slate-950/50 flex justify-between items-center shrink-0">
-            <Button type="button" variant="destructive" onClick={handleDelete} disabled={loading}>Törlés</Button>
-            <div className="flex gap-2">
-              <Button type="button" variant="ghost" onClick={() => setIsEditing(false)}>Mégse</Button>
-              <Button type="button" onClick={handleSave} disabled={loading} className="bg-yellow-600 hover:bg-yellow-700 text-black">Mentés</Button>
+        <div className="flex flex-1 min-h-0">
+          {/* --- LEFT SIDEBAR (Mugshot & Nav) --- */}
+          <div className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
+            <div className="p-6 pb-4 flex flex-col items-center border-b border-slate-900">
+              <div className="relative w-32 h-32 mb-4 group">
+                <div
+                  className="absolute inset-0 border-2 border-slate-700 rounded-lg group-hover:border-slate-500 transition-colors"></div>
+                {/* Corner Markers */}
+                <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-white opacity-50"></div>
+                <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-white opacity-50"></div>
+                <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-white opacity-50"></div>
+                <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-white opacity-50"></div>
+
+                <Avatar className="w-full h-full rounded-lg">
+                  <AvatarImage src={formData.mugshot_url} className="object-cover"/>
+                  <AvatarFallback className="bg-slate-900 text-slate-600 rounded-lg"><User
+                    className="w-12 h-12"/></AvatarFallback>
+                </Avatar>
+              </div>
+              <h2 className="text-lg font-bold text-center leading-tight">{formData.full_name}</h2>
+              {formData.alias && <p className="text-xs text-slate-500 italic mt-1">"{formData.alias}"</p>}
             </div>
-          </DialogFooter>
+
+            <div className="flex-1 py-4">
+              <Tabs value={activeTab} onValueChange={setActiveTab} orientation="vertical" className="w-full">
+                <TabsList className="flex flex-col h-auto bg-transparent w-full gap-1 px-2">
+                  <TabsTrigger value="details"
+                               className="w-full justify-start px-4 py-2 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:border-l-2 border-red-500 transition-all rounded-none text-slate-500"><Fingerprint
+                    className="w-4 h-4 mr-2"/> Személyes Adatok</TabsTrigger>
+                  <TabsTrigger value="record"
+                               className="w-full justify-start px-4 py-2 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:border-l-2 border-red-500 transition-all rounded-none text-slate-500"><History
+                    className="w-4 h-4 mr-2"/> Előélet & Akták</TabsTrigger>
+                  <TabsTrigger value="associates"
+                               className="w-full justify-start px-4 py-2 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:border-l-2 border-red-500 transition-all rounded-none text-slate-500"><User
+                    className="w-4 h-4 mr-2"/> Kapcsolatok</TabsTrigger>
+                  <TabsTrigger value="assets"
+                               className="w-full justify-start px-4 py-2 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:border-l-2 border-red-500 transition-all rounded-none text-slate-500"><Database
+                    className="w-4 h-4 mr-2"/> Vagyon & Tulajdon</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          </div>
+
+          {/* --- MAIN CONTENT AREA --- */}
+          <div className="flex-1 bg-slate-900/50 flex flex-col min-w-0">
+            <ScrollArea className="flex-1 p-6">
+              <Tabs value={activeTab} className="w-full">
+
+                {/* 1. DETAIL VIEW */}
+                <TabsContent value="details" className="mt-0 space-y-6 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase font-bold text-slate-500">Teljes Név</Label>
+                      <Input disabled={!isEditing} value={formData.full_name || ""}
+                             onChange={e => setFormData({...formData, full_name: e.target.value})}
+                             className="bg-slate-950 border-slate-800 h-9 font-mono"/>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase font-bold text-slate-500">Alias / Becenév</Label>
+                      <Input disabled={!isEditing} value={formData.alias || ""}
+                             onChange={e => setFormData({...formData, alias: e.target.value})}
+                             className="bg-slate-950 border-slate-800 h-9 font-mono"/>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase font-bold text-slate-500">Státusz</Label>
+                      <Select disabled={!isEditing} value={formData.status}
+                              onValueChange={(val: any) => setFormData({...formData, status: val})}>
+                        <SelectTrigger className="bg-slate-950 border-slate-800 h-9"><SelectValue/></SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                          <SelectItem value="free">Szabadlábon</SelectItem>
+                          <SelectItem value="wanted">Körözött</SelectItem>
+                          <SelectItem value="jailed">Börtönben</SelectItem>
+                          <SelectItem value="deceased">Elhunyt</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase font-bold text-slate-500">Nem</Label>
+                      <Select disabled={!isEditing} value={formData.gender || "male"}
+                              onValueChange={(val) => setFormData({...formData, gender: val})}>
+                        <SelectTrigger className="bg-slate-950 border-slate-800 h-9"><SelectValue/></SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                          <SelectItem value="male">Férfi</SelectItem>
+                          <SelectItem value="female">Nő</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2 space-y-1.5">
+                      <Label className="text-[10px] uppercase font-bold text-slate-500">Bűnszervezet / Banda</Label>
+                      <Input disabled={!isEditing} value={formData.gang_affiliation || ""}
+                             onChange={e => setFormData({...formData, gang_affiliation: e.target.value})}
+                             className="bg-slate-950 border-slate-800 h-9 font-mono"/>
+                    </div>
+                    <div className="col-span-2 space-y-1.5">
+                      <Label className="text-[10px] uppercase font-bold text-slate-500">Személyleírás /
+                        Ismertetőjelek</Label>
+                      <Textarea disabled={!isEditing} value={formData.description || ""}
+                                onChange={e => setFormData({...formData, description: e.target.value})}
+                                className="bg-slate-950 border-slate-800 min-h-[120px] font-mono text-sm leading-relaxed break-all"/>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                {/* 2. CRIMINAL RECORD */}
+                <TabsContent value="record" className="mt-0 space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                  {criminalRecord.length === 0 ?
+                    <div className="text-center py-10 text-slate-500 text-sm font-mono">NO RECORDS FOUND</div> :
+                    criminalRecord.map(rec => (
+                      <div key={rec.id} onClick={() => {
+                        onOpenChange(false);
+                        navigate(`/mcb/case/${rec.case_id}`);
+                      }}
+                           className="flex items-center justify-between p-3 bg-slate-950/50 border border-slate-800 rounded hover:border-slate-600 cursor-pointer transition-colors group">
+                        <div className="flex items-center gap-4">
+                          <div
+                            className="w-10 h-10 rounded bg-slate-900 flex items-center justify-center border border-slate-800 group-hover:border-slate-600">
+                            <FileText className="w-5 h-5 text-slate-500 group-hover:text-white"/>
+                          </div>
+                          <div>
+                            <h4
+                              className="font-bold text-slate-200 text-sm group-hover:text-white">#{rec.case?.case_number} {rec.case?.title}</h4>
+                            <div className="flex gap-2 text-[10px] uppercase font-bold text-slate-500 mt-0.5">
+                              <span className="text-yellow-600">{rec.involvement_type}</span>
+                              <span>•</span>
+                              <span>{new Date(rec.added_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <LinkIcon className="w-4 h-4 text-slate-600 group-hover:text-blue-400"/>
+                      </div>
+                    ))
+                  }
+                </TabsContent>
+
+                {/* 3. ASSOCIATES */}
+                <TabsContent value="associates" className="mt-0 space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                  {canEdit && (
+                    <div className="p-3 bg-slate-950 border border-slate-800 rounded flex gap-2 mb-4">
+                      <Select value={newAssociate.targetId}
+                              onValueChange={val => setNewAssociate({...newAssociate, targetId: val})}>
+                        <SelectTrigger className="h-8 bg-slate-900 border-slate-700 flex-1"><SelectValue
+                          placeholder="Személy..."/></SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-800"><ScrollArea
+                          className="h-40">{allSuspects.map(s => <SelectItem key={s.id}
+                                                                             value={s.id}>{s.full_name}</SelectItem>)}</ScrollArea></SelectContent>
+                      </Select>
+                      <Input placeholder="Kapcsolat..." value={newAssociate.relation}
+                             onChange={e => setNewAssociate({...newAssociate, relation: e.target.value})}
+                             className="h-8 bg-slate-900 border-slate-700 w-1/3"/>
+                      <Button size="sm" className="h-8 bg-blue-600 hover:bg-blue-500" onClick={addAssociate}><Plus
+                        className="w-4 h-4"/></Button>
+                    </div>
+                  )}
+                  {associates.map(assoc => (
+                    <div key={assoc.id}
+                         className="flex items-center gap-3 p-3 bg-slate-950/30 border border-slate-800 rounded">
+                      <Avatar className="h-10 w-10 border border-slate-700"><AvatarImage
+                        src={assoc.associate?.mugshot_url}/><AvatarFallback
+                        className="bg-slate-900">{assoc.associate?.full_name.charAt(0)}</AvatarFallback></Avatar>
+                      <div className="flex-1">
+                        <p className="font-bold text-sm text-slate-200">{assoc.associate?.full_name}</p>
+                        <p
+                          className="text-[10px] text-yellow-500 uppercase font-bold tracking-wider">{assoc.relationship}</p>
+                      </div>
+                      {canEdit &&
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-red-500"
+                                onClick={() => deleteAssociate(assoc.id)}><X className="w-4 h-4"/></Button>}
+                    </div>
+                  ))}
+                </TabsContent>
+
+                {/* 4. ASSETS */}
+                <TabsContent value="assets" className="mt-0 space-y-6 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="space-y-3">
+                    <h3 className="text-xs uppercase font-bold text-slate-500 tracking-wider flex items-center gap-2">
+                      <Car className="w-3 h-3"/> Járművek</h3>
+                    {canEdit && <div className="flex gap-2 mb-2"><Input placeholder="Rendszám" value={newVehicle.plate}
+                                                                        onChange={e => setNewVehicle({
+                                                                          ...newVehicle,
+                                                                          plate: e.target.value
+                                                                        })}
+                                                                        className="h-8 bg-slate-950 border-slate-800 w-24 text-xs"/><Input
+                      placeholder="Típus" value={newVehicle.type}
+                      onChange={e => setNewVehicle({...newVehicle, type: e.target.value})}
+                      className="h-8 bg-slate-900 border-slate-700 flex-1 text-xs"/><Button size="sm"
+                                                                                            className="h-8 w-8 p-0"
+                                                                                            onClick={addVehicle}><Plus
+                      className="w-4 h-4"/></Button></div>}
+                    {vehicles.map(v => (
+                      <div key={v.id}
+                           className="flex justify-between items-center p-2 bg-slate-950/30 border border-slate-800 rounded">
+                        <div className="flex items-center gap-3"><Badge variant="outline"
+                                                                        className="font-mono text-yellow-500 border-yellow-900/50 bg-yellow-900/10">{v.plate_number}</Badge><span
+                          className="text-sm text-slate-300">{v.vehicle_type}</span></div>
+                        {canEdit &&
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-600 hover:text-red-500"
+                                  onClick={() => deleteVehicle(v.id)}><X className="w-3 h-3"/></Button>}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="text-xs uppercase font-bold text-slate-500 tracking-wider flex items-center gap-2">
+                      <Home className="w-3 h-3"/> Ingatlanok</h3>
+                    {canEdit && <div className="flex gap-2 mb-2"><Input placeholder="Cím..." value={newProperty.address}
+                                                                        onChange={e => setNewProperty({
+                                                                          ...newProperty,
+                                                                          address: e.target.value
+                                                                        })}
+                                                                        className="h-8 bg-slate-950 border-slate-800 flex-1 text-xs"/><Button
+                      size="sm" className="h-8 w-8 p-0" onClick={addProperty}><Plus className="w-4 h-4"/></Button>
+                    </div>}
+                    {properties.map(p => (
+                      <div key={p.id}
+                           className="flex justify-between items-center p-2 bg-slate-950/30 border border-slate-800 rounded">
+                        <div className="flex items-center gap-2"><Badge variant="secondary"
+                                                                        className="text-[10px] h-5">{p.property_type}</Badge><span
+                          className="text-sm text-slate-300">{p.address}</span></div>
+                        {canEdit &&
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-600 hover:text-red-500"
+                                  onClick={() => deleteProperty(p.id)}><X className="w-3 h-3"/></Button>}
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+
+              </Tabs>
+            </ScrollArea>
+          </div>
+        </div>
+
+        {/* --- FOOTER (Only when editing details) --- */}
+        {activeTab === 'details' && isEditing && (
+          <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-between shrink-0">
+            <Button variant="destructive" onClick={handleDelete}
+                    className="bg-red-950 text-red-500 hover:bg-red-900 border border-red-900">ADATLAP TÖRLÉSE</Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setIsEditing(false)}>Mégse</Button>
+              <Button onClick={handleSave} disabled={loading}
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-bold">VÁLTOZÁSOK MENTÉSE</Button>
+            </div>
+          </div>
         )}
 
-        {/* Bezárás gomb ha nem szerkesztünk (vagy nem a details fülön vagyunk) */}
         {(!isEditing || activeTab !== 'details') && (
-          <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex justify-end shrink-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-slate-700">Bezárás</Button>
+          <div className="p-3 bg-slate-950 border-t border-slate-800 flex justify-end shrink-0">
+            <Button variant="outline" onClick={() => onOpenChange(false)}
+                    className="border-slate-700 text-slate-400 hover:text-white">BEZÁRÁS</Button>
           </div>
         )}
 

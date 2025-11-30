@@ -963,7 +963,7 @@ export function CalculatorPage() {
                 </div>
                 <Textarea
                   readOnly
-                  className="mt-2 h-16 text-[11px] leading-tight font-mono bg-slate-950 border-slate-800 text-slate-400 resize-none focus-visible:ring-0"
+                  className="mt-2 h-16 text-[11px] leading-tight font-mono bg-slate-950 border-slate-800 text-slate-400 resize-none focus-visible:ring-0 break-all"
                   value={ticketReasons || "Nincsenek indokok."}
                 />
               </div>
@@ -977,7 +977,7 @@ export function CalculatorPage() {
                 <div className="relative">
                   <Textarea
                     readOnly
-                    className="h-20 text-[11px] leading-tight font-mono bg-slate-950 border-slate-800 text-slate-400 resize-none focus-visible:ring-0"
+                    className="h-20 text-[11px] leading-tight font-mono bg-slate-950 border-slate-800 text-slate-400 resize-none focus-visible:ring-0 break-all"
                     value={arrestOutput || "Nincs fegyházbüntetés."}
                   />
                   <div className="absolute top-2 right-2">

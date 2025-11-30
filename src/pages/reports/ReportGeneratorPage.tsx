@@ -1,20 +1,21 @@
 import * as React from "react";
 import {useAuth} from "@/context/AuthContext";
-import {Card, CardContent, CardHeader, CardTitle, CardDescription} from "@/components/ui/card";
+import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
-import {ScrollArea} from "@/components/ui/scroll-area";
 import {Badge} from "@/components/ui/badge";
 import {toast} from "sonner";
 import {
   Copy, FilePlus, FolderPlus, RefreshCcw, User, Shield, FileText, Gavel,
-  Siren, Lock, CarFront, Megaphone, TriangleAlert, Receipt
+  Siren, Lock, CarFront, Megaphone, TriangleAlert, Receipt, Calendar, Hash, DollarSign, Clock, Users
 } from "lucide-react";
+import {cn} from "@/lib/utils";
+import {SheriffBackground} from "@/components/SheriffBackground";
 
-// BŐVÍTETT SABLONOK
+// BŐVÍTETT SABLONOK (Eredeti szövegezés)
 const TEMPLATES = {
   trafficStop: `A mai napon járőrszolgálatot teljesítettem, amikor figyelmes lettem egy [JÁRMŰ TÍPUS]-ra, amely [OK, PL. ÁTHAJTOTT A PIROSON]. A járművet fény- és hangjelzés kíséretében félreállítottam a [HELYSZÍN]-en. A sofőrt igazoltattam, az iratokat rendben találtam.`,
   ticket: `Az igazoltatás során megállapítottam, hogy a sofőr [VÉTSÉG OKA]. A vétséget közöltem vele, amit elismert. Helyszíni bírságot állítottam ki [ÖSSZEG] értékben, majd útjára engedtem.`,
@@ -23,6 +24,20 @@ const TEMPLATES = {
   arrest: `A gyanúsítottat a helyszínen földre vittem és megbilincseltem. A ruházatátvízsgálás során [TALÁLT TÁRGYAK]-t találtam. A Miranda jogait a helyszínen ismertettem, azokat megértette / nem élt velük. A kapitányságra szállítottam.`,
   interrogation: `A kihallgatóban a gyanúsított [VISELKEDÉS, PL. EGYÜTTMŰKÖDŐ VOLT / TAGADOTT]. A vádakat közöltem vele. A bírságot elfogadta, a szabadságvesztést megkezdte.`
 };
+
+// --- TECH INPUT KOMPONENS ---
+const TechInput = ({icon: Icon, className, ...props}: any) => (
+  <div className="relative group">
+    <div
+      className="absolute left-0 top-0 bottom-0 w-10 flex items-center justify-center bg-slate-900 border-r border-slate-800 rounded-l-md group-focus-within:border-blue-500/50 group-focus-within:bg-blue-900/20 transition-colors">
+      <Icon className="w-4 h-4 text-slate-500 group-focus-within:text-blue-400 transition-colors"/>
+    </div>
+    <Input
+      className={cn("pl-12 bg-[#0b1221] border-slate-800 focus-visible:ring-blue-500/20 focus-visible:border-blue-500/50 h-10 font-mono text-sm text-slate-200 placeholder:text-slate-700", className)}
+      {...props}
+    />
+  </div>
+);
 
 export function ReportGeneratorPage() {
   const {profile} = useAuth();
@@ -58,23 +73,34 @@ export function ReportGeneratorPage() {
     }
   }, [profile]);
 
-  // --- FORMÁZÓ FÜGGVÉNYEK ---
-
+  // --- FORMÁZÓK ---
   const formatFine = (val: string) => {
-    // Csak számjegyek megtartása
+    if (val.trim() === '-' || val.trim() === '') return "-";
     const cleanVal = val.replace(/\D/g, '');
     if (!cleanVal) return "";
-    // Ezres tagolás ponttal
     return `$${Number(cleanVal).toLocaleString('hu-HU').replace(/\s/g, '.')}`;
   };
 
   const formatJailTime = (val: string) => {
+    if (val.trim() === '-' || val.trim() === '') return "-";
     const cleanVal = val.replace(/\D/g, '');
     if (!cleanVal) return "";
     return `${cleanVal} hónap`;
   };
 
-  // --- GENERÁTOROK ---
+  // --- SZIGORÚ INPUT VALIDÁCIÓ ---
+  const handleNumberOrDashChange = (field: string, value: string) => {
+    // Csak számok vagy egyetlen "-" jel
+    if (/^$|^-?$|^\d+$/.test(value)) {
+      setFormData(prev => ({...prev, [field]: value}));
+    }
+  };
+
+  const handleChange = (field: string, value: string) => {
+    setFormData(prev => ({...prev, [field]: value}));
+  };
+
+  // --- GENERÁTOROK (EREDETI) ---
   const generateFolderCode = () => {
     return `[CENTER][IMG]https://i.imgur.com/ClUbwZP.png[/IMG]
 [SIZE=5][FONT=book antiqua]San Fierro Sheriff's Department - Personnel Administration Bureau: ${folderName} jelentési mappája[/FONT][/SIZE]
@@ -82,9 +108,8 @@ export function ReportGeneratorPage() {
   };
 
   const generateReportCode = () => {
-    // Formázott értékek generálása
-    const formattedFine = formData.fine ? (formData.fine.includes('$') ? formData.fine : formatFine(formData.fine)) : "";
-    const formattedJail = formData.jailTime ? (formData.jailTime.includes('hónap') ? formData.jailTime : formatJailTime(formData.jailTime)) : "";
+    const formattedFine = formData.fine ? (formData.fine === '-' || formData.fine.includes('$') ? formData.fine : formatFine(formData.fine)) : "";
+    const formattedJail = formData.jailTime ? (formData.jailTime === '-' || formData.jailTime.includes('hónap') ? formData.jailTime : formatJailTime(formData.jailTime)) : "";
 
     return `[QUOTE]
 [IMG]https://i.imgur.com/ClUbwZP.png[/IMG]
@@ -126,16 +151,12 @@ ${formData.description}
     toast.success("BBCode másolva!");
   };
 
-  const handleChange = (field: string, value: string) => {
-    setFormData(prev => ({...prev, [field]: value}));
-  };
-
   const insertTemplate = (text: string) => {
     setFormData(prev => ({
       ...prev,
       description: prev.description ? prev.description + "\n\n" + text : text
     }));
-    toast.info("Szövegrészlet beszúrva!");
+    toast.info("Sablon beszúrva.");
   };
 
   const resetForm = () => {
@@ -144,247 +165,250 @@ ${formData.description}
       officerName: profile.full_name,
       officerRank: profile.faction_rank,
       badgeNumber: profile.badge_number,
-      colleagues: "",
-      unitId: "",
-      suspectName: "",
-      suspectIdCard: "",
-      suspectLicense: "",
-      suspectMedical: "",
+      colleagues: "", unitId: "", suspectName: "", suspectIdCard: "", suspectLicense: "", suspectMedical: "",
       date: new Date().toLocaleDateString('hu-HU'),
-      charges: "",
-      fine: "",
-      jailTime: "",
-      confiscatedItems: "-",
-      description: ""
+      charges: "", fine: "", jailTime: "", confiscatedItems: "-", description: ""
     });
     toast.info("Űrlap törölve.");
   };
 
+  const TemplateButton = ({label, text, icon: Icon, colorClass}: any) => (
+    <button onClick={() => insertTemplate(text)}
+            className={cn("flex flex-col items-center justify-center p-3 rounded-lg border border-slate-800 bg-slate-950 hover:bg-slate-900 transition-all group shadow-sm hover:shadow-md", colorClass)}>
+      <Icon className="w-5 h-5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity"/>
+      <span
+        className="text-[10px] font-bold uppercase tracking-wide text-slate-400 group-hover:text-white">{label}</span>
+    </button>
+  );
+
   return (
     <div
-      className="h-[calc(100vh-6rem)] flex flex-col max-w-[1800px] mx-auto animate-in fade-in duration-500 px-4 pb-4 overflow-hidden">
-      <div className="flex-none mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      className="h-[calc(100vh-6rem)] flex flex-col max-w-[1800px] mx-auto animate-in fade-in duration-500 px-6 pb-6 overflow-hidden relative">
+      <SheriffBackground side="right"/>
+
+      {/* HEADER */}
+      <div
+        className="flex-none mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Jelentés Generátor</h1>
-          <p className="text-slate-400">Hivatalos fórum jelentések formázása egyszerűen.</p>
+          <div className="flex items-center gap-2 text-yellow-500/80 mb-1"><FileText className="w-4 h-4"/><span
+            className="text-[10px] font-bold uppercase tracking-[0.3em]">ADMINISTRATION</span></div>
+          <h1 className="text-3xl font-black text-white tracking-tighter uppercase drop-shadow-lg">Jelentés
+            Generátor</h1>
         </div>
       </div>
 
-      <Tabs defaultValue="report" className="flex-1 flex flex-col min-h-0">
-        <TabsList className="flex-none grid w-full max-w-md grid-cols-2 bg-slate-900 border border-slate-800 mb-4">
+      {/* TABS & CONTENT */}
+      <Tabs defaultValue="report" className="flex-1 flex flex-col min-h-0 relative z-10">
+        <TabsList
+          className="flex-none w-fit bg-slate-900/80 border border-slate-700 p-1 mb-6 rounded-lg backdrop-blur-md">
           <TabsTrigger value="folder"
-                       className="data-[state=active]:bg-yellow-600 data-[state=active]:text-black"><FolderPlus
-            className="w-4 h-4 mr-2"/> Mappa Nyitás</TabsTrigger>
+                       className="data-[state=active]:bg-yellow-600 data-[state=active]:text-black text-slate-300 uppercase font-bold text-xs tracking-wider px-6 transition-all"><FolderPlus
+            className="w-3.5 h-3.5 mr-2"/> Mappa Nyitás</TabsTrigger>
           <TabsTrigger value="report"
-                       className="data-[state=active]:bg-yellow-600 data-[state=active]:text-black"><FilePlus
-            className="w-4 h-4 mr-2"/> Új Jelentés</TabsTrigger>
+                       className="data-[state=active]:bg-yellow-600 data-[state=active]:text-black text-slate-300 uppercase font-bold text-xs tracking-wider px-6 transition-all"><FilePlus
+            className="w-3.5 h-3.5 mr-2"/> Új Jelentés</TabsTrigger>
         </TabsList>
 
         <TabsContent value="folder" className="flex-1">
-          <Card className="bg-slate-900 border-slate-800 max-w-2xl">
-            <CardHeader><CardTitle>Havi Mappa BBCode</CardTitle><CardDescription>Hónap elején nyitandó téma
-              kódja.</CardDescription></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2"><Label>Név</Label><Input value={folderName}
-                                                                  onChange={(e) => setFolderName(e.target.value)}
-                                                                  className="bg-slate-950 border-slate-700"/></div>
-              <div className="relative">
+          <Card className="bg-[#0b1221] border border-slate-800 max-w-2xl shadow-2xl">
+            <CardHeader className="border-b border-slate-800/50 bg-slate-950/30"><CardTitle
+              className="text-white uppercase font-bold tracking-wide text-sm">Havi Mappa
+              BBCode</CardTitle></CardHeader>
+            <CardContent className="space-y-4 p-6">
+              <div className="space-y-1.5"><Label
+                className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Mappa Neve</Label><TechInput
+                icon={User} value={folderName} onChange={(e: any) => setFolderName(e.target.value)}/></div>
+              <div className="relative group">
+                <div
+                  className="absolute -inset-0.5 bg-gradient-to-r from-yellow-600 to-slate-600 rounded-lg opacity-20 group-hover:opacity-40 transition-opacity blur"></div>
                 <Textarea readOnly value={generateFolderCode()}
-                          className="h-32 bg-slate-950 border-slate-800 font-mono text-xs text-slate-300 resize-none"/>
-                <Button size="sm" className="absolute top-2 right-2 bg-yellow-600 hover:bg-yellow-700 text-black"
+                          className="relative h-32 bg-[#050a14] border-slate-800 font-mono text-xs text-slate-300 resize-none p-4 focus:ring-0 break-all"/>
+                <Button size="sm"
+                        className="absolute top-3 right-3 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-xs uppercase tracking-wider"
                         onClick={() => copyToClipboard(generateFolderCode())}><Copy
-                  className="w-4 h-4 mr-2"/> Másolás</Button>
+                  className="w-3.5 h-3.5 mr-2"/> Másolás</Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="report" className="flex-1 min-h-0">
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 h-full">
+        <TabsContent value="report" className="flex-1 min-h-0 flex flex-col">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 h-full">
 
-            <div className="xl:col-span-8 h-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
-              <ScrollArea className="h-full p-4">
-                <div className="space-y-6 pb-10">
+            {/* --- BAL OSZLOP: ŰRLAP --- */}
+            <div
+              className="xl:col-span-8 h-full flex flex-col bg-[#0b1221] border border-slate-800 rounded-xl overflow-hidden shadow-2xl relative">
+              <div
+                className="p-4 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center backdrop-blur-md shrink-0">
+                <span
+                  className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><FileText
+                  className="w-4 h-4 text-blue-500"/> ADATBEVITELI ŰRLAP</span>
+                <Button variant="ghost" size="sm" onClick={resetForm}
+                        className="h-7 text-[10px] uppercase font-bold text-red-400 hover:text-red-300 hover:bg-red-950/20"><RefreshCcw
+                  className="w-3 h-3 mr-1.5"/> Törlés</Button>
+              </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card className="bg-slate-900 border-slate-800">
-                      <CardHeader className="pb-3 border-b border-slate-800/50 flex flex-row items-center gap-2 py-3">
-                        <Shield className="w-4 h-4 text-blue-500"/>
-                        <CardTitle className="text-sm uppercase text-slate-300 font-bold">I. Rendvédelmi
-                          Adatok</CardTitle>
-                      </CardHeader>
-                      <CardContent className="pt-4 space-y-3">
-                        <div className="space-y-1.5"><Label className="text-xs text-slate-400">Teljes Név</Label><Input
-                          value={formData.officerName} onChange={e => handleChange('officerName', e.target.value)}
-                          className="bg-slate-950 border-slate-700 h-8"/></div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5"><Label
-                            className="text-xs text-slate-400">Rendfokozat</Label><Input value={formData.officerRank}
-                                                                                         onChange={e => handleChange('officerRank', e.target.value)}
-                                                                                         className="bg-slate-950 border-slate-700 h-8"/>
+              {/* JAVÍTÁS: A ScrollArea szülője flex-1 és overflow-hidden, hogy működjön a görgetés */}
+              <div className="flex-1 overflow-hidden relative">
+                <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
+                  <div className="p-6 space-y-8">
+
+                    {/* I. SZEMÉLYES */}
+                    <div className="space-y-4">
+                      <h3
+                        className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] border-b border-slate-800/50 pb-2 mb-4">I.
+                        Rendvédelmi Adatok</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div className="space-y-1"><Label className="text-[10px] uppercase font-bold text-slate-500">Teljes
+                            Név</Label><TechInput icon={User} value={formData.officerName}
+                                                  onChange={(e: any) => handleChange('officerName', e.target.value)}/>
                           </div>
-                          <div className="space-y-1.5"><Label
-                            className="text-xs text-slate-400">Jelvényszám</Label><Input value={formData.badgeNumber}
-                                                                                         onChange={e => handleChange('badgeNumber', e.target.value)}
-                                                                                         className="bg-slate-950 border-slate-700 h-8"/>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1"><Label
+                              className="text-[10px] uppercase font-bold text-slate-500">Rendfokozat</Label><TechInput
+                              icon={Shield} value={formData.officerRank}
+                              onChange={(e: any) => handleChange('officerRank', e.target.value)}/></div>
+                            <div className="space-y-1"><Label
+                              className="text-[10px] uppercase font-bold text-slate-500">Jelvényszám</Label><TechInput
+                              icon={Hash} value={formData.badgeNumber}
+                              onChange={(e: any) => handleChange('badgeNumber', e.target.value)}/></div>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5"><Label
-                            className="text-xs text-slate-400">Egységszám</Label><Input placeholder="pl. 6-LINCOLN-005"
-                                                                                        value={formData.unitId}
-                                                                                        onChange={e => handleChange('unitId', e.target.value)}
-                                                                                        className="bg-slate-950 border-slate-700 h-8"/>
+                        <div className="space-y-4">
+                          <div className="space-y-1"><Label
+                            className="text-[10px] uppercase font-bold text-slate-500">Egységszám</Label><TechInput
+                            icon={CarFront} placeholder="pl. 6-L-005" value={formData.unitId}
+                            onChange={(e: any) => handleChange('unitId', e.target.value)}/></div>
+                          <div className="space-y-1"><Label
+                            className="text-[10px] uppercase font-bold text-slate-500">Társak</Label><TechInput
+                            icon={Users} placeholder="Név, Rang" value={formData.colleagues}
+                            onChange={(e: any) => handleChange('colleagues', e.target.value)}/></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* II. GYANÚSÍTOTT */}
+                    <div className="space-y-4">
+                      <h3
+                        className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] border-b border-slate-800/50 pb-2 mb-4">II.
+                        Előállított Személy</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-1"><Label
+                          className="text-[10px] uppercase font-bold text-slate-500">Név</Label><TechInput icon={User}
+                                                                                                           className="border-red-900/30 focus-visible:border-red-500/50 focus-visible:ring-red-500/20"
+                                                                                                           value={formData.suspectName}
+                                                                                                           onChange={(e: any) => handleChange('suspectName', e.target.value)}/>
+                        </div>
+                        <div className="space-y-1"><Label className="text-[10px] uppercase font-bold text-slate-500">Személyi
+                          Igazolvány</Label><TechInput icon={FileText} value={formData.suspectIdCard}
+                                                       onChange={(e: any) => handleChange('suspectIdCard', e.target.value)}/>
+                        </div>
+                        <div className="space-y-1"><Label
+                          className="text-[10px] uppercase font-bold text-slate-500">Jogosítvány</Label><TechInput
+                          icon={FileText} value={formData.suspectLicense}
+                          onChange={(e: any) => handleChange('suspectLicense', e.target.value)}/></div>
+                        <div className="space-y-1"><Label className="text-[10px] uppercase font-bold text-slate-500">Eü.
+                          Kártya</Label><TechInput icon={FileText} value={formData.suspectMedical}
+                                                   onChange={(e: any) => handleChange('suspectMedical', e.target.value)}/>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* III. INTÉZKEDÉS */}
+                    <Card className="bg-[#0b1221] border border-slate-800">
+                      <CardHeader className="pb-3 border-b border-slate-800/50 bg-slate-950/30 py-3"><CardTitle
+                        className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">III.
+                        Szankciók</CardTitle></CardHeader>
+                      <CardContent className="pt-4 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="space-y-1"><Label
+                            className="text-[10px] uppercase font-bold text-slate-500">Dátum</Label><TechInput
+                            icon={Calendar} value={formData.date}
+                            onChange={(e: any) => handleChange('date', e.target.value)}/></div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold text-slate-500">Bírság ($)</Label>
+                            <TechInput icon={DollarSign} placeholder="Szám vagy -" value={formData.fine}
+                                       onChange={(e: any) => handleNumberOrDashChange('fine', e.target.value)}
+                                       className="text-green-400 font-bold"/>
                           </div>
-                          <div className="space-y-1.5"><Label className="text-xs text-slate-400">Társak</Label><Input
-                            placeholder="Név, Rang" value={formData.colleagues}
-                            onChange={e => handleChange('colleagues', e.target.value)}
-                            className="bg-slate-950 border-slate-700 h-8"/></div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold text-slate-500">Börtön (perc)</Label>
+                            <TechInput icon={Clock} placeholder="Szám vagy -" value={formData.jailTime}
+                                       onChange={(e: any) => handleNumberOrDashChange('jailTime', e.target.value)}
+                                       className="text-red-400 font-bold"/>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1"><Label
+                            className="text-[10px] uppercase font-bold text-slate-500">Vádak</Label><TechInput
+                            icon={Gavel} value={formData.charges}
+                            onChange={(e: any) => handleChange('charges', e.target.value)}/></div>
+                          <div className="space-y-1"><Label className="text-[10px] uppercase font-bold text-slate-500">Lefoglalt
+                            Tárgyak</Label><TechInput icon={Lock} value={formData.confiscatedItems}
+                                                      onChange={(e: any) => handleChange('confiscatedItems', e.target.value)}/>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
 
-                    <Card className="bg-slate-900 border-slate-800">
-                      <CardHeader className="pb-3 border-b border-slate-800/50 flex flex-row items-center gap-2 py-3">
-                        <User className="w-4 h-4 text-red-500"/>
-                        <CardTitle className="text-sm uppercase text-slate-300 font-bold">II. Előállított
-                          Személy</CardTitle>
+                    {/* IV. LEÍRÁS (KÁRTYÁBAN, JÓL LÁTHATÓAN) */}
+                    <Card className="bg-[#0b1221] border border-slate-800">
+                      <CardHeader
+                        className="pb-3 border-b border-slate-800/50 bg-slate-950/30 flex flex-row items-center justify-between py-3">
+                        <CardTitle className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">IV.
+                          Esetleírás</CardTitle>
+                        <Badge variant="outline" className="text-[9px] text-slate-500 border-slate-700 bg-slate-900/50">GYORS
+                          SABLONOK</Badge>
                       </CardHeader>
-                      <CardContent className="pt-4 space-y-3">
-                        <div className="space-y-1.5"><Label className="text-xs text-slate-400">Név</Label><Input
-                          value={formData.suspectName} onChange={e => handleChange('suspectName', e.target.value)}
-                          className="bg-slate-950 border-slate-700 h-8"/></div>
-                        <div className="space-y-1.5"><Label className="text-xs text-slate-400">Személyi
-                          Igazolvány</Label><Input value={formData.suspectIdCard}
-                                                   onChange={e => handleChange('suspectIdCard', e.target.value)}
-                                                   className="bg-slate-950 border-slate-700 h-8"/></div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5"><Label
-                            className="text-xs text-slate-400">Jogosítvány</Label><Input value={formData.suspectLicense}
-                                                                                         onChange={e => handleChange('suspectLicense', e.target.value)}
-                                                                                         className="bg-slate-950 border-slate-700 h-8"/>
-                          </div>
-                          <div className="space-y-1.5"><Label className="text-xs text-slate-400">Eü.
-                            Kártya</Label><Input value={formData.suspectMedical}
-                                                 onChange={e => handleChange('suspectMedical', e.target.value)}
-                                                 className="bg-slate-950 border-slate-700 h-8"/></div>
+                      <CardContent className="pt-4 space-y-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                          <TemplateButton label="IGAZOLTATÁS" text={TEMPLATES.trafficStop} icon={CarFront}
+                                          colorClass="hover:border-blue-500/50 hover:text-blue-400"/>
+                          <TemplateButton label="BÍRSÁG" text={TEMPLATES.ticket} icon={Receipt}
+                                          colorClass="hover:border-green-500/50 hover:text-green-400"/>
+                          <TemplateButton label="BALESET" text={TEMPLATES.accident} icon={TriangleAlert}
+                                          colorClass="hover:border-yellow-500/50 hover:text-yellow-400"/>
+                          <TemplateButton label="ÜLDÖZÉS" text={TEMPLATES.pursuit} icon={Siren}
+                                          colorClass="hover:border-red-500/50 hover:text-red-400"/>
+                          <TemplateButton label="ELFOGÁS" text={TEMPLATES.arrest} icon={Lock}
+                                          colorClass="hover:border-orange-500/50 hover:text-orange-400"/>
+                          <TemplateButton label="KIHALLGATÁS" text={TEMPLATES.interrogation} icon={Megaphone}
+                                          colorClass="hover:border-slate-500 hover:text-slate-300"/>
+                        </div>
+
+                        <div className="relative group">
+                          <div
+                            className="absolute -inset-0.5 bg-gradient-to-b from-slate-800 to-transparent rounded-lg opacity-50 group-focus-within:opacity-100 group-focus-within:from-blue-600/50 transition-all blur-sm"></div>
+                          <Textarea placeholder="Részletes leírás..."
+                                    className="relative bg-[#050a14] border-slate-800 min-h-[200px] text-sm leading-relaxed break-all font-mono text-slate-300 focus-visible:ring-0 focus-visible:border-blue-500/50 p-4 resize-none break-all"
+                                    value={formData.description}
+                                    onChange={e => handleChange('description', e.target.value)}/>
                         </div>
                       </CardContent>
                     </Card>
-                  </div>
 
-                  <Card className="bg-slate-900 border-slate-800">
-                    <CardHeader className="pb-3 border-b border-slate-800/50 flex flex-row items-center gap-2 py-3">
-                      <Gavel className="w-4 h-4 text-yellow-500"/>
-                      <CardTitle className="text-sm uppercase text-slate-300 font-bold">III. Intézkedés</CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-4 space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div className="space-y-1.5"><Label className="text-xs text-slate-400">Dátum</Label><Input
-                          value={formData.date} onChange={e => handleChange('date', e.target.value)}
-                          className="bg-slate-950 border-slate-700 h-8"/></div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-slate-400">Bírság ($)</Label>
-                          <Input
-                            placeholder="pl. 45000 (Csak szám)"
-                            value={formData.fine}
-                            onChange={e => handleChange('fine', e.target.value)}
-                            className="bg-slate-950 border-slate-700 h-8"
-                          />
-                          <p className="text-[10px] text-slate-500 mt-0.5">Csak a számot írd be! (pl. 55000)</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-slate-400">Börtön (perc)</Label>
-                          <Input
-                            placeholder="pl. 90 (Csak szám)"
-                            value={formData.jailTime}
-                            onChange={e => handleChange('jailTime', e.target.value)}
-                            className="bg-slate-950 border-slate-700 h-8"
-                          />
-                          <p className="text-[10px] text-slate-500 mt-0.5">Csak a számot írd be! (pl. 120)</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="space-y-1.5"><Label className="text-xs text-slate-400">Vádak</Label><Input
-                          value={formData.charges} onChange={e => handleChange('charges', e.target.value)}
-                          className="bg-slate-950 border-slate-700 h-8"/></div>
-                        <div className="space-y-1.5"><Label className="text-xs text-slate-400">Lefoglalt Tárgyak</Label><Input
-                          value={formData.confiscatedItems}
-                          onChange={e => handleChange('confiscatedItems', e.target.value)}
-                          className="bg-slate-950 border-slate-700 h-8"/></div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-slate-900 border-slate-800">
-                    <CardHeader
-                      className="pb-3 border-b border-slate-800/50 flex flex-row items-center justify-between py-3">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-slate-400"/>
-                        <CardTitle className="text-sm uppercase text-slate-300 font-bold">IV. Esetleírás</CardTitle>
-                      </div>
-                      <Badge variant="outline" className="text-xs text-slate-500 font-normal border-slate-700">Sablonok
-                        használata javasolt</Badge>
-                    </CardHeader>
-                    <CardContent className="pt-4 space-y-3">
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        <Button size="sm" variant="outline"
-                                className="h-7 text-xs bg-blue-900/20 border-blue-900/50 text-blue-300 hover:bg-blue-900/40"
-                                onClick={() => insertTemplate(TEMPLATES.trafficStop)}><CarFront
-                          className="w-3 h-3 mr-1.5"/> Igazoltatás</Button>
-                        <Button size="sm" variant="outline"
-                                className="h-7 text-xs bg-green-900/20 border-green-900/50 text-green-300 hover:bg-green-900/40"
-                                onClick={() => insertTemplate(TEMPLATES.ticket)}><Receipt
-                          className="w-3 h-3 mr-1.5"/> Csekk/Bírság</Button>
-                        <Button size="sm" variant="outline"
-                                className="h-7 text-xs bg-yellow-900/20 border-yellow-900/50 text-yellow-300 hover:bg-yellow-900/40"
-                                onClick={() => insertTemplate(TEMPLATES.accident)}><TriangleAlert
-                          className="w-3 h-3 mr-1.5"/> Baleset</Button>
-                        <Button size="sm" variant="outline"
-                                className="h-7 text-xs bg-red-900/20 border-red-900/50 text-red-300 hover:bg-red-900/40"
-                                onClick={() => insertTemplate(TEMPLATES.pursuit)}><Siren
-                          className="w-3 h-3 mr-1.5"/> Üldözés</Button>
-                        <Button size="sm" variant="outline"
-                                className="h-7 text-xs bg-orange-900/20 border-orange-900/50 text-orange-300 hover:bg-orange-900/40"
-                                onClick={() => insertTemplate(TEMPLATES.arrest)}><Lock
-                          className="w-3 h-3 mr-1.5"/> Elfogás</Button>
-                        <Button size="sm" variant="outline"
-                                className="h-7 text-xs bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
-                                onClick={() => insertTemplate(TEMPLATES.interrogation)}><Megaphone
-                          className="w-3 h-3 mr-1.5"/> Kihallgatás</Button>
-                      </div>
-
-                      <Textarea placeholder="Írd le részletesen az eseményeket, vagy használj sablont..."
-                                className="bg-slate-950 border-slate-700 min-h-[200px] text-sm leading-relaxed break-all"
-                                value={formData.description}
-                                onChange={e => handleChange('description', e.target.value)}/>
-                    </CardContent>
-                  </Card>
-
-                  <div className="flex justify-end">
-                    <Button variant="outline" onClick={resetForm}
-                            className="border-slate-700 text-slate-400 hover:bg-slate-800"><RefreshCcw
-                      className="w-4 h-4 mr-2"/> Űrlap Törlése</Button>
                   </div>
                 </div>
-              </ScrollArea>
+              </div>
             </div>
 
+            {/* --- JOBB OSZLOP: PREVIEW --- */}
             <div className="xl:col-span-4 h-full flex flex-col">
               <Card
-                className="bg-slate-900 border-slate-800 shadow-xl border-t-4 border-t-yellow-600 flex-1 flex flex-col overflow-hidden">
-                <CardHeader className="pb-4 shrink-0 bg-slate-900/50 border-b border-slate-800">
+                className="bg-[#0b1221] border border-slate-800 shadow-xl border-t-4 border-t-yellow-600 flex-1 flex flex-col overflow-hidden">
+                <CardHeader className="pb-4 shrink-0 bg-slate-900/50 border-b border-slate-800 backdrop-blur-sm">
                   <CardTitle className="flex items-center gap-2 text-lg"><Copy
                     className="w-5 h-5 text-yellow-500"/> Előnézet & Kód</CardTitle>
                   <CardDescription>A generált BBCode a fórumhoz.</CardDescription>
                 </CardHeader>
-                <div className="flex-1 relative min-h-0">
+                <div className="flex-1 relative min-h-0 bg-[#050a14]">
                   <Textarea readOnly value={generateReportCode()}
-                            className="absolute inset-0 w-full h-full bg-slate-950 border-none font-mono text-[11px] leading-relaxed text-slate-300 focus:ring-0 resize-none p-4 rounded-none"/>
+                            className="absolute inset-0 w-full h-full bg-transparent border-none font-mono text-[11px] leading-relaxed text-green-500/80 focus:ring-0 resize-none p-4 rounded-none custom-scrollbar break-all"/>
                 </div>
                 <div className="p-4 border-t border-slate-800 bg-slate-900 shrink-0">
                   <Button
-                    className="w-full bg-yellow-600 hover:bg-yellow-700 text-black font-bold shadow-lg shadow-yellow-900/20 h-12 text-base"
+                    className="w-full bg-yellow-600 hover:bg-yellow-700 text-black font-bold shadow-lg shadow-yellow-900/20 h-12 text-base uppercase tracking-wider"
                     onClick={() => copyToClipboard(generateReportCode())}><Copy className="w-5 h-5 mr-2"/> Másolás
                     vágólapra</Button>
                 </div>

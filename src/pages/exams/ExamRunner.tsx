@@ -22,9 +22,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   AlertTriangle, Clock, Save, Lock, ChevronLeft, ChevronRight,
-  Play, CheckCircle2, Copy, AlertCircle
+  Play, CheckCircle2, Copy, AlertCircle, Terminal, Shield, ShieldAlert, Cpu, Activity
 } from 'lucide-react';
 import {useNavigate} from 'react-router-dom';
+import {cn} from '@/lib/utils';
 
 const getStorageKey = (examId: string, userId: string) => `exam_session_${userId}_${examId}`;
 
@@ -33,7 +34,14 @@ const generateClaimToken = () => {
   return `TR-${part()}-${part()}`;
 };
 
-// KÜLÖN KOMPONENS A KÉRDÉSLISTÁNAK (Optimalizáció)
+// --- STÍLUS KONSTANSOK (Tech UI) ---
+const TERMINAL_BG = "bg-[#0b1221] border-slate-800";
+const HUD_HEADER = "sticky top-0 z-50 bg-[#0b1221]/95 backdrop-blur border-b border-slate-800 shadow-2xl";
+const QUESTION_CARD = "bg-slate-900/50 border border-slate-800 relative overflow-hidden transition-all hover:border-slate-700";
+const OPTION_ITEM = "flex items-center space-x-3 p-4 rounded border transition-all cursor-pointer group bg-slate-950/50 hover:bg-slate-900";
+const INPUT_STYLE = "bg-slate-950 border-slate-800 focus-visible:ring-yellow-500/30 focus-visible:border-yellow-500/50 font-mono text-sm text-white placeholder:text-slate-600";
+
+// KÜLÖN KOMPONENS A KÉRDÉSLISTÁNAK (Optimalizáció + Tech Dizájn)
 const QuestionList = React.memo(({
                                    questions,
                                    answers,
@@ -46,37 +54,51 @@ const QuestionList = React.memo(({
   onCheckboxChange: (qid: string, oid: string, checked: boolean) => void
 }) => {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {questions.map((q, index) => (
-        <Card key={q.id}
-              className={`bg-slate-900 border-slate-800 transition-all hover:border-slate-700 hover:shadow-md ${q.is_required ? 'border-l-4 border-l-slate-700' : ''}`}>
-          <CardHeader className="pb-2 border-b border-slate-800/50 bg-slate-950/30 px-6 pt-4">
+        <Card key={q.id} className={QUESTION_CARD}>
+          {/* Bal oldali dekorációs csík */}
+          <div className={cn("absolute top-0 left-0 w-1 h-full", q.is_required ? "bg-yellow-600" : "bg-slate-700")}/>
+
+          <CardHeader className="pb-4 border-b border-slate-800/50 bg-slate-950/30 px-6 pt-5">
             <div className="flex justify-between items-start gap-4">
-              <div className="flex gap-3">
+              <div className="flex gap-4">
                 <div
-                  className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-800 text-xs font-bold text-slate-400 border border-slate-700 mt-0.5">
-                  {q.globalIndex}
+                  className="flex items-center justify-center w-8 h-8 rounded bg-slate-900 border border-slate-700 text-sm font-bold text-slate-400 font-mono shadow-lg">
+                  {q.globalIndex < 10 ? `0${q.globalIndex}` : q.globalIndex}
                 </div>
-                <CardTitle className="text-base font-medium text-white leading-snug">
-                  {q.question_text} {q.is_required && <span className="text-red-500 ml-1" title="Kötelező">*</span>}
-                </CardTitle>
+                <div>
+                  <CardTitle className="text-lg font-medium text-white leading-snug">
+                    {q.question_text} {q.is_required &&
+                    <span className="text-red-500 ml-1 text-lg" title="Kötelező">*</span>}
+                  </CardTitle>
+                  <div className="flex items-center gap-3 mt-1.5">
+                     <span
+                       className="text-[10px] font-mono text-slate-500 uppercase tracking-wider bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                        {q.question_type === 'text' ? 'SZÖVEGES' : q.question_type === 'single_choice' ? 'EGY VÁLASZ' : 'TÖBB VÁLASZ'}
+                     </span>
+                    <span className="text-[10px] font-mono text-yellow-500/80 uppercase tracking-wider">
+                        {q.points} PTS
+                     </span>
+                  </div>
+                </div>
               </div>
-              <span
-                className="text-xs font-mono text-slate-500 bg-slate-950 px-2 py-1 rounded border border-slate-800 shrink-0">
-                                {q.points} pont
-                            </span>
             </div>
           </CardHeader>
 
-          <CardContent className="p-6 pt-4">
-            <div className="pl-0 md:pl-9">
+          <CardContent className="p-6">
+            <div className="pl-0 md:pl-12">
               {q.question_type === 'text' && (
-                <Textarea
-                  className="bg-slate-950 border-slate-700 min-h-[100px] focus-visible:ring-yellow-600/50"
-                  placeholder="Írd ide a válaszod..."
-                  value={answers[q.id] || ''}
-                  onChange={e => onAnswerChange(q.id, e.target.value)}
-                />
+                <div className="relative">
+                  <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-slate-600"></div>
+                  <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-slate-600"></div>
+                  <Textarea
+                    className={cn(INPUT_STYLE, "min-h-[120px] resize-none text-base p-4 leading-relaxed break-all")}
+                    placeholder="Írd ide a válaszod..."
+                    value={answers[q.id] || ''}
+                    onChange={e => onAnswerChange(q.id, e.target.value)}
+                  />
+                </div>
               )}
 
               {q.question_type === 'single_choice' && (
@@ -89,12 +111,14 @@ const QuestionList = React.memo(({
                     <div
                       key={opt.id}
                       onClick={() => onAnswerChange(q.id, opt.id)}
-                      className={`flex items-center space-x-3 p-3 rounded-lg border transition-all cursor-pointer group ${answers[q.id] === opt.id ? 'bg-yellow-500/10 border-yellow-500/50' : 'bg-slate-950 border-slate-800 hover:border-slate-600'}`}
+                      className={cn(OPTION_ITEM, answers[q.id] === opt.id ? 'border-yellow-500/50 bg-yellow-900/10 shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'border-slate-800')}
                     >
                       <RadioGroupItem value={opt.id} id={opt.id}
-                                      className="border-slate-500 text-yellow-500 group-hover:border-yellow-500 pointer-events-none"/>
+                                      className="border-slate-500 text-yellow-500 border-2 data-[state=checked]:border-yellow-500"/>
                       <Label htmlFor={opt.id}
-                             className={`cursor-pointer flex-1 font-normal pointer-events-none ${answers[q.id] === opt.id ? 'text-yellow-100' : 'text-slate-300'}`}>{opt.option_text}</Label>
+                             className={cn("cursor-pointer flex-1 font-normal text-sm select-none", answers[q.id] === opt.id ? 'text-yellow-100 font-bold' : 'text-slate-300')}>
+                        {opt.option_text}
+                      </Label>
                     </div>
                   ))}
                 </RadioGroup>
@@ -108,15 +132,17 @@ const QuestionList = React.memo(({
                       <div
                         key={opt.id}
                         onClick={() => onCheckboxChange(q.id, opt.id, !isChecked)}
-                        className={`flex items-center space-x-3 p-3 rounded-lg border transition-all cursor-pointer group ${isChecked ? 'bg-yellow-500/10 border-yellow-500/50' : 'bg-slate-950 border-slate-800 hover:border-slate-600'}`}
+                        className={cn(OPTION_ITEM, isChecked ? 'border-yellow-500/50 bg-yellow-900/10 shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'border-slate-800')}
                       >
                         <Checkbox
                           id={opt.id}
                           checked={isChecked}
-                          className="border-slate-500 data-[state=checked]:bg-yellow-600 data-[state=checked]:text-black group-hover:border-yellow-500 pointer-events-none"
+                          className="border-slate-500 border-2 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black data-[state=checked]:border-yellow-500"
                         />
                         <Label htmlFor={opt.id}
-                               className={`cursor-pointer flex-1 font-normal pointer-events-none ${isChecked ? 'text-yellow-100' : 'text-slate-300'}`}>{opt.option_text}</Label>
+                               className={cn("cursor-pointer flex-1 font-normal text-sm select-none", isChecked ? 'text-yellow-100 font-bold' : 'text-slate-300')}>
+                          {opt.option_text}
+                        </Label>
                       </div>
                     );
                   })}
@@ -137,7 +163,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
   const sessionUserId = user?.id || 'guest';
   const storageKey = getStorageKey(exam.id, sessionUserId);
 
-  // --- STATE ---
+  // --- STATE (EREDETI LOGIKA) ---
   const [isStarted, setIsStarted] = useState(() => {
     // Ha van mentett session, akkor indítottnak tekintjük
     return !!localStorage.getItem(storageKey);
@@ -163,7 +189,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
   const [startTime, setStartTime] = useState<number>(() => {
     const saved = localStorage.getItem(storageKey);
     if (saved) return JSON.parse(saved).startTime;
-    return Date.now(); // Ez frissül, ha megnyomja a Start gombot (lásd lentebb)
+    return Date.now(); // Ez frissül, ha megnyomja a Start gombot
   });
 
   const [currentPage, setCurrentPage] = useState<number>(() => {
@@ -184,9 +210,9 @@ export function ExamRunner({exam}: { exam: Exam }) {
 
   const hasWarnedRef = useRef(false);
 
-  // --- LOCALSTORAGE SYNC ---
+  // --- LOCALSTORAGE SYNC (EREDETI LOGIKA) ---
   useEffect(() => {
-    if (!isStarted || successToken) return; // Ha nincs elindítva vagy már kész, ne mentsünk
+    if (!isStarted || successToken) return;
 
     const stateToSave = {
       answers,
@@ -201,7 +227,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
   }, [answers, tabSwitches, applicantName, startTime, currentPage, storageKey, exam.title, exam.id, isStarted, successToken]);
 
 
-  // --- ANTI-CHEAT ---
+  // --- ANTI-CHEAT (EREDETI LOGIKA) ---
   useEffect(() => {
     if (!isStarted || successToken) return;
 
@@ -209,7 +235,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
       setTabSwitches(prev => {
         const newVal = prev + 1;
         if (!hasWarnedRef.current) {
-          toast.warning(`Figyelem! Vizsga elhagyása érzékelve. Ez rögzítésre kerül!`);
+          toast.warning(`FIGYELEM! Fókuszvesztés érzékelve. Ez rögzítésre kerül!`);
           hasWarnedRef.current = true;
           setTimeout(() => {
             hasWarnedRef.current = false
@@ -235,13 +261,9 @@ export function ExamRunner({exam}: { exam: Exam }) {
     };
   }, [isStarted, successToken]);
 
-  // --- NAVIGATION LOCK ---
+  // --- NAVIGATION LOCK (EREDETI LOGIKA) ---
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // Csak akkor védünk, ha:
-      // 1. Elindult a vizsga (isStarted)
-      // 2. Éppen NEM küldjük be (isSubmitting)
-      // 3. MÉG nincs meg a token (nincs kész)
       if (isStarted && !isSubmitting && !successToken) {
         e.preventDefault();
         e.returnValue = '';
@@ -252,11 +274,10 @@ export function ExamRunner({exam}: { exam: Exam }) {
   }, [isSubmitting, isStarted, successToken]);
 
 
-  // --- TIMER ---
+  // --- TIMER (EREDETI LOGIKA) ---
   useEffect(() => {
     if (!isStarted || successToken) return;
 
-    // Az első renderkor beállítjuk a helyes időt
     setTimeLeft(calculateTimeLeft());
 
     const timer = setInterval(() => {
@@ -271,7 +292,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
     return () => clearInterval(timer);
   }, [startTime, isStarted, successToken]);
 
-  // --- KÉRDÉSEK ÉS LAPOZÁS ---
+  // --- KÉRDÉSEK ÉS LAPOZÁS (EREDETI LOGIKA) ---
   const allQuestions = useMemo(() => {
     const sorted = (exam.exam_questions || []).sort((a, b) => {
       if ((a.page_number || 1) !== (b.page_number || 1)) {
@@ -287,7 +308,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
       allQuestions.filter(q => (q.page_number || 1) === currentPage),
     [allQuestions, currentPage]);
 
-  // --- HANDLERS ---
+  // --- HANDLERS (EREDETI LOGIKA) ---
   const handleAnswerChange = useCallback((questionId: string, value: any) => {
     setAnswers(prev => ({...prev, [questionId]: value}));
   }, []);
@@ -337,7 +358,6 @@ export function ExamRunner({exam}: { exam: Exam }) {
       toast.error("Kérlek add meg a neved a kezdéshez!");
       return;
     }
-    // Idő indítása
     setStartTime(Date.now());
     setIsStarted(true);
   };
@@ -422,10 +442,9 @@ export function ExamRunner({exam}: { exam: Exam }) {
       toast.dismiss(toastId);
       toast.success("Sikeres vizsga leadás!");
 
-      // Ha vendég, beállítjuk a tokent, ami átvált a Siker képernyőre
       if (!user && token) {
         setSuccessToken(token);
-        setIsSubmitting(false); // Fontos: már nem töltünk, de még nem navigálunk
+        setIsSubmitting(false);
         return;
       }
 
@@ -459,60 +478,60 @@ export function ExamRunner({exam}: { exam: Exam }) {
   const totalQuestions = exam.exam_questions?.length || 0;
   const progress = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
 
-  // --- LOBBY KÉPERNYŐ ---
+  // --- LOBBY KÉPERNYŐ (TECH DIZÁJN) ---
   if (!isStarted && !successToken) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Background Grid */}
+        <div
+          className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 pointer-events-none"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-900/80 to-slate-950 z-0"></div>
+
         <Card
-          className="max-w-2xl w-full bg-slate-900 border-yellow-600/30 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-          <div className="h-2 w-full bg-yellow-500"/>
-          <CardContent className="p-8 space-y-8">
-            <div className="text-center space-y-4">
+          className="max-w-2xl w-full relative z-10 bg-[#0b1221] border-slate-800 shadow-[0_0_50px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in duration-300">
+          {/* Header Strip */}
+          <div className="h-1.5 w-full bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.5)]"></div>
+
+          <CardContent className="p-8 md:p-10">
+            <div className="text-center mb-10">
               <div
-                className="w-20 h-20 bg-yellow-900/10 rounded-full flex items-center justify-center mx-auto border border-yellow-500/20 shadow-[0_0_30px_rgba(234,179,8,0.1)]">
-                <Lock className="w-10 h-10 text-yellow-500"/>
+                className="w-24 h-24 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto border border-yellow-500/20 shadow-[0_0_40px_rgba(234,179,8,0.15)] mb-6 animate-pulse-slow">
+                <Terminal className="w-12 h-12 text-yellow-500"/>
               </div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">{exam.title}</h1>
-              <div className="text-slate-400 max-w-lg mx-auto whitespace-pre-wrap break-words text-sm leading-relaxed">
-                {exam.description || "Nincs leírás megadva."}
-              </div>
+              <h1 className="text-4xl font-black text-white uppercase tracking-tighter mb-3">{exam.title}</h1>
+              <p
+                className="text-slate-400 max-w-lg mx-auto text-sm leading-relaxed font-medium border-t border-b border-slate-800 py-4 bg-slate-900/30">
+                {exam.description || "TRAINING SIMULATION MODULE INITIALIZED."}
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-                <div className="p-2 bg-slate-900 rounded-lg"><Clock className="w-5 h-5 text-blue-500"/></div>
-                <div>
-                  <p className="text-xs text-slate-500 uppercase font-bold">Időlimit</p>
-                  <p className="text-white font-mono text-lg">{exam.time_limit_minutes} perc</p>
-                </div>
+            <div className="grid grid-cols-2 gap-6 mb-8">
+              <div
+                className="bg-slate-900/80 p-5 rounded-lg border border-slate-800 flex flex-col items-center justify-center hover:border-blue-500/30 transition-colors group">
+                <Clock className="w-8 h-8 text-blue-500 mb-2 group-hover:scale-110 transition-transform"/>
+                <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest">IDŐKERET</span>
+                <span className="text-2xl font-mono text-white font-bold">{exam.time_limit_minutes} MIN</span>
               </div>
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-                <div className="p-2 bg-slate-900 rounded-lg"><AlertCircle className="w-5 h-5 text-orange-500"/></div>
-                <div>
-                  <p className="text-xs text-slate-500 uppercase font-bold">Fókuszfigyelés</p>
-                  <p className="text-white font-mono text-lg">Aktív</p>
-                </div>
+              <div
+                className="bg-slate-900/80 p-5 rounded-lg border border-slate-800 flex flex-col items-center justify-center hover:border-red-500/30 transition-colors group">
+                <ShieldAlert className="w-8 h-8 text-red-500 mb-2 group-hover:scale-110 transition-transform"/>
+                <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest">ANTI-CHEAT</span>
+                <span className="text-2xl font-mono text-white font-bold">AKTÍV</span>
               </div>
             </div>
 
             {exam.is_public && !user && (
-              <div className="space-y-2 bg-slate-950/50 p-4 rounded-xl border border-slate-800">
-                <Label className="text-yellow-500">Teljes Neved (IC)</Label>
-                <Input
-                  value={applicantName}
-                  onChange={e => setApplicantName(e.target.value)}
-                  placeholder="pl. John Doe"
-                  className="bg-slate-900 border-slate-700 h-11 text-lg"
-                />
-                <p className="text-xs text-slate-500">Kérjük a pontos karakternevedet add meg.</p>
+              <div className="mb-8 bg-slate-950/50 p-4 rounded-lg border border-slate-800">
+                <Label className="text-xs text-yellow-500 uppercase font-bold mb-2 block tracking-widest">JELENTKEZŐ
+                  NEVE</Label>
+                <Input value={applicantName} onChange={e => setApplicantName(e.target.value)}
+                       placeholder="TELJES IC NÉV..." className={cn(INPUT_STYLE, "h-12 text-lg font-bold")}/>
               </div>
             )}
 
-            <Button
-              onClick={handleStartExam}
-              className="w-full h-14 text-lg font-bold bg-yellow-600 hover:bg-yellow-700 text-black shadow-lg shadow-yellow-900/20 transition-all hover:scale-[1.02]"
-            >
-              Vizsga Megkezdése <Play className="w-5 h-5 ml-2 fill-black"/>
+            <Button onClick={handleStartExam}
+                    className="w-full h-16 text-xl font-black bg-yellow-600 hover:bg-yellow-500 text-black shadow-[0_0_30px_rgba(234,179,8,0.25)] uppercase tracking-[0.1em] transition-all hover:scale-[1.01]">
+              SZIMULÁCIÓ INDÍTÁSA <Play className="w-6 h-6 ml-3 fill-current"/>
             </Button>
           </CardContent>
         </Card>
@@ -520,48 +539,57 @@ export function ExamRunner({exam}: { exam: Exam }) {
     );
   }
 
-  // --- TOKEN SIKER KÉPERNYŐ ---
+  // --- TOKEN SIKER KÉPERNYŐ (TECH DIZÁJN) ---
   if (successToken) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full bg-slate-900 border-green-900/50 shadow-2xl animate-in zoom-in duration-300">
-          <CardContent className="p-8 text-center space-y-6">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
+        <div
+          className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-5 pointer-events-none"></div>
+
+        <Card
+          className="max-w-md w-full bg-[#0b1221] border border-green-500/30 shadow-[0_0_60px_rgba(34,197,94,0.15)] animate-in zoom-in duration-300">
+          <div className="h-1 w-full bg-green-500"></div>
+          <CardContent className="p-10 text-center space-y-8">
             <div
-              className="w-24 h-24 bg-green-900/20 rounded-full flex items-center justify-center mx-auto border border-green-500/20 shadow-[0_0_30px_rgba(34,197,94,0.2)]">
+              className="w-24 h-24 bg-green-900/10 rounded-full flex items-center justify-center mx-auto border border-green-500/20 shadow-[0_0_30px_rgba(34,197,94,0.2)]">
               <CheckCircle2 className="w-12 h-12 text-green-500"/>
             </div>
-            <h1 className="text-2xl font-bold text-white">Vizsga Beküldve!</h1>
-            <p className="text-slate-400">Az eredményről a frakció vezetősége dönt.</p>
+
+            <div>
+              <h1 className="text-3xl font-black text-white uppercase tracking-tight mb-2">SIKERES BEKÜLDÉS</h1>
+              <p className="text-slate-400 text-sm font-medium">Az eredményt a rendszer rögzítette.</p>
+            </div>
 
             <div
-              className="bg-slate-950 p-6 rounded-xl border border-slate-800 text-left space-y-4 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-20 h-20 bg-yellow-500/10 rounded-bl-full -mr-10 -mt-10"/>
+              className="bg-slate-900/80 p-6 rounded-xl border border-slate-800 text-left space-y-4 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-green-500/5 rounded-bl-full -mr-12 -mt-12"/>
               <div>
-                <p className="text-xs text-yellow-500 font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
-                  <AlertTriangle className="w-3 h-3"/> Mentsd el ezt a kódot!</p>
-                <p className="text-sm text-slate-400 leading-snug">Ha felvételt nyersz és regisztrálsz, ezzel a kóddal
-                  tudod majd a vizsgát a profilodhoz csatolni.</p>
+                <p
+                  className="text-[10px] text-green-500 font-black uppercase tracking-widest mb-1 flex items-center gap-2">
+                  <Shield className="w-3 h-3"/> AZONOSÍTÓ KÓD
+                </p>
+                <p className="text-xs text-slate-500 leading-snug">Mentsd el ezt a kódot a későbbi hivatkozáshoz.</p>
               </div>
               <div className="flex items-center gap-2">
                 <code
-                  className="flex-1 bg-slate-900 p-4 rounded-lg font-mono text-2xl text-white font-bold tracking-widest text-center border border-slate-700 select-all text-yellow-500">
+                  className="flex-1 bg-black/40 p-3 rounded border border-green-900/50 font-mono text-2xl text-green-400 font-bold tracking-widest text-center select-all">
                   {successToken}
                 </code>
-                <Button size="icon" variant="outline" className="h-14 w-14 border-slate-700 hover:bg-slate-800"
+                <Button size="icon" variant="outline"
+                        className="h-14 w-14 border-slate-700 hover:bg-slate-800 hover:text-white"
                         onClick={() => {
                           navigator.clipboard.writeText(successToken);
-                          toast.success("Másolva!")
+                          toast.success("Másolva!");
                         }}>
                   <Copy className="w-6 h-6"/>
                 </Button>
               </div>
             </div>
 
-            {/* JAVÍTOTT GOMB STÍLUS: ZÖLD, jól látható */}
             <Button
-              className="w-full bg-green-600 hover:bg-green-700 text-white h-12 font-bold shadow-lg shadow-green-900/20"
-              onClick={() => navigate('/login')}>
-              Rendben, kilépés
+              className="w-full bg-green-700 hover:bg-green-600 text-white h-12 font-bold shadow-lg uppercase tracking-wider"
+              onClick={() => user ? navigate('/exams') : navigate('/login')}>
+              RENDBEN, KILÉPÉS
             </Button>
           </CardContent>
         </Card>
@@ -569,80 +597,83 @@ export function ExamRunner({exam}: { exam: Exam }) {
     );
   }
 
-  // --- VIZSGA FOLYAMATBAN ---
+  // --- VIZSGA FOLYAMATBAN (HUD INTERFACE) ---
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen bg-slate-950 pb-20 selection:bg-yellow-500/30">
+      {/* CONFIRM DIALOG */}
       <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
-        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
+        <AlertDialogContent className="bg-[#0b1221] border-slate-800 text-white">
           <AlertDialogHeader>
-            <AlertDialogTitle>Biztosan leadod a vizsgát?</AlertDialogTitle>
+            <AlertDialogTitle className="text-xl font-black uppercase tracking-tight">VIZSGA
+              BEFEJEZÉSE?</AlertDialogTitle>
             <AlertDialogDescription className="text-slate-400">
-              A "Leadás" gombra kattintva véglegesíted a válaszaidat.
-              Ezután már nincs lehetőség módosításra. Ellenőriztél mindent?
+              A "LEADÁS" gombra kattintva véglegesíted a válaszaidat. <br/>Ellenőriztél mindent?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel
-              className="bg-slate-800 text-white hover:bg-slate-700 border-slate-700">Mégsem</AlertDialogCancel>
+              className="bg-slate-800 text-white hover:bg-slate-700 border-slate-700">MÉGSEM</AlertDialogCancel>
             <AlertDialogAction onClick={() => executeSubmit(false)}
-                               className="bg-yellow-600 text-black hover:bg-yellow-700 font-bold">
-              Igen, leadom
+                               className="bg-yellow-600 text-black hover:bg-yellow-700 font-bold uppercase tracking-wider">
+              IGEN, LEADÁS
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <div
-        className="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-[2px] flex flex-col items-center justify-start pt-10 pointer-events-auto cursor-not-allowed"></div>
-
-      <div className="relative z-50 max-w-4xl mx-auto space-y-8 pb-20 px-4 pt-4">
-        {/* HEADER */}
-        <div className="sticky top-4 z-50 space-y-0">
-          <Card className="bg-slate-900/95 backdrop-blur border-yellow-600/30 border-t-4 shadow-2xl rounded-b-none">
-            <CardContent className="p-4 flex flex-col md:flex-row justify-between items-center gap-4">
-              <div>
-                <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                  <Lock className="w-5 h-5 text-yellow-500"/> {exam.title}
-                </h1>
-                <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Vizsga folyamatban • Ne
-                  frissíts!</p>
-              </div>
-              <div className="flex items-center gap-4">
-                {tabSwitches > 0 && (
-                  <div
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-950/50 border border-red-900/50 text-red-400 text-xs font-bold animate-pulse">
-                    <AlertTriangle className="w-3 h-3"/> {tabSwitches} hiba
-                  </div>
-                )}
-                <div
-                  className={`text-2xl font-mono font-bold flex items-center gap-2 px-4 py-1 rounded-lg bg-slate-950 border border-slate-800 ${timeLeft < 300 ? 'text-red-500 animate-pulse border-red-900/50' : 'text-yellow-500'}`}>
-                  <Clock className="w-5 h-5"/> {formatTime(timeLeft)}
+      {/* --- HUD HEADER (Sticky) --- */}
+      <div className={HUD_HEADER}>
+        <div className="max-w-[1600px] mx-auto px-6 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-slate-900 border border-slate-700 rounded flex items-center justify-center">
+              <Terminal className="w-5 h-5 text-slate-400"/>
+            </div>
+            <div>
+              <h1 className="text-lg font-black text-white uppercase tracking-tight leading-none">{exam.title}</h1>
+              <div className="flex items-center gap-3 mt-1">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                  <span
+                    className="text-[9px] font-mono text-slate-500 uppercase tracking-widest font-bold">LIVE SESSION</span>
                 </div>
+                <span className="text-slate-700">|</span>
+                <span className="text-[9px] font-mono text-slate-400">PAGE {currentPage}/{totalPages}</span>
               </div>
-            </CardContent>
-          </Card>
-          <Progress value={progress}
-                    className="h-1.5 w-full rounded-none rounded-b-md bg-slate-800 [&>div]:bg-yellow-500"/>
-        </div>
+            </div>
+          </div>
 
-        {/* INFO KÁRTYA */}
-        {currentPage === 1 && (
-          <Card className="bg-slate-900 border-slate-800 animate-in fade-in slide-in-from-bottom-2">
-            <CardContent className="p-6 space-y-4">
+          <div className="flex items-center gap-6">
+            {tabSwitches > 0 && (
               <div
-                className="prose prose-invert text-sm text-slate-300 max-w-none whitespace-pre-wrap border-l-2 border-slate-700 pl-4 italic">
-                {exam.description || "Nincs leírás megadva."}
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded bg-red-950/30 border border-red-900/50 text-red-500 text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                <AlertTriangle className="w-3 h-3"/> {tabSwitches} WARNINGS
               </div>
-            </CardContent>
-          </Card>
+            )}
+            <div
+              className={cn("flex items-center gap-3 px-5 py-2 rounded border bg-slate-900/80", timeLeft < 300 ? 'border-red-500/50 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse' : 'border-slate-700 text-yellow-500')}>
+              <Clock className="w-5 h-5"/>
+              <span className="text-2xl font-mono font-bold tracking-widest">{formatTime(timeLeft)}</span>
+            </div>
+          </div>
+        </div>
+        <Progress value={progress}
+                  className="h-1 w-full rounded-none bg-slate-900 [&>div]:bg-yellow-500 transition-all duration-500"/>
+      </div>
+
+      {/* --- CONTENT --- */}
+      <div className="max-w-4xl mx-auto px-6 py-10">
+        {/* Info Box (Csak az első oldalon) */}
+        {currentPage === 1 && (
+          <div
+            className="mb-10 p-6 bg-blue-900/5 border border-blue-500/10 rounded-lg flex gap-4 animate-in slide-in-from-top-4">
+            <Activity className="w-5 h-5 text-blue-500 shrink-0 mt-1"/>
+            <div className="text-sm text-slate-300 italic leading-relaxed max-w-none whitespace-pre-wrap">
+              {exam.description || "Nincs leírás."}
+            </div>
+          </div>
         )}
 
-        <div className="flex justify-between items-center text-sm text-slate-400 px-2">
-          <span>{currentPage}. oldal a(z) {totalPages}-ból</span>
-          <span>Kitöltöttség: {Math.round(progress)}%</span>
-        </div>
-
-        {/* KÉRDÉSLISTA */}
+        {/* KÉRDÉSEK */}
         <QuestionList
           questions={currentQuestions}
           answers={answers}
@@ -650,34 +681,24 @@ export function ExamRunner({exam}: { exam: Exam }) {
           onCheckboxChange={handleCheckboxChange}
         />
 
-        {/* LÁBLÉC */}
-        <div className="flex justify-between items-center pt-6 gap-4">
-          <Button
-            variant="outline"
-            onClick={handlePrevPage}
-            disabled={currentPage === 1 || isSubmitting}
-            className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800 h-12"
-          >
-            <ChevronLeft className="w-5 h-5 mr-2"/> Előző
+        {/* NAVIGÁCIÓ */}
+        <div className="flex justify-between items-center pt-10 gap-4 mt-8 border-t border-slate-800">
+          <Button variant="outline" onClick={handlePrevPage} disabled={currentPage === 1 || isSubmitting}
+                  className="h-12 px-8 border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 bg-slate-900 uppercase font-bold tracking-wider text-xs">
+            <ChevronLeft className="w-4 h-4 mr-2"/> ELŐZŐ OLDAL
           </Button>
 
           {currentPage === totalPages ? (
-            <Button
-              onClick={handleManualSubmit}
-              disabled={isSubmitting}
-              className="flex-[2] h-12 text-lg font-bold bg-yellow-600 hover:bg-yellow-700 text-black shadow-lg shadow-yellow-900/20"
-            >
+            <Button onClick={handleManualSubmit} disabled={isSubmitting}
+                    className="h-14 px-10 text-sm font-black bg-yellow-600 hover:bg-yellow-500 text-black shadow-[0_0_20px_rgba(234,179,8,0.2)] uppercase tracking-widest transition-all hover:scale-105">
               {isSubmitting ?
-                <span className="flex items-center gap-2"><Clock className="animate-spin"/> Beküldés...</span> :
-                <span className="flex items-center gap-2"><Save className="w-5 h-5"/> Vizsga Befejezése</span>}
+                <span className="flex items-center gap-2"><Clock className="animate-spin"/> FELDOLGOZÁS...</span> :
+                <span className="flex items-center gap-2"><Save className="w-5 h-5"/> VIZSGA BEFEJEZÉSE</span>}
             </Button>
           ) : (
-            <Button
-              onClick={handleNextPage}
-              disabled={isSubmitting}
-              className="flex-[2] h-12 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700"
-            >
-              Következő <ChevronRight className="w-5 h-5 ml-2"/>
+            <Button onClick={handleNextPage} disabled={isSubmitting}
+                    className="h-12 px-8 bg-slate-100 hover:bg-white text-slate-900 font-bold uppercase tracking-wider text-xs">
+              KÖVETKEZŐ <ChevronRight className="w-4 h-4 ml-2"/>
             </Button>
           )}
         </div>

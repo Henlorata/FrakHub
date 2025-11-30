@@ -1,722 +1,585 @@
 import * as React from "react";
 import {useAuth} from "@/context/AuthContext";
 import {useSystemStatus, type AlertLevelId} from "@/context/SystemStatusContext";
+import {Card, CardContent, CardHeader, CardTitle} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
-import {
-  ShieldAlert, Truck, Banknote, Gavel, Users,
-  Clock, Megaphone, Activity, AlertTriangle, Briefcase, User, Plus, Trash2, Pin, ChevronDown,
-  Search, Siren, CloudSun, Radio, Power, FileBarChart, Quote, BookOpen, Signal, Layers
-} from "lucide-react";
-import {useNavigate} from "react-router-dom";
-import {toast} from "sonner";
+import {Badge} from "@/components/ui/badge";
 import {ScrollArea} from "@/components/ui/scroll-area";
-import {formatDistanceToNow} from "date-fns";
-import {hu} from "date-fns/locale";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
-import {Textarea} from "@/components/ui/textarea";
 import {Label} from "@/components/ui/label";
-import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from "@/components/ui/dropdown-menu";
+import {Textarea} from "@/components/ui/textarea";
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
+import {Switch} from "@/components/ui/switch";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+  Shield,
+  Activity,
+  Users,
+  Radio,
+  CloudRain,
+  Sun,
+  Cloud,
+  Wind,
+  Clock,
+  Bell,
+  ChevronRight,
+  AlertTriangle,
+  FileText,
+  Terminal,
+  Truck,
+  Siren,
+  Database,
+  Lock,
+  Gavel,
+  Plus,
+  Megaphone,
+  Check,
+  Ticket,
+  AlertOctagon,
+  Info,
+  Podcast,
+  Pin,
+  Trash2,
+  EyeOff,
+  User,
+  UserCheck,
+  Eye, GraduationCap, Signal
+} from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog";
+import {useNavigate} from "react-router-dom";
+import {SheriffBackground} from "@/components/SheriffBackground";
+import {cn, isMcbMember, isSupervisory, isHighCommand, isCommand, isExecutive} from "@/lib/utils";
+import {formatDistanceToNow} from "date-fns";
+import {hu} from "date-fns/locale";
+import {toast} from "sonner";
 
-// --- KONSTANSOK ---
-const ALERT_LEVELS: Record<AlertLevelId, { label: string; color: string; bg: string; icon: any }> = {
-  normal: {label: "NORMÁL ÜGYMENET", color: "#eab308", bg: "bg-yellow-500", icon: Activity},
-  traffic: {label: "FOKOZOTT ELLENŐRZÉS", color: "#f97316", bg: "bg-orange-500", icon: AlertTriangle},
-  border: {label: "TELJES HATÁRZÁR", color: "#ef4444", bg: "bg-red-500", icon: ShieldAlert},
-  tactical: {label: "KIEMELT RIADÓ", color: "#dc2626", bg: "bg-red-600", icon: Siren},
+// --- KONFIGURÁCIÓ ---
+const ALERT_LEVELS: Record<AlertLevelId, { label: string, color: string, icon: any }> = {
+  'normal': {label: 'NORMÁL', color: 'text-green-500', icon: Shield},
+  'traffic': {label: 'FOKOZOTT ELLENŐRZÉS', color: 'text-yellow-500', icon: Activity},
+  'border': {label: 'HATÁRZÁR', color: 'text-orange-500', icon: AlertTriangle},
+  'tactical': {label: 'TAKTIKAI RIADÓ', color: 'text-red-500', icon: Siren},
 };
 
-const EXECUTIVE_RANKS = ['Commander', 'Deputy Commander', 'Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.'];
-const SUPERVISORY_RANKS = ['Sergeant II.', 'Sergeant I.'];
+// --- SEGÉD: RANG KATEGÓRIA ---
+const getStaffCategory = (rank: string) => {
+  const EXECUTIVE = ['Commander', 'Deputy Commander'];
+  const COMMAND = ['Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.'];
+  const SUPERVISORY = ['Sergeant II.', 'Sergeant I.'];
 
-const MOTIVATIONAL_QUOTES = [
-  "A törvény szolgálatában, a közösség védelmében.",
-  "Az igazság nem alkudozik.",
-  "Légy éber, a város sosem alszik.",
-  "A becsület a legfontosabb jelvényünk.",
-  "Ma is tehetsz valamit a biztonságért.",
-  "San Fierro számít ránk.",
-  "A bátorság nem a félelem hiánya, hanem a cselekvés a félelem ellenére.",
-  "Minden akta mögött egy emberi sors rejlik.",
-  "A rendfenntartás nem munka, hanem hivatás.",
-  "Egységben az erő, hűségben a becsület.",
-  "A törvény nem csak betű, hanem szellem is.",
-  "Szolgálunk és védünk.",
-  "A rend a szabadság alapja.",
-  "Hűség, Bátorság, Becsület.",
-  "Az egyenruha kötelez.",
-  "Vigyázzunk egymásra, hogy vigyázhassunk másokra.",
-  "A jelvény mögött szív dobog.",
-  "Nincs megoldhatatlan ügy, csak kevés kitartás.",
-  "A közbiztonság közös ügyünk.",
-  "Légy példakép, ne csak rendőr."
-];
+  if (EXECUTIVE.includes(rank)) return "EXECUTIVE STAFF";
+  if (COMMAND.includes(rank)) return "COMMAND STAFF";
+  if (SUPERVISORY.includes(rank)) return "SUPERVISORY STAFF";
+  return "SHERIFF'S DEPARTMENT";
+};
 
-const RADIO_CODES = [
-  {code: "10-4", desc: "Vettem / Értettem"},
-  {code: "10-20", desc: "Pozíció / Helyszín"},
-  {code: "10-3", desc: "Rádiócsend"},
-  {code: "10-6", desc: "Elfoglalt / Nem elérhető"},
-  {code: "10-7", desc: "Szolgálaton kívül"},
-  {code: "10-8", desc: "Szolgálatban / Elérhető"},
-  {code: "10-27", desc: "Igazoltatás / Adatlekérdezés"},
-  {code: "10-32", desc: "Erősítést kérek (Sürgős)"},
-  {code: "10-38", desc: "Igazoltatás (Járműmegállítás)"},
-  {code: "10-50", desc: "Baleset történt"},
-  {code: "10-70", desc: "Tűzeset"},
-  {code: "10-80", desc: "Üldözés folyamatban"},
-  {code: "CODE 0", desc: "Sürgős segítség! (Minden egység)"},
-  {code: "CODE 4", desc: "Helyzet megoldva / Tiszta"},
-];
-
-// --- STATIKUS HÁTTÉR ---
-const StaticBackground = () => (
-  <div className="fixed inset-0 pointer-events-none z-[-1] bg-[#02040a]">
-    <div className="absolute inset-0 bg-gradient-to-b from-[#0a0f1c] via-[#02040a] to-black"></div>
-    {/* Halvány rács */}
-    <div className="absolute inset-0 opacity-10" style={{
-      backgroundImage: `linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)`,
-      backgroundSize: '40px 40px'
-    }}></div>
-    <div className="absolute inset-0 bg-radial-gradient from-transparent via-[#02040a]/40 to-[#02040a]"></div>
-  </div>
-);
-
-// --- HUD PANEL ---
-const HudPanel = ({
-                    children, className = "", title, icon: Icon, action, themeColor, glow = false
-                  }: {
-  children: React.ReactNode,
-  className?: string,
-  title?: string,
-  icon?: any,
-  action?: React.ReactNode,
-  themeColor: string,
-  glow?: boolean
-}) => (
-  <div
-    className={`relative flex flex-col bg-[#0a0f1c]/70 backdrop-blur-md border border-white/10 shadow-xl overflow-hidden rounded-sm transition-all duration-500 hover:border-white/20 ${className}`}
-    style={{boxShadow: glow ? `0 0 20px -10px ${themeColor}10` : 'none'}}
-  >
-    {/* Sarok jelölők */}
-    <div className="absolute top-0 left-0 w-2 h-2 border-l-2 border-t-2 opacity-30 pointer-events-none"
-         style={{borderColor: themeColor}}></div>
-    <div className="absolute top-0 right-0 w-2 h-2 border-r-2 border-t-2 opacity-30 pointer-events-none"
-         style={{borderColor: themeColor}}></div>
-    <div className="absolute bottom-0 left-0 w-2 h-2 border-l-2 border-b-2 opacity-30 pointer-events-none"
-         style={{borderColor: themeColor}}></div>
-    <div className="absolute bottom-0 right-0 w-2 h-2 border-r-2 border-b-2 opacity-30 pointer-events-none"
-         style={{borderColor: themeColor}}></div>
-
-    {/* Header */}
-    {title && (
-      <div
-        className="relative px-4 py-3 border-b border-white/5 bg-white/[0.02] flex items-center justify-between shrink-0 z-10 min-h-[44px]">
-        <div className="flex items-center gap-3">
-          <div className={`p-1.5 rounded border border-white/5 bg-${themeColor}/5`}>
-            {Icon && <Icon className="w-3.5 h-3.5 transition-colors duration-500" style={{color: themeColor}}/>}
-          </div>
-          <span
-            className="text-xs font-black uppercase tracking-[0.2em] text-slate-200 font-mono shadow-black drop-shadow-md">{title}</span>
-        </div>
-        {action}
+// --- WIDGETEK ---
+const WeatherWidget = () => {
+  const weather = React.useMemo(() => {
+    const types = [
+      {icon: Sun, label: "Tiszta", temp: "24°C", color: "text-yellow-500"},
+      {icon: Cloud, label: "Felhős", temp: "19°C", color: "text-slate-400"},
+      {icon: CloudRain, label: "Esős", temp: "16°C", color: "text-blue-400"},
+      {icon: Wind, label: "Szeles", temp: "18°C", color: "text-slate-300"},
+    ];
+    return types[Math.floor(Math.random() * types.length)];
+  }, []);
+  const Icon = weather.icon;
+  return (
+    <div
+      className="flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border border-slate-800 backdrop-blur-md shadow-lg group hover:border-slate-700 transition-all">
+      <div className={`p-2 rounded-lg bg-slate-900 ${weather.color}`}><Icon className="w-6 h-6"/></div>
+      <div>
+        <div className="text-lg font-bold text-white leading-none">{weather.temp}</div>
+        <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{weather.label}</div>
       </div>
-    )}
-
-    {/* Tartalom (Flex-1 kitölti a teret, min-h-0 engedi a scrollt) */}
-    <div className="flex-1 min-h-0 relative z-10 flex flex-col">
-      {children}
     </div>
+  );
+};
+
+const ClockWidget = () => {
+  const [time, setTime] = React.useState(new Date());
+  React.useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div
+      className="flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border border-slate-800 backdrop-blur-md shadow-lg group hover:border-slate-700 transition-all">
+      <div className="p-2 rounded-lg bg-slate-900 text-blue-500"><Clock className="w-6 h-6"/></div>
+      <div>
+        <div className="text-lg font-mono font-bold text-white leading-none">{time.toLocaleTimeString('hu-HU', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })}</div>
+        <div
+          className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{time.toLocaleDateString('hu-HU', {
+          month: 'short',
+          day: 'numeric'
+        })}</div>
+      </div>
+    </div>
+  );
+};
+
+// --- MODUL KÁRTYA ---
+const ModuleCard = ({title, desc, icon: Icon, colorClass, onClick, locked = false}: any) => (
+  <div onClick={!locked ? onClick : undefined}
+       className={cn("relative overflow-hidden rounded-xl border p-6 transition-all group cursor-pointer flex flex-col justify-between h-[160px]",
+         locked ? "bg-slate-950/40 border-slate-800/50 opacity-50 cursor-not-allowed" : "bg-slate-900/80 border-slate-700/50 hover:border-yellow-500/50 hover:bg-slate-900 hover:shadow-lg hover:shadow-yellow-500/10 backdrop-blur-sm")}
+  >
+    <div
+      className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
+    <div
+      className={`absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-3xl transition-opacity opacity-0 group-hover:opacity-20 ${colorClass.replace('text-', 'bg-')}`}></div>
+    <div className="relative z-10">
+      <div
+        className={cn("w-10 h-10 rounded-lg flex items-center justify-center mb-3 transition-all group-hover:scale-110", locked ? "bg-slate-900 text-slate-600" : "bg-slate-950 border border-slate-800", colorClass)}>
+        {locked ? <Lock className="w-5 h-5"/> : <Icon className="w-5 h-5"/>}
+      </div>
+      <h3
+        className={cn("text-base font-black uppercase tracking-tight mb-1", locked ? "text-slate-500" : "text-white group-hover:text-yellow-500 transition-colors")}>{title}</h3>
+      <p className="text-[10px] text-slate-400 font-medium line-clamp-2 leading-relaxed">{desc}</p>
+    </div>
+    {!locked && (<div className="relative z-10 mt-auto pt-2 flex justify-end"><ChevronRight
+      className="w-4 h-4 text-slate-600 group-hover:text-yellow-500 group-hover:translate-x-1 transition-all"/></div>)}
   </div>
 );
 
-// --- ÚJ HÍR DIALOG ---
-function NewAnnouncementDialog({open, onOpenChange, onSuccess}: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
+// --- ÚJ HIRDETÉS DIALÓGUS (JAVÍTOTT GOMBOKKAL) ---
+const NewAnnouncementDialog = ({open, onOpenChange, onSuccess}: {
+  open: boolean,
+  onOpenChange: (o: boolean) => void,
   onSuccess: () => void
-}) {
+}) => {
   const {supabase, user} = useAuth();
+  const [title, setTitle] = React.useState("");
+  const [content, setContent] = React.useState("");
+  const [type, setType] = React.useState("info");
+  const [isPinned, setIsPinned] = React.useState(false);
+  const [showAuthor, setShowAuthor] = React.useState(true);
   const [loading, setLoading] = React.useState(false);
-  const [formData, setFormData] = React.useState({title: "", content: "", type: "info", is_pinned: false});
 
   const handleSubmit = async () => {
-    if (!formData.title || !formData.content) return toast.error("Minden mező kötelező!");
+    if (!title || !content) return toast.error("Minden mező kötelező!");
     setLoading(true);
     try {
       const {error} = await supabase.from('announcements').insert({
-        title: formData.title,
-        content: formData.content,
-        type: formData.type as any,
-        is_pinned: formData.is_pinned,
-        created_by: user?.id
+        title, content, type, created_by: user?.id,
+        is_pinned: isPinned, show_author: showAuthor
       });
       if (error) throw error;
-      toast.success("Hír közzétéve!");
-      setFormData({title: "", content: "", type: "info", is_pinned: false});
+      toast.success("Hirdetés közzétéve!");
       onSuccess();
       onOpenChange(false);
-    } catch (error) {
+      setTitle("");
+      setContent("");
+      setIsPinned(false);
+      setShowAuthor(true);
+    } catch (e) {
       toast.error("Hiba történt.");
     } finally {
       setLoading(false);
     }
   };
 
+  const TypeCard = ({id, label, icon: Icon, colorClass, activeClass, borderColor}: any) => (
+    <div onClick={() => setType(id)}
+         className={cn("flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all flex-1 select-none", type === id ? cn("bg-slate-900/80", borderColor, activeClass) : "bg-slate-950 border-slate-800 text-slate-500 hover:bg-slate-900 hover:border-slate-700")}>
+      <Icon className={cn("w-6 h-6 mb-2 transition-colors", type === id ? colorClass : "text-slate-600")}/>
+      <span className="text-[10px] font-black uppercase tracking-wider">{label}</span>
+    </div>
+  );
+
+  // Jól látható Toggle Kártya
+  const ToggleOption = ({label, description, active, onChange, icon: Icon, activeColor, activeText}: any) => (
+    <div onClick={() => onChange(!active)}
+         className={cn("flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all select-none", active ? cn("bg-slate-900/80", activeColor) : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700")}>
+      <div className="flex items-center gap-3">
+        <div className={cn("p-2 rounded-md", active ? "bg-white/10 text-white" : "bg-slate-900 text-slate-600")}><Icon
+          className="w-5 h-5"/></div>
+        <div>
+          <div
+            className={cn("text-xs font-bold uppercase tracking-wider", active ? "text-white" : "text-slate-500")}>{label}</div>
+          <div className="text-[9px] text-slate-600 font-bold">{description}</div>
+        </div>
+      </div>
+      <div
+        className={cn("px-2 py-1 rounded text-[9px] font-black uppercase", active ? activeText : "bg-slate-900 text-slate-600")}>
+        {active ? "AKTÍV" : "KI"}
+      </div>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#0f172a]/95 border-slate-700 text-white sm:max-w-lg backdrop-blur-xl shadow-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-yellow-500 font-black uppercase tracking-widest text-lg flex items-center gap-2">
-            <Megaphone className="w-5 h-5"/> Új Közlemény
-          </DialogTitle>
-          <DialogDescription className="text-slate-400 font-mono text-xs">A hír azonnal megjelenik az állomány
-            számára.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-5 py-4">
-          <div className="space-y-2">
-            <Label className="text-xs uppercase font-bold text-slate-500 tracking-wider">Cím / Tárgy</Label>
-            <Input placeholder="PL. RENDKÍVÜLI ÉRTEKEZLET..." value={formData.title}
-                   onChange={e => setFormData({...formData, title: e.target.value})}
-                   className="bg-black/40 border-slate-700 font-bold text-white focus:border-yellow-500/50"/>
+      <DialogContent
+        className="bg-[#0b1221] border border-yellow-500/30 text-white sm:max-w-lg shadow-[0_0_40px_rgba(234,179,8,0.15)] p-0 overflow-hidden">
+        <div className="bg-yellow-500/10 border-b border-yellow-500/20 p-5 flex items-center gap-3">
+          <div className="p-2 rounded bg-yellow-500/10 border border-yellow-500/30 text-yellow-500"><Podcast
+            className="w-5 h-5"/></div>
+          <div><DialogTitle className="text-lg font-black uppercase tracking-tight">ADÁS
+            INDÍTÁSA</DialogTitle><DialogDescription
+            className="text-[10px] text-yellow-500/60 font-mono uppercase tracking-widest font-bold">Secure Broadcast
+            Terminal</DialogDescription></div>
+        </div>
+        <div className="p-6 space-y-5">
+          <div className="space-y-2"><Label
+            className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">Kategória</Label>
+            <div className="flex gap-3"><TypeCard id="info" label="INFO" icon={Info} colorClass="text-blue-400"
+                                                  activeClass="text-blue-100" borderColor="border-blue-500"/><TypeCard
+              id="alert" label="RIASZTÁS" icon={AlertTriangle} colorClass="text-red-500" activeClass="text-red-100"
+              borderColor="border-red-500"/><TypeCard id="training" label="KÉPZÉS" icon={GraduationCap}
+                                                      colorClass="text-green-500" activeClass="text-green-100"
+                                                      borderColor="border-green-500"/></div>
           </div>
-          <div className="space-y-2">
-            <Label className="text-xs uppercase font-bold text-slate-500 tracking-wider">Prioritás</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                {
-                  id: 'info',
-                  label: 'INFORMÁCIÓ',
-                  color: 'bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20'
-                },
-                {
-                  id: 'training',
-                  label: 'KÉPZÉS',
-                  color: 'bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20'
-                },
-                {
-                  id: 'alert',
-                  label: 'RIASZTÁS',
-                  color: 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20 animate-pulse'
-                },
-              ].map(t => (
-                <button key={t.id} onClick={() => setFormData({...formData, type: t.id})}
-                        className={`py-3 rounded border text-xs font-black tracking-widest transition-all ${formData.type === t.id ? t.color.replace('hover:', '') + ' ring-1 ring-current' : 'border-slate-800 text-slate-600 bg-black/40 hover:bg-slate-900'}`}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs uppercase font-bold text-slate-500 tracking-wider">Tartalom</Label>
-            <Textarea placeholder="Üzenet szövege..." value={formData.content}
-                      onChange={e => setFormData({...formData, content: e.target.value})}
-                      className="bg-black/40 border-slate-700 h-32 resize-none focus:border-yellow-500/50 font-mono text-sm leading-relaxed"/>
-          </div>
-          <div className="flex items-center gap-3 p-3 rounded bg-yellow-500/5 border border-yellow-500/10">
-            <input type="checkbox" id="pinned" checked={formData.is_pinned}
-                   onChange={e => setFormData({...formData, is_pinned: e.target.checked})}
-                   className="w-4 h-4 rounded border-slate-700 bg-slate-900 accent-yellow-500"/>
-            <Label htmlFor="pinned" className="cursor-pointer text-xs uppercase font-bold text-yellow-500/80">Kiemelt
-              üzenet (Pin)</Label>
+          <div className="space-y-1.5"><Label
+            className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">Címsor</Label><Input
+            value={title} onChange={e => setTitle(e.target.value)}
+            className="bg-slate-950 border-slate-800 focus-visible:ring-yellow-500/50 font-bold"
+            placeholder="Rövid cím..."/></div>
+          <div className="space-y-1.5"><Label
+            className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">Üzenet</Label><Textarea
+            value={content} onChange={e => setContent(e.target.value)}
+            className="bg-slate-950 border-slate-800 h-32 resize-none break-words whitespace-pre-wrap text-sm leading-relaxed placeholder:text-slate-700 break-all"
+            placeholder="Írd ide az üzenetet..."/></div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800">
+            <ToggleOption label="KIEMELÉS" description="Lista tetejére rögzít" active={isPinned} onChange={setIsPinned}
+                          icon={Pin} activeColor="border-yellow-500/50 shadow-yellow-900/20"
+                          activeText="bg-yellow-500 text-black"/>
+            <ToggleOption label="ALÁÍRÁS" description={showAuthor ? "Név megjelenítése" : "Csak rang látszik"}
+                          active={showAuthor} onChange={setShowAuthor} icon={showAuthor ? Eye : EyeOff}
+                          activeColor="border-blue-500/50 shadow-blue-900/20" activeText="bg-blue-500 text-white"/>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}
-                  className="text-slate-400 hover:text-white">MÉGSE</Button>
-          <Button onClick={handleSubmit} disabled={loading}
-                  className="bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase tracking-wider">KÖZZÉTÉTEL</Button>
-        </DialogFooter>
+        <DialogFooter className="p-5 bg-slate-950 border-t border-slate-800 flex justify-between"><Button
+          variant="ghost" onClick={() => onOpenChange(false)}
+          className="hover:bg-slate-900 text-slate-400 text-xs font-bold uppercase">Mégse</Button><Button
+          onClick={handleSubmit} disabled={loading}
+          className="bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase tracking-widest px-6 shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:scale-105 transition-all"><Signal
+          className="w-4 h-4 mr-2"/> ADÁS KÜLDÉSE</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
-}
+};
 
-// --- FŐ DASHBOARD COMPONENT ---
+// --- STÁTUSZ KEZELŐ ---
+const StatusControlDialog = ({open, onOpenChange}: { open: boolean, onOpenChange: (o: boolean) => void }) => {
+  const {alertLevel, setAlertLevel, recruitmentOpen, toggleRecruitment} = useSystemStatus();
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-[#0b1221] border border-slate-800 text-white sm:max-w-sm p-0 shadow-2xl">
+        <div className="bg-slate-900/50 border-b border-slate-800 p-4"><DialogTitle
+          className="text-sm font-bold uppercase tracking-wider flex items-center gap-2"><Activity
+          className="w-4 h-4 text-blue-500"/> Rendszer Státusz</DialogTitle></div>
+        <div className="p-6 space-y-6">
+          <div className="space-y-3">
+            <Label className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">Riasztási Szint
+              (DEFCON)</Label>
+            <div className="grid grid-cols-1 gap-2">
+              {(Object.keys(ALERT_LEVELS) as AlertLevelId[]).map((level) => (
+                <div key={level} onClick={() => setAlertLevel(level)}
+                     className={cn("flex items-center justify-between p-3 rounded border cursor-pointer transition-all", alertLevel === level ? "bg-slate-800 border-yellow-500/50" : "bg-slate-950 border-slate-800 hover:bg-slate-900")}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${ALERT_LEVELS[level].color.replace('text-', 'bg-')}`}></div>
+                    <span
+                      className={cn("text-xs font-bold uppercase", alertLevel === level ? "text-white" : "text-slate-400")}>{ALERT_LEVELS[level].label}</span>
+                  </div>
+                  {alertLevel === level && <Check className="w-3 h-3 text-yellow-500"/>}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-3 pt-4 border-t border-slate-800">
+            <Label className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">TGF Kapu</Label>
+            <Button onClick={toggleRecruitment}
+                    className={cn("w-full font-bold h-9 text-xs uppercase tracking-wider", recruitmentOpen ? "bg-green-600 hover:bg-green-500" : "bg-red-600 hover:bg-red-500")}>{recruitmentOpen ? "TGF NYITVA (Lezárás)" : "TGF ZÁRVA (Megnyitás)"}</Button>
+          </div>
+        </div>
+        <DialogFooter className="p-4 bg-slate-950 border-t border-slate-800"><Button variant="ghost" size="sm"
+                                                                                     onClick={() => onOpenChange(false)}>Bezárás</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// --- FEED ITEM (JAVÍTOTT) ---
+const FeedItem = ({item, onDelete, currentUser}: { item: any, onDelete: (id: string) => void, currentUser: any }) => {
+  const canDelete = (currentUser.id === item.created_by) || isCommand(currentUser) || isExecutive(currentUser) || currentUser.is_bureau_manager;
+  const authorName = item.show_author ? item.profiles?.full_name : getStaffCategory(item.profiles?.faction_rank);
+  const authorRank = item.show_author ? item.profiles?.faction_rank : "CLASSIFIED";
+
+  return (
+    <div
+      className={cn("p-4 border-l-4 bg-slate-950/40 hover:bg-slate-950/60 hover:border-yellow-500/50 transition-all rounded-r-lg group mb-3 relative", item.is_pinned ? "border-yellow-500 bg-yellow-900/10" : "border-slate-700")}>
+      <div className="flex justify-between items-start mb-2">
+        <div className="flex gap-2 items-center">
+          {item.is_pinned && <Pin className="w-3 h-3 text-yellow-500 fill-current rotate-45"/>}
+          <Badge variant="outline"
+                 className={cn("text-[9px] h-5 uppercase border-opacity-50", item.type === 'alert' ? "text-red-400 border-red-500 bg-red-500/10" : item.type === 'training' ? "text-blue-400 border-blue-500 bg-blue-500/10" : "text-slate-400 border-slate-600 bg-slate-500/10")}>{item.type === 'alert' ? 'RIASZTÁS' : item.type === 'training' ? 'KÉPZÉS' : 'INFÓ'}</Badge>
+          <span className="text-[9px] text-slate-600 font-mono">{formatDistanceToNow(new Date(item.created_at), {
+            locale: hu,
+            addSuffix: true
+          })}</span>
+        </div>
+        {canDelete && <Button size="icon" variant="ghost"
+                              className="h-5 w-5 text-slate-600 hover:text-red-500 -mr-2 opacity-0 group-hover:opacity-100 transition-all"
+                              onClick={() => onDelete(item.id)}><Trash2 className="w-3 h-3"/></Button>}
+      </div>
+      <h4 className="text-sm font-bold text-white group-hover:text-yellow-500 transition-colors mb-2">{item.title}</h4>
+      <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap break-all mb-3">{item.content}</div>
+      <div className="pt-2 border-t border-white/5 flex items-center gap-2">
+        <div className={cn("w-1.5 h-1.5 rounded-full", item.show_author ? "bg-green-500" : "bg-blue-500")}></div>
+        <div className="text-[9px] text-slate-500 font-mono uppercase">FROM: <span
+          className={cn("font-bold", item.show_author ? "text-slate-300" : "text-blue-400")}>{authorName}</span> <span
+          className="mx-1 text-slate-700">|</span> RANK: {authorRank}</div>
+      </div>
+    </div>
+  );
+};
+
+// --- ACTION LOG ITEM ---
+const ActionItem = ({log}: { log: any }) => (
+  <div className="flex items-start gap-3 p-3 border-b border-slate-800/50 hover:bg-slate-900/30 transition-colors">
+    <div
+      className={cn("p-1.5 rounded bg-slate-950 border shrink-0", log.action_type === 'arrest' ? "border-red-900/50 text-red-500" : log.action_type === 'ticket' ? "border-orange-900/50 text-orange-500" : "border-blue-900/50 text-blue-500")}>
+      {log.action_type === 'arrest' ? <AlertOctagon className="w-3 h-3"/> : log.action_type === 'ticket' ?
+        <Ticket className="w-3 h-3"/> : <Info className="w-3 h-3"/>}
+    </div>
+    <div className="min-w-0 flex-1">
+      <div className="flex justify-between items-baseline">
+            <span
+              className={cn("text-xs font-black uppercase tracking-wide", log.action_type === 'arrest' ? "text-red-400" : log.action_type === 'ticket' ? "text-orange-400" : "text-blue-400")}>
+               {log.action_type === 'arrest' ? 'LETARTÓZTATÁS' : log.action_type === 'ticket' ? 'BÍRSÁG' : 'NAPLÓ'}
+            </span>
+        <span className="text-[9px] text-slate-500 font-mono">{new Date(log.created_at).toLocaleTimeString('hu-HU', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })}</span>
+      </div>
+      <div className="flex items-center gap-1 mt-0.5">
+        <User className="w-2.5 h-2.5 text-slate-600"/>
+        <span className="text-[10px] font-bold text-slate-300">{log.profiles?.full_name || "Ismeretlen"}</span>
+        <span className="text-[9px] text-slate-600">#{log.profiles?.badge_number}</span>
+      </div>
+      <p
+        className="text-[10px] text-slate-400 mt-1 leading-snug border-l-2 border-slate-800 pl-2 italic break-all whitespace-pre-wrap">{log.details}</p>
+    </div>
+  </div>
+);
+
 export function DashboardPage() {
-  const {profile, signOut, supabase} = useAuth();
-  const {alertLevel, setAlertLevel} = useSystemStatus();
+  const {profile, supabase} = useAuth();
+  const {alertLevel} = useSystemStatus();
   const navigate = useNavigate();
 
-  const currentTheme = ALERT_LEVELS[alertLevel] || ALERT_LEVELS.normal;
-  const isLeader = profile?.system_role === 'admin' || profile?.system_role === 'supervisor';
-
-  // --- STATE ---
-  const [currentTime, setCurrentTime] = React.useState(new Date());
-  const [stats, setStats] = React.useState({pendingVehicles: 0, pendingBudget: 0, activeOfficers: 0, openCases: 0});
-  const [recentActions, setRecentActions] = React.useState<any[]>([]);
   const [announcements, setAnnouncements] = React.useState<any[]>([]);
-  const [isLoadingStats, setIsLoadingStats] = React.useState(true);
-  const [isNewsDialogOpen, setIsNewsDialogOpen] = React.useState(false);
-  const [deleteAlertOpen, setDeleteAlertOpen] = React.useState(false);
-  const [selectedNewsId, setSelectedNewsId] = React.useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null);
+  const [actionLogs, setActionLogs] = React.useState<any[]>([]);
+  const [activeUnitCount, setActiveUnitCount] = React.useState(0);
+  const [isAnnouncementOpen, setIsAnnouncementOpen] = React.useState(false);
+  const [isStatusOpen, setIsStatusOpen] = React.useState(false);
+  const [deleteId, setDeleteId] = React.useState<string | null>(null);
 
-  const [dailyQuote, setDailyQuote] = React.useState("");
+  const fetchData = React.useCallback(async () => {
+    const {data: news} = await supabase.from('announcements').select('*, profiles(full_name, faction_rank)').order('is_pinned', {ascending: false}).order('created_at', {ascending: false}).limit(10);
+    if (news) setAnnouncements(news);
 
-  // --- HANDLERS ---
-  const handleLogout = async () => {
-    await signOut();
-    navigate('/login');
-  };
+    const {count} = await supabase.from('profiles').select('id', {
+      count: 'exact',
+      head: true
+    }).neq('system_role', 'pending');
+    setActiveUnitCount(count || 0);
 
-  const handleStatusChange = async (newLevel: string) => {
-    await setAlertLevel(newLevel as AlertLevelId);
-    toast.success(`Státusz módosítva: ${ALERT_LEVELS[newLevel as AlertLevelId].label}`);
-  };
-
-  const handleDeleteNews = async () => {
-    if (!selectedNewsId) return;
-    await supabase.from('announcements').delete().eq('id', selectedNewsId);
-    toast.success("Hír törölve.");
-    setAnnouncements(prev => prev.filter(n => n.id !== selectedNewsId));
-    setDeleteAlertOpen(false);
-  };
-
-  const confirmDelete = (id: string) => {
-    setSelectedNewsId(id);
-    setDeleteAlertOpen(true);
-  };
-
-  // --- EFFECTS ---
-  React.useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    setDailyQuote(MOTIVATIONAL_QUOTES[Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)]);
-    return () => clearInterval(timer);
-  }, []);
-
-  const fetchNews = async () => {
-    const {data} = await supabase.from('announcements').select('*, profiles:created_by(full_name, faction_rank)').order('is_pinned', {ascending: false}).order('created_at', {ascending: false}).limit(20);
-    if (data) {
-      setAnnouncements(data);
-      if (data.length > 0) setLastUpdated(new Date(data[0].created_at));
-    }
-  };
-
-  React.useEffect(() => {
-    const fetchdata = async () => {
-      try {
-        const [vehicles, budget, officers, cases] = await Promise.all([
-          supabase.from('vehicle_requests').select('id', {count: 'exact', head: true}).eq('status', 'pending'),
-          supabase.from('budget_requests').select('id', {count: 'exact', head: true}).eq('status', 'pending'),
-          supabase.from('profiles').select('id', {count: 'exact', head: true}).neq('system_role', 'pending'),
-          supabase.from('cases').select('id', {count: 'exact', head: true}).eq('status', 'open'),
-        ]);
-        setStats({
-          pendingVehicles: vehicles.count || 0,
-          pendingBudget: budget.count || 0,
-          activeOfficers: officers.count || 0,
-          openCases: cases.count || 0
-        });
-        const {data: actions} = await supabase.from('action_logs').select('*, profiles(full_name, badge_number)').order('created_at', {ascending: false}).limit(20);
-        if (actions) setRecentActions(actions);
-        await fetchNews();
-      } finally {
-        setIsLoadingStats(false);
-      }
-    };
-    fetchdata();
-
-    const channel = supabase.channel('dashboard_v9')
-      .on('postgres_changes', {event: 'INSERT', schema: 'public', table: 'action_logs'}, (payload) => {
-        // Frissítés (opcionális)
-      })
-      .on('postgres_changes', {event: '*', schema: 'public', table: 'announcements'}, () => fetchNews())
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const {data: logs} = await supabase.from('action_logs').select('*, profiles!action_logs_user_id_fkey(full_name, badge_number)').order('created_at', {ascending: false}).limit(8);
+    if (logs) setActionLogs(logs);
   }, [supabase]);
 
-  const renderAuthor = (news: any) => {
-    if (!news.profiles) return <span className="text-slate-500 font-mono text-[10px]">SYSTEM</span>;
-    const rank = news.profiles.faction_rank;
-    let badgeClass = "text-slate-400 bg-slate-800";
-    if (EXECUTIVE_RANKS.includes(rank)) badgeClass = "text-red-400 bg-red-950/40 border-red-900/50";
-    else if (SUPERVISORY_RANKS.includes(rank)) badgeClass = "text-green-400 bg-green-950/40 border-green-900/50";
-    else badgeClass = "text-yellow-500 bg-yellow-950/40 border-yellow-900/50";
+  React.useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-    return <span
-      className={`font-bold text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-white/5 ${badgeClass}`}>{rank}</span>;
-  }
+  const handleDeleteAnnouncement = async (id: string) => {
+    setDeleteId(id);
+  };
 
-  // --- RENDER (NO SCROLL LAYOUT) ---
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    const {error} = await supabase.from('announcements').delete().eq('id', deleteId);
+    if (error) toast.error("Hiba a törléskor."); else {
+      toast.success("Törölve.");
+      fetchData();
+    }
+    setDeleteId(null);
+  };
+
+  const greeting = React.useMemo(() => {
+    const h = new Date().getHours();
+    return h < 6 ? "Jó éjszakát" : h < 10 ? "Jó reggelt" : h < 18 ? "Szép napot" : "Jó estét";
+  }, []);
+
+  if (!profile) return null;
+  const canCreateNews = profile.system_role === 'admin' || isHighCommand(profile);
+  const canManageStatus = profile.system_role === 'admin' || isHighCommand(profile);
+  const alertInfo = ALERT_LEVELS[alertLevel];
+
   return (
-    // h-screen és overflow-hidden: Nincs ablakszintű görgetés.
-    <div
-      className="h-screen w-full text-slate-200 animate-in fade-in duration-700 flex flex-col overflow-hidden bg-[#02040a]">
+    <div className="min-h-screen bg-[#050a14] relative overflow-hidden pb-20">
+      <SheriffBackground side="left"/>
 
-      {/* STATIKUS HÁTTÉR */}
-      <StaticBackground/>
+      <NewAnnouncementDialog open={isAnnouncementOpen} onOpenChange={setIsAnnouncementOpen} onSuccess={fetchData}/>
+      <StatusControlDialog open={isStatusOpen} onOpenChange={setIsStatusOpen}/>
 
-      <NewAnnouncementDialog open={isNewsDialogOpen} onOpenChange={setIsNewsDialogOpen} onSuccess={fetchNews}/>
-      <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
-        <AlertDialogContent
-          className="bg-slate-900 border-red-900/50 text-white"><AlertDialogHeader><AlertDialogTitle>Törlés</AlertDialogTitle><AlertDialogDescription>Biztosan?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel
-          className="bg-slate-800">Mégse</AlertDialogCancel><AlertDialogAction onClick={handleDeleteNews}
-                                                                               className="bg-red-600">Törlés</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <AlertDialogContent className="bg-[#0b1221] border border-red-900/50 text-white">
+          <AlertDialogHeader><AlertDialogTitle className="text-red-500 flex items-center gap-2"><Trash2
+            className="w-5 h-5"/> HIRDETÉS TÖRLÉSE</AlertDialogTitle><AlertDialogDescription className="text-slate-400">Biztosan
+            törlöd ezt a hirdetményt? A művelet nem visszavonható.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel
+            className="bg-slate-900 border-slate-700 hover:bg-slate-800 text-white">Mégse</AlertDialogCancel><AlertDialogAction
+            onClick={confirmDelete}
+            className="bg-red-600 hover:bg-red-700 border-none text-white font-bold">Törlés</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
       </AlertDialog>
 
-      {/* === HEADER (Nem sticky, fix helyen) === */}
-      <div
-        className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 p-5 bg-[#0a0f1c]/80 backdrop-blur-md border-b border-white/10 shadow-lg shrink-0 mx-6 mt-4 rounded-sm mb-6">
-
-        <div className="flex items-center gap-5">
-          <div className="relative group">
-            <div
-              className="absolute inset-0 bg-current blur-lg opacity-20 group-hover:opacity-40 transition-opacity rounded-full"
-              style={{color: currentTheme.color}}></div>
-            <div className="relative p-2 bg-black/40 border border-white/10 rounded-lg backdrop-blur-sm">
-              <ShieldAlert className="w-8 h-8 transition-colors duration-500" style={{color: currentTheme.color}}/>
-            </div>
-          </div>
-          <div>
-            <h1 className="text-3xl font-black text-white tracking-tighter leading-none font-mono drop-shadow-md">
-              COMMAND <span style={{color: currentTheme.color}} className="transition-colors duration-500">CENTER</span>
+      <div className="max-w-[1600px] mx-auto px-6 py-10 relative z-10">
+        {/* HEADER */}
+        <div
+          className="flex flex-col lg:flex-row justify-between items-end gap-8 mb-10 animate-in fade-in slide-in-from-top-4 duration-700">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-yellow-500/80 mb-2"><Shield className="w-5 h-5"/><span
+              className="text-xs font-bold uppercase tracking-[0.3em]">San Fierro Sheriff's Dept.</span></div>
+            <h1
+              className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter leading-none drop-shadow-lg">{greeting}, <br/><span
+              className="text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">{profile.full_name.split(' ')[0]}.</span>
             </h1>
-            <div className="flex items-center gap-2 mt-1.5 opacity-90">
-              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="text-sm uppercase tracking-[0.2em] text-slate-300 font-bold text-shadow">
-                    {profile?.badge_number} • {profile?.faction_rank}
-                  </span>
-            </div>
+            <div className="flex items-center gap-3 pt-2"><Badge variant="outline"
+                                                                 className="border-slate-600 text-slate-300 font-mono uppercase">{profile.faction_rank}</Badge><Badge
+              className="bg-yellow-600 text-black font-bold font-mono border-none">#{profile.badge_number}</Badge></div>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Weather */}
-          <div className="hidden lg:flex items-center gap-3 px-4 py-2 bg-black/20 border border-white/5 rounded">
-            <CloudSun className="w-5 h-5 text-yellow-500"/>
-            <div className="flex flex-col leading-none text-right">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">San Fierro</span>
-              <span className="text-sm font-mono font-bold text-white tracking-widest">18°C CLR</span>
-            </div>
-          </div>
-
-          {/* Time */}
-          <div
-            className="hidden md:flex items-center gap-3 px-4 py-2 bg-black/20 border border-white/10 rounded shadow-inner">
-            <Clock className="w-5 h-5 text-slate-400"/>
-            <span className="text-2xl font-mono font-bold text-white tracking-widest leading-none">
-                    {currentTime.toLocaleTimeString('hu-HU', {hour: '2-digit', minute: '2-digit'})}
-                </span>
-          </div>
-
-          {/* Status */}
-          {isLeader ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="flex items-center gap-3 px-5 py-3 bg-black/40 border transition-all rounded-sm hover:bg-black/60 group min-w-[220px]"
-                  style={{borderColor: `${currentTheme.color}60`}}>
-                  <currentTheme.icon className="w-5 h-5 animate-pulse transition-colors duration-500"
-                                     style={{color: currentTheme.color}}/>
-                  <div className="text-left flex-1">
-                    <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Rendszer Státusz
-                    </div>
-                    <div
-                      className="text-sm font-black uppercase tracking-wide leading-none text-white shadow-current drop-shadow-sm transition-colors duration-500"
-                      style={{color: currentTheme.color}}>
-                      {currentTheme.label}
-                    </div>
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-slate-500"/>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-[#0a0f1c] border-slate-700 min-w-[220px] p-1 shadow-2xl">
-                {Object.entries(ALERT_LEVELS).map(([key, val]) => (
-                  <DropdownMenuItem key={key} onClick={() => handleStatusChange(key)}
-                                    className="text-slate-300 focus:text-white cursor-pointer gap-2 focus:bg-white/5 py-2">
-                    <val.icon className="w-4 h-4" style={{color: val.color}}/>
-                    <span className="uppercase font-bold text-xs tracking-wide"
-                          style={{color: val.color}}>{val.label}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <div
-              className="flex items-center gap-3 px-5 py-3 bg-black/40 border border-white/10 rounded-sm min-w-[220px]">
-              <currentTheme.icon className="w-5 h-5 animate-pulse" style={{color: currentTheme.color}}/>
-              <div className="text-left">
-                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Jelenlegi Státusz</div>
-                <div className="text-sm font-black uppercase tracking-wide leading-none text-white"
-                     style={{color: currentTheme.color}}>{currentTheme.label}</div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* === CONTENT GRID (FLEX-1 kitölti a maradék helyet) === */}
-      <div className="flex-1 px-6 pb-6 min-h-0 overflow-hidden">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full">
-
-          {/* --- BAL OSZLOP (3/4 szélesség) --- */}
-          <div className="lg:col-span-3 flex flex-col gap-6 h-full min-h-0">
-
-            {/* 1. STATISZTIKÁK (Fix magasság) */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-              {[
-                {title: "AKTÍV EGYSÉG", val: stats.activeOfficers, icon: Users, color: "text-blue-400"},
-                {title: "NYITOTT AKTA", val: stats.openCases, icon: Briefcase, color: "text-yellow-400"},
-                {title: "JÁRMŰ IGÉNY", val: stats.pendingVehicles, icon: Truck, color: "text-orange-400"},
-                {title: "PÉNZÜGY", val: stats.pendingBudget, icon: Banknote, color: "text-green-400"},
-              ].map((s, i) => (
-                <div key={i}
-                     className={`relative bg-[#050a14]/60 backdrop-blur-sm border border-white/10 p-5 overflow-hidden group hover:border-white/30 transition-all rounded-sm shadow-lg`}>
-                  <div className="flex justify-between items-start mb-3 relative z-10">
-                    <s.icon className={`w-7 h-7 opacity-80 ${s.color}`}/>
-                    <div
-                      className={`text-4xl font-black text-white font-mono leading-none drop-shadow-md`}>{isLoadingStats ? '-' : s.val}</div>
-                  </div>
-                  <div
-                    className="text-xs uppercase tracking-wider font-bold text-slate-400 relative z-10">{s.title}</div>
-                  <div
-                    className={`absolute -bottom-6 -right-6 w-24 h-24 bg-current opacity-[0.04] blur-2xl rounded-full ${s.color}`}></div>
-                </div>
-              ))}
-            </div>
-
-            {/* 2. RENDSZER ELÉRÉS (GYORSGOMBOK) - Fix magasság */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
-              {[
-                {
-                  title: "NYOMOZÓ IRODA",
-                  sub: "MCB ADATBÁZIS & AKTÁK",
-                  icon: Search,
-                  path: "/mcb",
-                  color: "text-blue-400"
-                },
-                {
-                  title: "LOGISZTIKA",
-                  sub: "JÁRMŰ ÉS FEGYVERZET",
-                  icon: Layers,
-                  path: "/logistics",
-                  color: "text-orange-400"
-                },
-                {
-                  title: "BTK. KALKULÁTOR",
-                  sub: "BÜNTETÉS VÉGREHAJTÁS",
-                  icon: Gavel,
-                  path: "/calculator",
-                  color: "text-purple-400"
-                },
-              ].map((sys, i) => (
-                <div key={i} onClick={() => navigate(sys.path)}
-                     className={`group cursor-pointer relative bg-[#0a0f1c]/60 border border-white/10 p-5 transition-all hover:bg-white/5 hover:border-white/20 flex items-center gap-5 rounded-sm shadow-lg`}>
-                  <div
-                    className={`p-3 rounded bg-black/40 border border-white/5 ${sys.color} group-hover:scale-110 transition-transform`}>
-                    <sys.icon className="w-6 h-6"/>
-                  </div>
-                  <div className="flex-1">
-                    <h3
-                      className="text-lg font-black text-white tracking-tight group-hover:text-yellow-500 transition-colors">{sys.title}</h3>
-                    <p className="text-xs uppercase tracking-wider text-slate-500 font-bold">{sys.sub}</p>
-                  </div>
-                  <ChevronDown
-                    className="w-5 h-5 text-slate-600 -rotate-90 group-hover:translate-x-1 transition-transform"/>
-                </div>
-              ))}
-            </div>
-
-            {/* 3. MEGOSZTOTT ALSÓ SÁV: ÉLŐ NAPLÓ + RÁDIÓ KÓDOK */}
-            <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-3 gap-6">
-
-              {/* ÉLŐ ESEMÉNYNAPLÓ (2/3 szélesség) */}
-              <HudPanel title="ÉLŐ ESEMÉNYNAPLÓ" icon={Radio} themeColor={currentTheme.color}
-                        className="md:col-span-2 h-full">
-                <ScrollArea className="h-full">
-                  <div className="flex flex-col">
-                    {recentActions.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-40 text-slate-600">
-                        <Activity className="w-10 h-10 mb-3 opacity-20"/>
-                        <span className="text-sm font-mono uppercase tracking-widest">Nincs rögzített esemény</span>
-                      </div>
-                    ) : (
-                      recentActions.map((action, i) => (
-                        <div key={action.id}
-                             className={`flex items-start gap-4 p-4 border-b border-white/5 hover:bg-white/[0.05] transition-colors group`}>
-                          <div className="w-14 text-xs font-mono text-slate-500 pt-1 shrink-0 text-right">
-                            {new Date(action.created_at).toLocaleTimeString('hu-HU', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </div>
-
-                          <div className="flex flex-col items-center shrink-0 pt-2">
-                            <div
-                              className={`w-2 h-2 rounded-full ${action.action_type === 'arrest' ? 'bg-red-500' : 'bg-blue-500'} shadow-[0_0_8px_currentColor]`}></div>
-                          </div>
-
-                          <div className="flex-1 min-w-0 pb-1">
-                            <div className="flex justify-between items-start mb-1">
-                              <div className="flex items-center gap-2">
-                                                        <span
-                                                          className="text-xs font-black text-slate-300 font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
-                                                            {action.profiles?.badge_number}
-                                                        </span>
-                                <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">
-                                                            {action.profiles?.full_name}
-                                                        </span>
-                              </div>
-                              <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                                action.action_type === 'arrest' ? 'bg-red-950/40 text-red-500 border border-red-900/50' : 'bg-blue-950/40 text-blue-500 border border-blue-900/50'
-                              }`}>
-                                                        {action.action_type === 'arrest' ? 'LETARTÓZTATÁS' : 'BÍRSÁG'}
-                                                    </span>
-                            </div>
-                            <p
-                              className="text-sm text-slate-400 font-mono leading-relaxed opacity-90 group-hover:opacity-100 transition-opacity">
-                              {action.details}
-                            </p>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </ScrollArea>
-              </HudPanel>
-
-              {/* RÁDIÓ KÓDOK GYORSTÁR (1/3 szélesség) */}
-              <HudPanel title="RÁDIÓ KÓDOK" icon={Signal} themeColor="#3b82f6" className="h-full">
-                <ScrollArea className="h-full">
-                  <div className="p-2 space-y-1">
-                    {RADIO_CODES.map((rc, i) => (
-                      <div key={i}
-                           className="flex items-center gap-3 p-2 hover:bg-white/5 rounded transition-colors group cursor-help">
-                        <span
-                          className="text-xs font-black text-blue-400 font-mono min-w-[45px] group-hover:text-blue-300">{rc.code}</span>
-                        <span
-                          className="text-[10px] uppercase font-bold text-slate-400 group-hover:text-white">{rc.desc}</span>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </HudPanel>
-
-            </div>
-
-          </div>
-
-          {/* --- JOBB OSZLOP (1/4) --- */}
-          <div className="lg:col-span-1 flex flex-col gap-6 h-full min-h-0">
-
-            {/* 1. HIRDETŐTÁBLA (Flex-1 kitölti a helyet) */}
-            <HudPanel
-              title="HIRDETŐTÁBLA"
-              icon={FileBarChart}
-              themeColor={currentTheme.color}
-              className="flex-1 min-h-0"
-              glow={true}
-              action={isLeader && (
-                <button onClick={() => setIsNewsDialogOpen(true)}
-                        className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-                        title="Új hír">
-                  <Plus className="w-4 h-4"/>
-                </button>
-              )}
-            >
-              <ScrollArea className="h-full">
-                <div className="p-4 space-y-4">
-                  {announcements.length === 0 ? (
-                    <div className="text-center py-20 opacity-30">
-                      <Megaphone className="w-10 h-10 mx-auto mb-4"/>
-                      <span className="text-xs font-mono uppercase tracking-widest">Nincsenek aktív hírek</span>
-                    </div>
-                  ) : (
-                    announcements.map(news => (
-                      <div key={news.id}
-                           className={`group relative p-4 border-l-2 bg-gradient-to-r from-white/[0.03] to-transparent hover:from-white/[0.07] transition-all ${
-                             news.type === 'alert' ? 'border-l-red-500' : news.type === 'training' ? 'border-l-blue-500' : 'border-l-yellow-500'
-                           }`}>
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center gap-2">
-                            {news.is_pinned && <Pin className="w-3.5 h-3.5 text-yellow-500 rotate-45"/>}
-                            <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                              news.type === 'alert' ? 'bg-red-950/50 text-red-500' : news.type === 'training' ? 'bg-blue-950/50 text-blue-500' : 'bg-yellow-950/50 text-yellow-500'
-                            }`}>
-                                                    {news.type === 'alert' ? 'RIASZTÁS' : news.type === 'training' ? 'KÉPZÉS' : 'INFO'}
-                                                </span>
-                          </div>
-                          <span className="text-[10px] text-slate-500 font-mono font-bold">
-                                                {formatDistanceToNow(new Date(news.created_at), {
-                                                  addSuffix: true,
-                                                  locale: hu
-                                                })}
-                                            </span>
-                        </div>
-
-                        <h4 className="text-sm font-bold text-white mb-2 leading-snug">{news.title}</h4>
-                        <p
-                          className="text-xs text-slate-400 leading-relaxed font-mono opacity-80 whitespace-pre-wrap line-clamp-6 group-hover:line-clamp-none transition-all">
-                          {news.content}
-                        </p>
-
-                        <div className="mt-3 pt-3 border-t border-white/5 flex justify-between items-center">
-                          {renderAuthor(news)}
-                          {isLeader && (
-                            <button onClick={() => confirmDelete(news.id)}
-                                    className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-500 transition-all">
-                              <Trash2 className="w-3.5 h-3.5"/>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
-              <div
-                className="absolute bottom-0 w-full bg-[#0a0f1c]/90 border-t border-white/5 py-1.5 text-center backdrop-blur-md">
+          <div className="flex flex-wrap gap-4 items-center">
+            <WeatherWidget/> <ClockWidget/>
+            <div onClick={() => canManageStatus && setIsStatusOpen(true)}
+                 className={cn("flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border backdrop-blur-md px-6 shadow-lg transition-all", canManageStatus ? "cursor-pointer hover:bg-slate-900 hover:scale-105" : "cursor-default", alertLevel === 'tactical' ? "border-red-500/50 bg-red-950/40" : alertLevel === 'border' ? "border-orange-500/50 bg-orange-950/40" : "border-green-500/30 bg-green-950/20")}>
+              <div>
                 <div
-                  className="flex items-center justify-center gap-2 text-[9px] text-slate-500 font-mono uppercase tracking-widest font-bold">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                  SYNC: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "IDLE"}
-                </div>
+                  className={cn("text-lg font-black uppercase italic tracking-tighter leading-none drop-shadow-md", alertInfo.color)}>{alertInfo.label}</div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-1">Jelenlegi
+                  Készültség {canManageStatus && "(Kezelés)"}</div>
               </div>
-            </HudPanel>
-
-            {/* 2. NAPI ELIGAZÍTÁS */}
-            <div className="relative p-5 bg-[#0a0f1c]/60 border border-white/10 rounded-sm shadow-lg shrink-0">
-              <div className="absolute top-0 left-0 w-1 h-full bg-yellow-500/50"></div>
-              <div className="flex items-start gap-4">
-                <Quote className="w-8 h-8 text-yellow-500 opacity-30 shrink-0"/>
-                <div>
-                  <div className="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-2">Napi
-                    Eligazítás
-                  </div>
-                  <p className="text-sm text-white font-medium italic leading-relaxed">
-                    "{dailyQuote}"
-                  </p>
-                </div>
-              </div>
+              {canManageStatus &&
+                <div className="p-1 rounded bg-black/30 text-white"><Shield className="w-4 h-4"/></div>}
             </div>
-
-            {/* 3. PROFIL & LOGOUT */}
-            <div className="grid grid-cols-2 gap-3 shrink-0">
-              <button onClick={() => navigate('/profile')}
-                      className="flex flex-col items-center justify-center p-3 bg-[#0a0f1c]/60 border border-white/10 hover:border-yellow-500/30 hover:bg-white/5 transition-all group shadow-lg rounded-sm">
-                <User className="w-5 h-5 text-slate-400 group-hover:text-white mb-1"/>
-                <span
-                  className="text-[10px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-white">Profil</span>
-              </button>
-              <button onClick={handleLogout}
-                      className="flex flex-col items-center justify-center p-3 bg-red-950/20 border border-red-900/30 hover:bg-red-900/40 hover:border-red-500/50 transition-all group shadow-lg rounded-sm">
-                <Power className="w-5 h-5 text-red-500/70 group-hover:text-red-500 mb-1"/>
-                <span
-                  className="text-[10px] font-bold uppercase tracking-widest text-red-500/70 group-hover:text-red-500">Kilépés</span>
-              </button>
-            </div>
-
           </div>
+        </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* LEFT: MODULES */}
+          <div className="lg:col-span-8 space-y-8 animate-in slide-in-from-left-8 duration-700 delay-100">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div
+                className="bg-slate-900/60 border border-slate-800/50 p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm shadow-md">
+                <div className="p-2 bg-blue-500/10 rounded-full"><Users className="w-5 h-5 text-blue-500"/></div>
+                <div>
+                  <div className="text-xl font-bold text-white">{activeUnitCount}</div>
+                  <div className="text-[10px] text-slate-500 uppercase font-bold">Aktív Egység</div>
+                </div>
+              </div>
+              <div
+                className="bg-slate-900/60 border border-slate-800/50 p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm shadow-md">
+                <div className="p-2 bg-green-500/10 rounded-full"><Radio className="w-5 h-5 text-green-500"/></div>
+                <div>
+                  <div className="text-xl font-bold text-white">ONLINE</div>
+                  <div className="text-[10px] text-slate-500 uppercase font-bold">Rádió Status</div>
+                </div>
+              </div>
+              <div
+                className="bg-slate-900/60 border border-slate-800/50 p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm shadow-md">
+                <Activity className="w-6 h-6 text-yellow-500"/>
+                <div className="w-full">
+                  <div className="flex justify-between text-[10px] text-slate-500 uppercase font-bold mb-1"><span>Rendszer Terhelés</span><span
+                    className="text-white">STABIL</span></div>
+                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full w-[12%] bg-yellow-500 rounded-full shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3
+                className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 pl-1 mb-4">
+                <Terminal className="w-4 h-4"/> Rendszer Modulok</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <ModuleCard title="NYOMOZÓ IRODA" desc="Akták, gyanúsítottak, körözések." icon={Siren}
+                            colorClass="text-blue-500" onClick={() => navigate('/mcb')}
+                            locked={!isMcbMember(profile) && !isSupervisory(profile) && profile.system_role !== 'admin'}/>
+                <ModuleCard title="LOGISZTIKA" desc="Járműigénylés, raktárkészlet." icon={Truck}
+                            colorClass="text-orange-500" onClick={() => navigate('/logistics')}/>
+                <ModuleCard title="PÉNZÜGY" desc="Költségtérítések, bírságok." icon={Database}
+                            colorClass="text-green-500" onClick={() => navigate('/finance')}/>
+                <ModuleCard title="VIZSGAKÖZPONT" desc="Képzések, tesztek, vizsgáztatás." icon={FileText}
+                            colorClass="text-yellow-500" onClick={() => navigate('/exams')}/>
+                <ModuleCard title="BÜNTETŐ TÖRVÉNYKÖNYV" desc="Bírság kalkulátor és jogszabályok." icon={Gavel}
+                            colorClass="text-purple-500" onClick={() => navigate('/calculator')}/>
+                <ModuleCard title="JELENTÉSEK" desc="Napi jelentések generálása." icon={FileText}
+                            colorClass="text-cyan-500" onClick={() => navigate('/reports')}/>
+              </div>
+            </div>
+          </div>
+          {/* RIGHT: FEEDS */}
+          <div className="lg:col-span-4 space-y-6 animate-in slide-in-from-right-8 duration-700 delay-200">
+            <Card
+              className="bg-[#0b1221]/90 border border-slate-800 h-[320px] flex flex-col shadow-xl backdrop-blur-md">
+              <CardHeader className="pb-2 border-b border-slate-800/50 bg-slate-950/50"><CardTitle
+                className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between"><span
+                className="flex items-center gap-2"><Activity
+                className="w-4 h-4 text-green-500"/> Eseménynapló</span><span
+                className="text-[9px] bg-green-900/20 text-green-500 px-1.5 py-0.5 rounded animate-pulse">LIVE</span></CardTitle></CardHeader>
+              <div className="flex-1 min-h-0 relative"><ScrollArea className="h-full">{actionLogs.length === 0 ?
+                <div className="flex flex-col items-center justify-center h-full text-slate-600 opacity-50"><Activity
+                  className="w-8 h-8 mb-2"/><p className="text-[10px] font-mono uppercase">CSENDES ÜZEMMÓD</p></div> :
+                <div className="divide-y divide-slate-800/30">{actionLogs.map((log) => <ActionItem key={log.id}
+                                                                                                   log={log}/>)}</div>}</ScrollArea>
+              </div>
+            </Card>
+            <Card
+              className="bg-[#0b1221]/80 border border-slate-800 h-[450px] flex flex-col shadow-2xl backdrop-blur-md">
+              <CardHeader
+                className="pb-3 border-b border-slate-800/50 bg-slate-950/50 flex flex-row items-center justify-between"><CardTitle
+                className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Bell
+                className="w-4 h-4 text-yellow-500"/> Hirdetmények</CardTitle>{canCreateNews &&
+                <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-400 hover:text-white"
+                        onClick={() => setIsAnnouncementOpen(true)}><Plus className="w-4 h-4"/></Button>}</CardHeader>
+              <div className="flex-1 min-h-0 relative"><ScrollArea className="h-full">
+                <div className="p-4">{announcements.length === 0 ?
+                  <div className="flex flex-col items-center justify-center h-40 text-slate-600 opacity-50"><Megaphone
+                    className="w-8 h-8 mb-2"/><p className="text-[10px] font-mono uppercase">NINCS FRISS HÍR</p>
+                  </div> : announcements.map((item) => <FeedItem key={item.id} item={item}
+                                                                 onDelete={handleDeleteAnnouncement}
+                                                                 currentUser={profile}/>)}</div>
+              </ScrollArea>
+                <div
+                  className="absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-[#0b1221] to-transparent pointer-events-none"></div>
+              </div>
+              <div className="p-3 border-t border-slate-800 bg-slate-900/50 text-center"><Button variant="ghost"
+                                                                                                 size="sm"
+                                                                                                 className="text-[10px] uppercase font-bold text-slate-400 hover:text-white w-full"
+                                                                                                 onClick={() => navigate('/resources')}>DOKUMENTÁCIÓS
+                TÁR MEGNYITÁSA</Button></div>
+            </Card>
+          </div>
         </div>
       </div>
     </div>

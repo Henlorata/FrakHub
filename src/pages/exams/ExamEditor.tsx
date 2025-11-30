@@ -7,45 +7,34 @@ import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
 import {Card, CardContent, CardHeader} from "@/components/ui/card";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {Switch} from "@/components/ui/switch";
 import {Tabs, TabsList, TabsTrigger, TabsContent} from "@/components/ui/tabs";
 import {
-  Trash2,
-  Plus,
-  Save,
-  ArrowLeft,
-  GripVertical,
-  CheckCircle2,
-  AlertCircle,
-  Type,
-  List,
-  CheckSquare,
-  FilePlus,
-  FileX,
-  ChevronLeft,
-  ChevronRight,
-  Share2,
-  Globe,
-  AlertTriangle,
-  Percent
+  Trash2, Plus, Save, ArrowLeft, GripVertical, CheckCircle2, AlertCircle, Type,
+  List, CheckSquare, FilePlus, FileX, ChevronLeft, ChevronRight, Share2, Globe,
+  AlertTriangle, Percent, Settings, Layers, Check, X
 } from "lucide-react";
 import {toast} from "sonner";
 import {FACTION_RANKS} from "@/types/supabase";
 import type {Exam} from "@/types/exams";
-import {canManageExamContent, canCreateAnyExam, canDeleteExam} from "@/lib/utils";
+import {canManageExamContent, canCreateAnyExam, canDeleteExam, cn} from "@/lib/utils";
 import {Badge} from "@/components/ui/badge";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 
 const tempId = () => `temp-${Math.random().toString(36).substr(2, 9)}`;
+
+// --- STÍLUS KONSTANSOK ---
+const EDITOR_INPUT = "bg-[#0f172a] border-slate-800 focus-visible:ring-yellow-500/30 focus-visible:border-yellow-500/50 font-mono text-sm text-white";
+const QUESTION_CARD = "bg-[#0b1221] border border-slate-800 relative group transition-all hover:border-slate-600 shadow-lg overflow-hidden";
+
+// --- SEGÉDFÜGGVÉNY: SZÁM BEVITEL SZŰRÉS ---
+const preventInvalidNumberInput = (e: React.KeyboardEvent) => {
+  if (['e', 'E', '+', '-'].includes(e.key)) {
+    e.preventDefault();
+  }
+};
 
 // --- OPTION ITEM COMPONENT ---
 const OptionItem = memo(({opt, index, qId, qType, onUpdate, onRemove}: any) => {
@@ -56,24 +45,21 @@ const OptionItem = memo(({opt, index, qId, qType, onUpdate, onRemove}: any) => {
   }, [opt.option_text]);
 
   const handleBlur = () => {
-    if (localText !== opt.option_text) {
-      onUpdate(qId, index, 'option_text', localText);
-    }
+    if (localText !== opt.option_text) onUpdate(qId, index, 'option_text', localText);
   };
 
   return (
-    <div className="flex items-center gap-3 group/opt">
+    <div className="flex items-center gap-3 group/opt animate-in fade-in slide-in-from-left-2 duration-300">
       <div className="relative">
         <button
-          className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-all ${opt.is_correct ? 'bg-green-600 border-green-500 text-white shadow-[0_0_10px_rgba(22,163,74,0.3)]' : 'bg-slate-950 border-slate-700 text-slate-600 hover:border-slate-500 hover:text-slate-400'}`}
-          onClick={() => {
-            if (qType === 'single_choice') {
-              onUpdate(qId, index, 'set_correct_unique', true);
-            } else {
-              onUpdate(qId, index, 'is_correct', !opt.is_correct);
-            }
-          }}
-          title={opt.is_correct ? "Ez a helyes válasz" : "Jelöld meg helyesként"}
+          className={cn(
+            "w-9 h-9 rounded-md border-2 flex items-center justify-center transition-all",
+            opt.is_correct
+              ? "bg-green-500/10 border-green-500 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.2)]"
+              : "bg-slate-900 border-slate-700 text-slate-600 hover:border-slate-500 hover:text-slate-400"
+          )}
+          onClick={() => qType === 'single_choice' ? onUpdate(qId, index, 'set_correct_unique', true) : onUpdate(qId, index, 'is_correct', !opt.is_correct)}
+          title={opt.is_correct ? "Helyes válasz" : "Jelöld meg helyesként"}
         >
           <CheckCircle2 className="w-5 h-5"/>
         </button>
@@ -82,11 +68,11 @@ const OptionItem = memo(({opt, index, qId, qType, onUpdate, onRemove}: any) => {
         value={localText}
         onChange={e => setLocalText(e.target.value)}
         onBlur={handleBlur}
-        className={`h-10 bg-slate-900 border-slate-700 flex-1 transition-all focus-visible:ring-yellow-500/50 ${!localText ? 'border-red-900/30 bg-red-950/10' : ''}`}
-        placeholder={`Válaszopció ${index + 1}...`}
+        className={cn(EDITOR_INPUT, "h-10 flex-1", !localText && "border-red-900/40 bg-red-950/10 placeholder:text-red-500/50")}
+        placeholder={`Opció ${index + 1}...`}
       />
       <Button variant="ghost" size="icon"
-              className="h-8 w-8 text-slate-600 hover:text-red-500 hover:bg-red-950/20 opacity-0 group-hover/opt:opacity-100 transition-opacity"
+              className="h-9 w-9 text-slate-600 hover:text-red-500 hover:bg-red-950/20 opacity-0 group-hover/opt:opacity-100 transition-opacity"
               onClick={() => onRemove(qId, index)}>
         <Trash2 className="w-4 h-4"/>
       </Button>
@@ -109,112 +95,136 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
   const handleTextBlur = () => {
     if (localText !== q.question_text) onUpdate(q.id, 'question_text', localText);
   };
+
+  // Pontszám validáció (csak pozitív egész)
+  const handlePointsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === '' || /^[0-9]+$/.test(val)) {
+      setLocalPoints(val);
+    }
+  };
+
   const handlePointsBlur = () => {
-    const p = parseInt(localPoints) || 0;
-    if (p !== q.points) onUpdate(q.id, 'points', p);
+    let p = parseInt(String(localPoints)) || 0;
+    if (p < 1) p = 1; // Minimum 1 pont
+    onUpdate(q.id, 'points', p);
+    setLocalPoints(p);
   };
 
   const getTypeIcon = () => {
     switch (q.question_type) {
       case 'single_choice':
-        return <CheckCircle2 className="w-4 h-4 mr-1"/>;
+        return <CheckCircle2 className="w-3 h-3 mr-1"/>;
       case 'multiple_choice':
-        return <CheckSquare className="w-4 h-4 mr-1"/>;
+        return <CheckSquare className="w-3 h-3 mr-1"/>;
       default:
-        return <Type className="w-4 h-4 mr-1"/>;
+        return <Type className="w-3 h-3 mr-1"/>;
     }
   };
 
   return (
-    <Card
-      className="bg-slate-950 border-slate-800 relative group transition-all hover:border-slate-700 hover:shadow-md mb-4">
-      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-        <Button variant="ghost" size="icon" className="text-slate-500 hover:text-red-500 hover:bg-red-950/20"
+    <Card className={QUESTION_CARD}>
+      <div className="absolute top-0 left-0 w-1 h-full bg-slate-800 group-hover:bg-blue-500 transition-colors"/>
+
+      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        <Button variant="ghost" size="icon" className="text-slate-500 hover:text-red-500 hover:bg-red-950/20 h-8 w-8"
                 onClick={() => onRemove(q.id)}>
           <Trash2 className="w-4 h-4"/>
         </Button>
       </div>
+
       <CardHeader
-        className="pb-2 border-b border-slate-800/50 bg-slate-900/30 px-6 pt-4 flex flex-row items-center gap-3">
-        <div className="mt-1 cursor-grab active:cursor-grabbing text-slate-600 hover:text-slate-400"><GripVertical
-          className="w-5 h-5"/></div>
+        className="pb-3 border-b border-slate-800/50 bg-slate-950/50 px-5 pt-4 flex flex-row items-center gap-3">
+        <div
+          className="cursor-grab active:cursor-grabbing text-slate-600 hover:text-slate-400 bg-slate-900 p-1 rounded border border-slate-800">
+          <GripVertical className="w-4 h-4"/></div>
         <div className="flex items-center gap-2">
-          <Badge className="bg-slate-800 text-slate-300 hover:bg-slate-700 flex items-center">{getTypeIcon()}</Badge>
-          {q.is_required &&
-            <Badge className="bg-red-900/30 text-red-400 border-red-900/50 border hover:bg-red-900/40">Kötelező</Badge>}
+          <Badge variant="outline"
+                 className="bg-slate-900 text-slate-400 border-slate-700 flex items-center h-6 text-[10px] uppercase tracking-wider">{getTypeIcon()} {q.question_type === 'text' ? 'KIFEJTŐS' : q.question_type === 'single_choice' ? 'EGY VÁLASZ' : 'TÖBB VÁLASZ'}</Badge>
+          {q.is_required && <Badge
+            className="bg-red-900/20 text-red-400 border-red-900/50 border hover:bg-red-900/30 text-[10px]">KÖTELEZŐ</Badge>}
         </div>
       </CardHeader>
-      <CardContent className="p-6 space-y-6">
+
+      <CardContent className="p-5 space-y-6">
         <div className="flex flex-col md:flex-row gap-6">
           <div className="flex-1 space-y-2">
-            <Label className="text-slate-300">Kérdés Szövege <span className="text-red-500">*</span></Label>
+            <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Kérdés Szövege</Label>
             <Textarea
               value={localText}
               onChange={e => setLocalText(e.target.value)}
               onBlur={handleTextBlur}
-              className={`bg-slate-900 border-slate-700 min-h-[80px]`}
+              className={cn(EDITOR_INPUT, "min-h-[80px] resize-none text-base", !localText && "border-red-900/40")}
               placeholder="Írd be a kérdést..."
             />
           </div>
-          <div className="flex flex-col gap-4 min-w-[200px]">
+          <div className="flex flex-col gap-4 min-w-[220px]">
             <div className="space-y-2">
-              <Label className="text-slate-300">Típus</Label>
+              <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Típus</Label>
               <Select value={q.question_type} onValueChange={val => onUpdate(q.id, 'question_type', val)}>
-                <SelectTrigger className="bg-slate-900 border-slate-700"><SelectValue/></SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800">
-                  <SelectItem value="text">Szöveges kifejtős</SelectItem>
+                <SelectTrigger className={EDITOR_INPUT}><SelectValue/></SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                  <SelectItem value="text">Szöveges (Kifejtős)</SelectItem>
                   <SelectItem value="single_choice">Egy választható (Radio)</SelectItem>
                   <SelectItem value="multiple_choice">Több választható (Checkbox)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-3">
               <div className="space-y-2 flex-1">
-                <Label className="text-slate-300">Pontérték</Label>
-                <Input type="number" min={1} value={localPoints} onChange={e => setLocalPoints(e.target.value)}
-                       onBlur={handlePointsBlur} className="bg-slate-900 border-slate-700"/>
+                <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Pont</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={localPoints}
+                  onChange={handlePointsChange}
+                  onBlur={handlePointsBlur}
+                  onKeyDown={preventInvalidNumberInput}
+                  className={EDITOR_INPUT}
+                />
               </div>
-              <div className="space-y-2 flex flex-col justify-end pb-2">
-                <div className="flex items-center gap-2">
-                  <Switch checked={q.is_required} onCheckedChange={(checked) => onUpdate(q.id, 'is_required', checked)}
-                          id={`req-${q.id}`}/>
-                  <Label htmlFor={`req-${q.id}`}
-                         className="cursor-pointer text-slate-400 text-xs font-bold uppercase select-none">Kötelező</Label>
+              <div className="space-y-2 flex flex-col justify-end pb-1">
+                {/* REQ GOMB (Switch helyett) */}
+                <div
+                  onClick={() => onUpdate(q.id, 'is_required', !q.is_required)}
+                  className={cn(
+                    "h-10 px-3 rounded-md border flex items-center justify-center cursor-pointer select-none transition-all font-bold text-xs",
+                    q.is_required
+                      ? "bg-red-900/20 border-red-500 text-red-500 hover:bg-red-900/30"
+                      : "bg-slate-900 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500"
+                  )}
+                >
+                  REQ
                 </div>
               </div>
             </div>
           </div>
         </div>
+
         {q.question_type !== 'text' && (
-          <div
-            className="pl-0 md:pl-4 md:border-l-2 md:border-slate-800 space-y-4 animate-in fade-in slide-in-from-top-2">
+          <div className="pl-0 md:pl-4 md:border-l-2 md:border-slate-800/50 space-y-4">
             <div className="flex justify-between items-center">
-              <Label className="text-xs text-slate-500 uppercase font-bold flex items-center gap-2"><List
-                className="w-3 h-3"/> Válaszlehetőségek (Min. 2)</Label>
+              <Label className="text-[10px] text-slate-500 uppercase font-bold tracking-widest flex items-center gap-2"><List
+                className="w-3 h-3"/> VÁLASZLEHETŐSÉGEK</Label>
               {q.exam_options.length < 2 && <span
-                className="text-red-500 text-xs font-bold flex items-center bg-red-950/30 px-2 py-1 rounded"><AlertCircle
-                className="w-3 h-3 mr-1"/> Kell még {2 - q.exam_options.length} opció!</span>}
+                className="text-red-400 text-[10px] font-bold flex items-center bg-red-950/20 px-2 py-0.5 rounded border border-red-900/30"><AlertCircle
+                className="w-3 h-3 mr-1"/> MIN 2 OPCIÓ</span>}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {q.exam_options.map((opt: any, oIndex: number) => (
-                <OptionItem
-                  key={opt.id}
-                  opt={opt}
-                  index={oIndex}
-                  qId={q.id}
-                  qType={q.question_type}
-                  onUpdate={onUpdateOption}
-                  onRemove={onRemoveOption}
-                />
+                <OptionItem key={opt.id} opt={opt} index={oIndex} qId={q.id} qType={q.question_type}
+                            onUpdate={onUpdateOption} onRemove={onRemoveOption}/>
               ))}
             </div>
-            <div className="flex justify-between items-center pt-2">
-              <Button size="sm" variant="outline"
-                      className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-600"
-                      onClick={() => onAddOption(q.id)}><Plus className="w-3 h-3 mr-1"/> Opció hozzáadása</Button>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-800/50 mt-2">
+              <Button size="sm" variant="ghost"
+                      className="text-slate-400 hover:text-white hover:bg-slate-800 h-8 text-xs font-bold uppercase tracking-wider"
+                      onClick={() => onAddOption(q.id)}>
+                <Plus className="w-3 h-3 mr-2"/> Opció Hozzáadása
+              </Button>
               {q.exam_options.length >= 2 && !q.exam_options.some((o: any) => o.is_correct) &&
-                <p className="text-red-400 text-xs font-bold animate-pulse flex items-center"><AlertCircle
-                  className="w-3 h-3 mr-1"/> Legalább egy helyes választ jelölj meg!</p>}
+                <p className="text-yellow-500 text-[10px] font-bold animate-pulse flex items-center"><AlertTriangle
+                  className="w-3 h-3 mr-1"/> Jelöld ki a helyes választ!</p>}
             </div>
           </div>
         )}
@@ -222,6 +232,36 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
     </Card>
   );
 }, (prev, next) => prev.q === next.q);
+
+// --- SEGÉD: Toggle Card a beállításokhoz ---
+const SettingToggle = ({title, description, active, onChange, icon: Icon, activeColorClass}: any) => (
+  <div
+    onClick={() => onChange(!active)}
+    className={cn(
+      "flex items-center justify-between p-4 rounded-lg border transition-all cursor-pointer select-none group hover:border-slate-600",
+      active
+        ? cn("bg-slate-900/80", activeColorClass || "border-blue-500/50")
+        : "bg-slate-950 border-slate-800"
+    )}
+  >
+    <div className="flex items-center gap-3">
+      <div
+        className={cn("p-2 rounded-md transition-colors", active ? "bg-white/10 text-white" : "bg-slate-900 text-slate-500")}>
+        <Icon className="w-5 h-5"/>
+      </div>
+      <div>
+        <div
+          className={cn("text-sm font-bold uppercase tracking-wide transition-colors", active ? "text-white" : "text-slate-400")}>{title}</div>
+        <div className="text-[10px] text-slate-500">{description}</div>
+      </div>
+    </div>
+    <div
+      className={cn("px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all",
+        active ? "bg-white text-black" : "bg-slate-800 text-slate-600")}>
+      {active ? <><Check className="w-3 h-3"/> BE</> : <><X className="w-3 h-3"/> KI</>}
+    </div>
+  </div>
+);
 
 // --- MAIN EXAM EDITOR ---
 export function ExamEditor() {
@@ -235,8 +275,6 @@ export function ExamEditor() {
   const [currentEditorPage, setCurrentEditorPage] = useState(1);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [submissionCount, setSubmissionCount] = useState(0);
-
-  // Ref az újratöltés elkerülésére
   const loadedExamIdRef = useRef<string | null>(null);
 
   const [examData, setExamData] = useState<Partial<Exam>>({
@@ -247,17 +285,18 @@ export function ExamEditor() {
     required_rank: "Deputy Sheriff Trainee",
     min_days_in_rank: 0,
     time_limit_minutes: 60,
-    passing_percentage: 80, // Alapértelmezett 80%
+    passing_percentage: 80,
     is_public: false,
     is_active: true,
     allow_sharing: false,
   });
   const [questions, setQuestions] = useState<any[]>([]);
 
+  // LOGIKA: Eredeti jogosultság és betöltés
   useEffect(() => {
     if (!profile) return;
     if (!examId && !canCreateAnyExam(profile)) {
-      toast.error("Nincs jogosultságod vizsgát létrehozni.");
+      toast.error("Nincs jogosultságod.");
       navigate('/exams');
     }
   }, [profile, examId, navigate]);
@@ -271,30 +310,27 @@ export function ExamEditor() {
           error
         } = await supabase.from('exams').select(`*, exam_questions(*, exam_options(*))`).eq('id', examId).single();
         if (error) {
-          toast.error("Hiba a vizsga betöltésekor");
+          toast.error("Hiba a betöltéskor");
           navigate('/exams');
         } else {
           if (!canManageExamContent(profile, data as any)) {
-            toast.error("Nincs jogosultságod ezt a vizsgát szerkeszteni.");
+            toast.error("Nincs jogosultságod.");
             navigate('/exams');
             return;
           }
-
           const {count} = await supabase.from('exam_submissions').select('*', {
             count: 'exact',
             head: true
           }).eq('exam_id', examId);
           setSubmissionCount(count || 0);
-
           const {exam_questions, ...cleanData} = data;
           setExamData(cleanData);
-          const sortedQuestions = (data.exam_questions || []).sort((a: any, b: any) => a.order_index - b.order_index);
-          setQuestions(sortedQuestions.map((q: any) => ({
+          const sorted = (data.exam_questions || []).sort((a: any, b: any) => a.order_index - b.order_index);
+          setQuestions(sorted.map((q: any) => ({
             ...q,
             is_required: q.is_required ?? true,
             page_number: q.page_number ?? 1
           })));
-
           loadedExamIdRef.current = examId;
         }
         setIsLoading(false);
@@ -339,7 +375,7 @@ export function ExamEditor() {
     const newPage = maxPage + 1;
     addQuestionToPage(newPage);
     setCurrentEditorPage(newPage);
-    toast.success(`${newPage}. oldal létrehozva!`);
+    toast.success("Oldal létrehozva.");
   };
 
   const addQuestionToPage = useCallback((pageNum: number) => {
@@ -397,28 +433,36 @@ export function ExamEditor() {
     setQuestions(prev => prev.map(q => {
       if (q.id !== questionId) return q;
       const newOpts = q.exam_options.map((opt: any) => ({...opt}));
-      if (field === 'set_correct_unique') {
-        newOpts.forEach((opt: any, idx: number) => opt.is_correct = (idx === oIndex));
-      } else {
-        newOpts[oIndex] = {...newOpts[oIndex], [field]: value};
-      }
+      if (field === 'set_correct_unique') newOpts.forEach((opt: any, idx: number) => opt.is_correct = (idx === oIndex));
+      else newOpts[oIndex] = {...newOpts[oIndex], [field]: value};
       return {...q, exam_options: newOpts};
     }));
   }, []);
 
-  const handleTimeBlur = () => {
-    let val = examData.time_limit_minutes || 60;
-    if (val < 1) val = 1;
-    if (val > 60) val = 60;
-    setExamData(prev => ({...prev, time_limit_minutes: val}));
+  // --- PONT ÉS SZÁZALÉK INPUT KEZELÉS (Validáció) ---
+  const handleNumberInput = (
+    value: string,
+    field: 'time_limit_minutes' | 'passing_percentage',
+    min: number,
+    max: number
+  ) => {
+    let num = parseInt(value);
+    if (isNaN(num)) return; // Vagy set 0, ízlés szerint
+
+    // Itt csak a state-et állítjuk, a clamp (korlátozás) blur-nál történik
+    // De a gépelést engedjük
+    setExamData(prev => ({...prev, [field]: num}));
   };
 
-  // --- ÚJ: VALIDÁCIÓ A SZÁZALÉKHOZ ---
-  const handleScoreBlur = () => {
-    let val = examData.passing_percentage || 80;
-    if (val < 1) val = 1;
-    if (val > 100) val = 100;
-    setExamData(prev => ({...prev, passing_percentage: val}));
+  const handleNumberBlur = (
+    field: 'time_limit_minutes' | 'passing_percentage',
+    min: number,
+    max: number
+  ) => {
+    let num = examData[field] || min;
+    if (num < min) num = min;
+    if (num > max) num = max;
+    setExamData(prev => ({...prev, [field]: num}));
   };
 
   const handleSave = async () => {
@@ -427,7 +471,7 @@ export function ExamEditor() {
 
     for (const q of questions) {
       if (!q.question_text?.trim()) {
-        toast.error(`${q.page_number}. oldalon van üres kérdés!`);
+        toast.error(`${q.page_number}. oldalon hiányos kérdés!`);
         setActiveTab("questions");
         setCurrentEditorPage(q.page_number);
         return;
@@ -472,18 +516,21 @@ export function ExamEditor() {
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
         const qPayload = {
-          exam_id: savedExamId, question_text: q.question_text, question_type: q.question_type,
-          points: q.points, order_index: i, is_required: q.is_required, page_number: q.page_number || 1
+          exam_id: savedExamId,
+          question_text: q.question_text,
+          question_type: q.question_type,
+          points: q.points,
+          order_index: i,
+          is_required: q.is_required,
+          page_number: q.page_number || 1
         };
-
         let qId = q.id;
+
         if (q.id.startsWith('temp-')) {
           const {data: newQ, error} = await supabase.from('exam_questions').insert(qPayload).select().single();
           if (error) throw error;
           qId = newQ.id;
-        } else {
-          await supabase.from('exam_questions').update(qPayload).eq('id', qId);
-        }
+        } else await supabase.from('exam_questions').update(qPayload).eq('id', qId);
 
         if (q.question_type !== 'text' && q.exam_options) {
           for (const opt of q.exam_options) {
@@ -493,7 +540,7 @@ export function ExamEditor() {
           }
         }
       }
-      toast.success("Mentve!");
+      toast.success("Vizsga mentve!");
       navigate('/exams');
     } catch (error: any) {
       console.error(error);
@@ -508,10 +555,10 @@ export function ExamEditor() {
     try {
       const {error} = await supabase.rpc('delete_full_exam', {_exam_id: examId});
       if (error) throw error;
-      toast.success("Vizsga sikeresen törölve.");
+      toast.success("Törölve.");
       navigate('/exams');
     } catch (e: any) {
-      toast.error("Hiba a törléskor: " + e.message);
+      toast.error("Hiba: " + e.message);
     }
   };
 
@@ -522,66 +569,60 @@ export function ExamEditor() {
   const currentQuestions = questions.filter(q => (q.page_number || 1) === currentEditorPage);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-20">
+    <div className="max-w-6xl mx-auto space-y-6 pb-20 animate-in fade-in duration-500">
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-red-500 flex items-center gap-2"><Trash2/> Vizsga
-              Törlése</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-300">
-              Biztosan törölni szeretnéd ezt a vizsgát? <br/><br/>
-              <span className="font-bold text-white">FIGYELEM:</span> Ez a művelet végleges! Törlődik minden kapcsolódó
-              adat:
-              <ul className="list-disc list-inside mt-2 text-slate-400 text-sm">
-                <li>Összes kérdés és válaszopció</li>
-                <li>Összes eddigi kitöltés ({submissionCount} db)</li>
-                <li>Minden statisztika</li>
-              </ul>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              className="bg-slate-800 border-slate-700 hover:bg-slate-700 text-white">Mégsem</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteExam}
-                               className="bg-red-600 hover:bg-red-700 text-white font-bold border-none">
-              Igen, Végleges Törlés
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle className="text-red-500">Vizsga
+            Törlése</AlertDialogTitle><AlertDialogDescription className="text-slate-300">Végleges törlés. Minden adat
+            elvész.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel
+            className="bg-slate-800 border-slate-700 hover:bg-slate-700 text-white">Mégsem</AlertDialogCancel><AlertDialogAction
+            onClick={handleDeleteExam}
+            className="bg-red-600 hover:bg-red-700 border-none">Törlés</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <AlertDialog open={pageToDelete !== null} onOpenChange={(open) => !open && setPageToDelete(null)}>
         <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
-          <AlertDialogHeader><AlertDialogTitle>Oldal törlése</AlertDialogTitle><AlertDialogDescription>Minden kérdés
-            törlődik erről az oldalról.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>Oldal Törlése</AlertDialogTitle><AlertDialogDescription>Az oldal összes
+            kérdése törlődik.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel
             className="bg-slate-800 border-slate-700">Mégsem</AlertDialogCancel><AlertDialogAction
             onClick={confirmDeletePage} className="bg-red-600">Törlés</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="flex items-center justify-between mb-6">
+      {/* --- HEADER --- */}
+      <div
+        className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-[#0b1221] border border-slate-800 p-6 rounded-xl shadow-2xl">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/exams')}><ArrowLeft
+          <Button variant="outline" size="icon" onClick={() => navigate('/exams')}
+                  className="border-slate-700 text-slate-400 hover:text-white bg-slate-900"><ArrowLeft
             className="w-5 h-5"/></Button>
-          <div><h1 className="text-3xl font-bold text-white">{examId ? "Szerkesztés" : "Új Vizsga"}</h1><p
-            className="text-slate-400">Kérdések és beállítások kezelése.</p></div>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge
+                className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20 text-[10px] uppercase tracking-wider">CONFIGURATION</Badge>
+              <span className="text-[10px] text-slate-500 font-mono uppercase">MODE: EDITOR</span>
+            </div>
+            <h1
+              className="text-2xl font-black text-white tracking-tight uppercase">{examId ? "VIZSGA SZERKESZTÉSE" : "ÚJ VIZSGA LÉTREHOZÁSA"}</h1>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleSave} disabled={isLoading}
-                  className="bg-green-600 hover:bg-green-700 font-bold shadow-lg">
-            {isLoading ? 'Mentés...' : 'Vizsga Mentése'} <Save className="ml-2 w-4 h-4"/>
-          </Button>
-        </div>
+        <Button onClick={handleSave} disabled={isLoading}
+                className="bg-green-600 hover:bg-green-500 text-white font-bold uppercase tracking-wider shadow-lg shadow-green-900/20 px-8 h-12">
+          {isLoading ? "MENTÉS..." : "VIZSGA MENTÉSE"} <Save className="ml-2 w-5 h-5"/>
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 bg-slate-900 border border-slate-800 mb-6">
+        <TabsList className="w-full justify-start h-14 bg-[#0b1221] border border-slate-800 rounded-xl p-1 mb-6 gap-2">
           <TabsTrigger value="settings"
-                       className="data-[state=active]:bg-yellow-600 data-[state=active]:text-black font-bold">Beállítások</TabsTrigger>
+                       className="h-full px-6 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-slate-800 data-[state=active]:text-white text-slate-500"><Settings
+            className="w-4 h-4 mr-2"/> BEÁLLÍTÁSOK</TabsTrigger>
           <TabsTrigger value="questions"
-                       className="data-[state=active]:bg-yellow-600 data-[state=active]:text-black font-bold">
-            Kérdések <Badge className="ml-2 bg-slate-800 text-white">{questions.length}</Badge>
+                       className="h-full px-6 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-slate-800 data-[state=active]:text-white text-slate-500">
+            KÉRDÉSEK <Badge className="ml-2 bg-yellow-500 text-black hover:bg-yellow-400">{questions.length}</Badge>
           </TabsTrigger>
         </TabsList>
 
@@ -590,155 +631,166 @@ export function ExamEditor() {
             <div className="space-y-2"><Label>Cím</Label><Input value={examData.title} onChange={e => setExamData({
               ...examData,
               title: e.target.value
-            })} className="bg-slate-950 border-slate-700"/></div>
+            })} className={cn(EDITOR_INPUT, "h-12 text-lg font-bold text-white")}
+                                                                placeholder="PL. ALAPKIKÉPZÉS VIZSGA"/></div>
             <div className="space-y-2"><Label>Leírás</Label><Textarea value={examData.description || ""}
                                                                       onChange={e => setExamData({
                                                                         ...examData,
                                                                         description: e.target.value
                                                                       })}
-                                                                      className="bg-slate-950 border-slate-700 h-32"/>
+                                                                      className={cn(EDITOR_INPUT, "min-h-[150px] resize-none")}
+                                                                      placeholder="Rövid leírás a vizsgázók számára..."/>
             </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2"><Label>Típus</Label><Select value={examData.type}
                                                                      onValueChange={(val: any) => setExamData({
                                                                        ...examData,
                                                                        type: val
                                                                      })}><SelectTrigger
-                className="bg-slate-950 border-slate-700"><SelectValue/></SelectTrigger><SelectContent
-                className="bg-slate-900 border-slate-800">{allowedTypes.map(t => (
-                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}</SelectContent></Select></div>
+                className={EDITOR_INPUT}><SelectValue/></SelectTrigger><SelectContent
+                className="bg-slate-900 border-slate-800 text-white">{allowedTypes.map(t => <SelectItem key={t.value}
+                                                                                                        value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select>
+              </div>
               <div className="space-y-2"><Label>Osztály</Label><Select value={examData.division || "none"}
                                                                        onValueChange={(val: any) => setExamData({
                                                                          ...examData,
                                                                          division: val === 'none' ? null : val
                                                                        })}><SelectTrigger
-                className="bg-slate-950 border-slate-700"><SelectValue
-                placeholder="Válassz..."/></SelectTrigger><SelectContent
-                className="bg-slate-900 border-slate-800">{allowedDivisions.map(d => (
-                <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>))}</SelectContent></Select></div>
+                className={EDITOR_INPUT}><SelectValue placeholder="Válassz..."/></SelectTrigger><SelectContent
+                className="bg-slate-900 border-slate-800 text-white">{allowedDivisions.map(d => <SelectItem
+                key={d.value} value={d.value}>{d.label}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-2"><Label>Rang</Label><Select value={examData.required_rank || "none"}
                                                                     onValueChange={(val) => setExamData({
                                                                       ...examData,
                                                                       required_rank: val === "none" ? null : val
                                                                     })}><SelectTrigger
-                className="bg-slate-950 border-slate-700"><SelectValue
-                placeholder="Nincs"/></SelectTrigger><SelectContent
-                className="bg-slate-900 border-slate-800"><SelectItem
+                className={EDITOR_INPUT}><SelectValue placeholder="Nincs"/></SelectTrigger><SelectContent
+                className="bg-slate-900 border-slate-800 text-white"><SelectItem
                 value="none">Nincs</SelectItem>{FACTION_RANKS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
               </SelectContent></Select></div>
-              <div className="space-y-2"><Label>Idő (perc)</Label><Input type="number" min={1} max={60}
-                                                                         value={examData.time_limit_minutes}
-                                                                         onChange={e => setExamData({
-                                                                           ...examData,
-                                                                           time_limit_minutes: parseInt(e.target.value)
-                                                                         })} onBlur={handleTimeBlur}
-                                                                         className="bg-slate-950 border-slate-700"/>
-              </div>
 
-              {/* --- ITT VAN AZ ÚJ MEZŐ: MINIMUM SZÁZALÉK --- */}
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2"><Percent className="w-4 h-4"/> Sikeres vizsga határa
-                  (%)</Label>
-                <Input type="number" min={1} max={100}
-                       value={examData.passing_percentage}
-                       onChange={e => setExamData({
-                         ...examData,
-                         passing_percentage: parseInt(e.target.value)
-                       })} onBlur={handleScoreBlur}
-                       className="bg-slate-900 border-slate-700"/>
-              </div>
-
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4 border-t border-slate-800">
-              <div
-                className={`flex justify-between p-4 rounded-lg border items-center transition-all ${examData.is_public ? 'bg-green-950/20 border-green-900/50' : 'bg-slate-950 border-slate-800'}`}>
-                <div className="space-y-0.5">
-                  <Label
-                    className={`flex items-center gap-2 ${examData.is_public ? 'text-green-500' : 'text-slate-200'}`}><Globe
-                    className="w-4 h-4"/> Publikus (Vendég)</Label>
-                  <p className="text-xs text-slate-400">Bejelentkezés nélkül is elérhető.</p>
+              <div className="col-span-2 border-t border-slate-800 pt-4 grid grid-cols-2 gap-4 mt-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Időkorlát (Perc)</Label>
+                  <Input
+                    type="number" min={1} max={60}
+                    value={examData.time_limit_minutes}
+                    onChange={e => handleNumberInput(e.target.value, 'time_limit_minutes', 1, 60)}
+                    onBlur={() => handleNumberBlur('time_limit_minutes', 1, 60)}
+                    onKeyDown={preventInvalidNumberInput}
+                    className={EDITOR_INPUT}
+                  />
                 </div>
-                <Switch checked={examData.is_public} onCheckedChange={c => setExamData({...examData, is_public: c})}/>
+                <div className="space-y-1.5">
+                  <Label
+                    className="text-xs text-slate-500 uppercase font-bold tracking-wider flex items-center gap-2"><Percent
+                    className="w-3 h-3"/> Sikeres határ (%)</Label>
+                  <Input
+                    type="number" min={1} max={100}
+                    value={examData.passing_percentage}
+                    onChange={e => handleNumberInput(e.target.value, 'passing_percentage', 1, 100)}
+                    onBlur={() => handleNumberBlur('passing_percentage', 1, 100)}
+                    onKeyDown={preventInvalidNumberInput}
+                    className={EDITOR_INPUT}
+                  />
+                </div>
               </div>
-              <div className="flex justify-between p-4 bg-slate-950 rounded-lg border border-slate-800 items-center">
-                <div className="space-y-0.5"><Label className="flex items-center gap-2"><Share2
-                  className="w-4 h-4"/> Megosztható</Label><p className="text-xs text-slate-400">Link másolása
-                  engedélyezve.</p></div>
-                <Switch checked={examData.allow_sharing}
-                        onCheckedChange={c => setExamData({...examData, allow_sharing: c})}/>
-              </div>
-              <div className="flex justify-between p-4 bg-slate-950 rounded-lg border border-slate-800 items-center">
-                <div className="space-y-0.5"><Label className="flex items-center gap-2"><CheckCircle2
-                  className="w-4 h-4"/> Aktív</Label><p className="text-xs text-slate-400">Kitölthető.</p></div>
-                <Switch checked={examData.is_active} onCheckedChange={c => setExamData({...examData, is_active: c})}/>
-              </div>
+            </div>
+
+            {/* TOGGLE BUTTONS (SWITCH HELYETT) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t border-slate-800">
+              <SettingToggle
+                title="Publikus"
+                description="Vendég hozzáférés engedélyezése"
+                active={examData.is_public}
+                onChange={(v: boolean) => setExamData({...examData, is_public: v})}
+                icon={Globe}
+                activeColorClass="border-green-500/50 text-green-200"
+              />
+              <SettingToggle
+                title="Megosztás"
+                description="Link másolásának engedélyezése"
+                active={examData.allow_sharing}
+                onChange={(v: boolean) => setExamData({...examData, allow_sharing: v})}
+                icon={Share2}
+                activeColorClass="border-blue-500/50 text-blue-200"
+              />
+              <SettingToggle
+                title="Aktív"
+                description="A vizsga kitölthető"
+                active={examData.is_active}
+                onChange={(v: boolean) => setExamData({...examData, is_active: v})}
+                icon={CheckCircle2}
+                activeColorClass="border-yellow-500/50 text-yellow-200"
+              />
             </div>
 
             {examId && canDeleteExam(profile, examData as any) && (
-              <div className="pt-6 border-t border-red-900/30 mt-6">
-                <h3 className="text-red-500 font-bold mb-2 flex items-center gap-2"><AlertTriangle
-                  className="w-4 h-4"/> Veszélyzóna</h3>
-                <div
-                  className="bg-red-950/10 border border-red-900/30 p-4 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4">
-                  <div className="text-sm text-red-400">
-                    A vizsga törlése végleges és nem visszavonható. Minden kapcsolódó adat (kérdések, válaszok) elvész.
-                  </div>
-                  <Button variant="destructive" onClick={() => setIsDeleteAlertOpen(true)}
-                          className="whitespace-nowrap bg-red-600 hover:bg-red-700">
-                    <Trash2 className="w-4 h-4 mr-2"/> Vizsga Törlése
-                  </Button>
-                </div>
+              <div className="pt-6 border-t border-red-900/30 mt-6 flex justify-end">
+                <Button variant="destructive" onClick={() => setIsDeleteAlertOpen(true)}
+                        className="bg-red-950/30 hover:bg-red-900/50 text-red-500 border border-red-900/50 uppercase font-bold text-xs tracking-wider">
+                  <Trash2 className="w-4 h-4 mr-2"/> Vizsga Törlése
+                </Button>
               </div>
             )}
           </CardContent></Card>
         </TabsContent>
 
-        <TabsContent value="questions" className="space-y-6">
+        <TabsContent value="questions" className="mt-0 space-y-6">
+          {/* ... (Kérdések tab tartalma változatlan maradt, csak a QuestionCard lett frissítve fent) ... */}
+          {/* ISMÉTLÉS ELKERÜLÉSE VÉGETT ITT A STANDARD KÓD JÖN, AMIT FENT MÁR DEFINIÁLTUNK */}
           {submissionCount > 0 && (
             <div
-              className="bg-orange-950/30 border border-orange-900/50 p-4 rounded-lg flex items-start gap-3 animate-in slide-in-from-top-2">
+              className="bg-orange-950/20 border border-orange-900/50 p-4 rounded-lg flex items-start gap-4 animate-in slide-in-from-top-2">
               <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5"/>
               <div>
-                <h4 className="text-orange-500 font-bold text-sm">Figyelem: Aktív kitöltések!</h4>
-                <p className="text-slate-400 text-xs mt-1">
-                  Ehhez a vizsgához már <b>{submissionCount} db</b> beadás érkezett.
-                  Ha új kérdést adsz hozzá vagy meglévőt törölsz, az <span className="text-orange-400 font-bold">torzíthatja a régi eredményeket</span> (a
-                  régi kitöltőknél hiányzó válaszként jelenik meg az új kérdés).
-                  Csak óvatosan módosíts!
-                </p>
+                <h4 className="text-orange-500 font-bold text-sm uppercase tracking-wider">Figyelem: Aktív kitöltések
+                  ({submissionCount} db)</h4>
+                <p className="text-slate-400 text-xs mt-1 leading-relaxed">A kérdések módosítása befolyásolhatja a
+                  meglévő eredményeket.</p>
               </div>
             </div>
           )}
 
-          <div className="flex items-center justify-between bg-slate-900 p-2 rounded-lg border border-slate-800">
-            <Button variant="ghost" disabled={currentEditorPage === 1} onClick={() => setCurrentEditorPage(p => p - 1)}><ChevronLeft
-              className="w-4 h-4 mr-2"/> Előző</Button>
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+          {/* Pagination Bar */}
+          <div
+            className="flex items-center justify-between bg-[#0b1221] p-2 rounded-xl border border-slate-800 shadow-lg sticky top-4 z-20">
+            <Button variant="ghost" disabled={currentEditorPage === 1} onClick={() => setCurrentEditorPage(p => p - 1)}
+                    className="text-slate-400 hover:text-white hover:bg-slate-800"><ChevronLeft
+              className="w-4 h-4 mr-2"/> ELŐZŐ</Button>
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4">
               {pageNumbers.map(pageNum => (
                 <button key={pageNum} onClick={() => setCurrentEditorPage(pageNum)}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${currentEditorPage === pageNum ? 'bg-yellow-600 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>{pageNum}</button>
+                        className={cn("w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold transition-all border", currentEditorPage === pageNum ? "bg-yellow-500 text-black border-yellow-600 shadow-lg shadow-yellow-500/20" : "bg-slate-900 text-slate-500 border-slate-800 hover:border-slate-600 hover:text-slate-300")}>
+                  {pageNum}
+                </button>
               ))}
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="destructive" disabled={pageNumbers.length === 1}
-                      onClick={() => setPageToDelete(currentEditorPage)} className="h-9"><FileX
-                className="w-4 h-4"/></Button>
+              <Button size="sm" variant="ghost" disabled={pageNumbers.length === 1}
+                      onClick={() => setPageToDelete(currentEditorPage)}
+                      className="h-9 w-9 text-red-500 hover:bg-red-950/20"><FileX className="w-4 h-4"/></Button>
+              <div className="w-px h-6 bg-slate-800 mx-1 self-center"></div>
               <Button size="sm" onClick={addPage}
-                      className="h-9 bg-blue-600 hover:bg-blue-700 text-white border-none font-semibold shadow-sm"><FilePlus
-                className="w-4 h-4 mr-2"/> Új Oldal</Button>
+                      className="h-9 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase text-xs tracking-wider"><FilePlus
+                className="w-4 h-4 mr-2"/> ÚJ OLDAL</Button>
               <Button variant="ghost" disabled={currentEditorPage === pageNumbers.length}
-                      onClick={() => setCurrentEditorPage(p => p + 1)}>Következő <ChevronRight
+                      onClick={() => setCurrentEditorPage(p => p + 1)}
+                      className="ml-2 text-slate-400 hover:text-white hover:bg-slate-800">KÖVETKEZŐ <ChevronRight
                 className="w-4 h-4 ml-2"/></Button>
             </div>
           </div>
 
           <div className="space-y-6 min-h-[400px]">
             {currentQuestions.length === 0 ? (
-              <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-xl bg-slate-950/50">
-                <p className="text-slate-500 mb-4">Ezen az oldalon még nincs kérdés.</p>
+              <div
+                className="flex flex-col items-center justify-center py-24 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/20 text-slate-500">
+                <Layers className="w-16 h-16 mb-4 opacity-20"/>
+                <p className="text-sm font-mono uppercase tracking-widest mb-6">EZ AZ OLDAL MÉG ÜRES</p>
                 <Button onClick={() => addQuestionToPage(currentEditorPage)}
-                        className="bg-yellow-600 hover:bg-yellow-700 text-black"><Plus className="w-4 h-4 mr-2"/> Kérdés
-                  hozzáadása</Button>
+                        className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold uppercase tracking-wider"><Plus
+                  className="w-4 h-4 mr-2"/> ELSŐ KÉRDÉS HOZZÁADÁSA</Button>
               </div>
             ) : (
               <>
@@ -747,8 +799,9 @@ export function ExamEditor() {
                                 onAddOption={addOption} onRemoveOption={removeOption} onUpdateOption={updateOption}/>
                 ))}
                 <Button onClick={() => addQuestionToPage(currentEditorPage)}
-                        className="w-full border-dashed border-2 border-slate-700 bg-transparent hover:bg-slate-900 text-slate-400 hover:text-white h-16"><Plus
-                  className="w-5 h-5 mr-2"/> Kérdés hozzáadása a(z) {currentEditorPage}. oldalhoz</Button>
+                        className="w-full border-dashed border-2 border-slate-800 bg-slate-900/20 hover:bg-slate-900 hover:border-slate-600 text-slate-500 hover:text-white h-20 uppercase font-bold tracking-widest transition-all">
+                  <Plus className="w-5 h-5 mr-2"/> ÚJ KÉRDÉS HOZZÁADÁSA A(Z) {currentEditorPage}. OLDALHOZ
+                </Button>
               </>
             )}
           </div>

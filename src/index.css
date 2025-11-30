@@ -3,226 +3,175 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme inline {
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
-
-    --color-background: var(--background);
-    --color-foreground: var(--foreground);
-    --color-card: var(--card);
-    --color-card-foreground: var(--card-foreground);
-    --color-popover: var(--popover);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-primary: var(--primary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-secondary: var(--secondary);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-muted: var(--muted);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-accent: var(--accent);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-destructive: var(--destructive);
-    --color-border: var(--border);
-    --color-input: var(--input);
-    --color-ring: var(--ring);
-    --color-chart-1: var(--chart-1);
-    --color-chart-2: var(--chart-2);
-    --color-chart-3: var(--chart-3);
-    --color-chart-4: var(--chart-4);
-    --color-chart-5: var(--chart-5);
-    --color-sidebar: var(--sidebar);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-ring: var(--sidebar-ring);
-
-    --animate-accordion-down: accordion-down 0.2s ease-out;
-    --animate-accordion-up: accordion-up 0.2s ease-out;
-
-    @keyframes accordion-down {
-        from {
-            height: 0;
-        }
-        to {
-            height: var(--radix-accordion-content-height);
-        }
-    }
-    @keyframes accordion-up {
-        from {
-            height: var(--radix-accordion-content-height);
-        }
-        to {
-            height: 0;
-        }
-    }
-}
-
+/* --- FŐ TÉMA KONFIGURÁCIÓ --- */
 :root {
     --radius: 0.5rem;
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.129 0.042 264.695);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.129 0.042 264.695);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.129 0.042 264.695);
-    --primary: oklch(0.208 0.042 265.755);
-    --primary-foreground: oklch(0.984 0.003 247.858);
-    --secondary: oklch(0.968 0.007 247.896);
-    --secondary-foreground: oklch(0.208 0.042 265.755);
-    --muted: oklch(0.968 0.007 247.896);
-    --muted-foreground: oklch(0.554 0.046 257.417);
-    --accent: oklch(0.968 0.007 247.896);
-    --accent-foreground: oklch(0.208 0.042 265.755);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.929 0.013 255.508);
-    --input: oklch(0.929 0.013 255.508);
-    --ring: oklch(0.704 0.04 256.788);
-    --chart-1: oklch(0.646 0.222 41.116);
-    --chart-2: oklch(0.6 0.118 184.704);
-    --chart-3: oklch(0.398 0.07 227.392);
-    --chart-4: oklch(0.828 0.189 84.429);
-    --chart-5: oklch(0.769 0.188 70.08);
-    --sidebar: oklch(0.984 0.003 247.858);
-    --sidebar-foreground: oklch(0.129 0.042 264.695);
-    --sidebar-primary: oklch(0.208 0.042 265.755);
-    --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-    --sidebar-accent: oklch(0.968 0.007 247.896);
-    --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-    --sidebar-border: oklch(0.929 0.013 255.508);
-    --sidebar-ring: oklch(0.704 0.04 256.788);
+    --background: #02040a; /* Mély űr sötétkék/fekete */
+
+    /* SFSD Színek */
+    --sfsd-gold: #eab308;
+    --sfsd-blue: #3b82f6;
+
+    /* Status Színek (CSS Változókban, hogy könnyen cserélhető legyen) */
+    --status-color: #eab308; /* Alapból sárga */
+    --status-glow: rgba(234, 179, 8, 0.5);
 }
 
-.dark {
-    --background: oklch(0.129 0.042 264.695);
-    --foreground: oklch(0.984 0.003 247.858);
-    --card: oklch(0.208 0.042 265.755);
-    --card-foreground: oklch(0.984 0.003 247.858);
-    --popover: oklch(0.208 0.042 265.755);
-    --popover-foreground: oklch(0.984 0.003 247.858);
-    --primary: oklch(0.929 0.013 255.508);
-    --primary-foreground: oklch(0.208 0.042 265.755);
-    --secondary: oklch(0.279 0.041 260.031);
-    --secondary-foreground: oklch(0.984 0.003 247.858);
-    --muted: oklch(0.279 0.041 260.031);
-    --muted-foreground: oklch(0.704 0.04 256.788);
-    --accent: oklch(0.279 0.041 260.031);
-    --accent-foreground: oklch(0.984 0.003 247.858);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.551 0.027 264.364);
-    --chart-1: oklch(0.488 0.243 264.376);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.769 0.188 70.08);
-    --chart-4: oklch(0.627 0.265 303.9);
-    --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.208 0.042 265.755);
-    --sidebar-foreground: oklch(0.984 0.003 247.858);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-    --sidebar-accent: oklch(0.279 0.041 260.031);
-    --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.551 0.027 264.364);
+/* --- UI ELEMEK --- */
+
+/* Modern Status Line (Csak felül) */
+.status-line-top {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--status-color);
+    box-shadow: 0 0 15px var(--status-glow);
+    z-index: 50;
+    transition: all 0.5s ease;
 }
 
-/* --- SFSD STATUS COLORS --- */
-.status-normal {
-    --status-border: rgba(234, 179, 8, 0.2);
-    --status-glow: transparent;
-    --status-accent: #eab308;
+/* Glassmorphism Panel (Sidebar & Cards) */
+.glass-panel {
+    background: rgba(10, 15, 28, 0.7); /* Sötét, enyhén áttetsző */
+    backdrop-filter: blur(12px);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.status-traffic {
-    --status-border: rgba(249, 115, 22, 0.4);
-    --status-glow: radial-gradient(circle at top center, rgba(249, 115, 22, 0.08), transparent 70%);
-    --status-accent: #f97316;
+/* Nav Link Hover Effect (Modern) */
+.nav-item-active {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
+    border-left: 3px solid var(--status-color);
+    color: white;
 }
 
-.status-border {
-    --status-border: rgba(239, 68, 68, 0.5);
-    --status-glow: radial-gradient(circle at top center, rgba(239, 68, 68, 0.12), transparent 70%);
-    --status-accent: #ef4444;
-}
-
-.status-tactical {
-    --status-border: rgba(220, 38, 38, 0.6);
-    --status-glow: radial-gradient(circle at top center, rgba(220, 38, 38, 0.2), transparent 80%);
-    --status-accent: #dc2626;
-}
-
-.status-transition {
-    transition: border-color 0.5s ease, color 0.5s ease;
-}
-
-@layer base {
-    * {
-        @apply border-border outline-ring/50;
+/* Ambient Background Animation (Lassú fények) */
+@keyframes ambient-float {
+    0%, 100% {
+        transform: translate(0, 0);
+        opacity: 0.3;
     }
-
-    body {
-        @apply bg-background text-foreground;
-    }
-
-    input[type="number"]::-webkit-inner-spin-button,
-    input[type="number"]::-webkit-outer-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-
-    input[type="number"] {
-        -moz-appearance: textfield;
-    }
-}
-
-@layer utilities {
-    .scrollbar-hide::-webkit-scrollbar {
-        display: none;
-    }
-
-    .scrollbar-hide {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-    }
-
-    .custom-scrollbar::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-
-    .custom-scrollbar::-webkit-scrollbar-track {
-        background: transparent;
-    }
-
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-        background-color: var(--muted-foreground);
-        border-radius: 9999px;
+    50% {
+        transform: translate(-20px, 20px);
         opacity: 0.5;
     }
+}
 
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background-color: var(--accent-foreground);
-    }
+.ambient-light {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.3;
+    animation: ambient-float 10s ease-in-out infinite;
+    pointer-events: none;
+}
 
-    div[data-blocknote-editor] {
-        flex-grow: 1;
-        min-height: 0;
-        display: flex;
-        flex-direction: column;
-        border-radius: inherit;
-    }
+/* --- MODERN TACTICAL SCROLLBAR --- */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
 
-    .bn-editor {
-        flex-grow: 1;
-        min-height: 0;
-        overflow-y: auto;
-        padding: 1rem;
+::-webkit-scrollbar-track {
+    background: transparent; /* Vagy nagyon halvány sötét */
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(30, 41, 59, 0.8); /* Slate-800 */
+    border-radius: 99px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(56, 189, 248, 0.4); /* Sky-400 áttetszően */
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* Firefox support */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(56, 189, 248, 0.3) transparent;
+}
+
+/* --- SHERIFF BACKGROUND V2 ANIMATIONS --- */
+
+/* --- BACKGROUND ANIMÁCIÓK (SheriffBackground) --- */
+
+/* Forgások */
+@keyframes spin-slow {
+    from {
+        transform: rotate(0deg);
     }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes spin-reverse-slow {
+    from {
+        transform: rotate(360deg);
+    }
+    to {
+        transform: rotate(0deg);
+    }
+}
+
+/* Pulzálás (Méret + Fényerő) */
+@keyframes pulse-glow {
+    0%, 100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.1);
+    }
+}
+
+/* Lebegés */
+@keyframes float {
+    0%, 100% {
+        transform: translate(0, 0);
+    }
+    50% {
+        transform: translate(-20px, 20px);
+    }
+}
+
+/* Utility osztályok */
+.animate-spin-slow {
+    animation: spin-slow 120s linear infinite;
+}
+
+.animate-spin-reverse-slow {
+    animation: spin-reverse-slow 80s linear infinite;
+}
+
+.animate-pulse-glow {
+    animation: pulse-glow 4s ease-in-out infinite;
+}
+
+.animate-float {
+    animation: float 10s ease-in-out infinite;
+}
+
+/* Radiális Gradiens */
+.bg-radial-gradient {
+    background-image: radial-gradient(circle, var(--tw-gradient-from) 0%, var(--tw-gradient-via) 50%, var(--tw-gradient-to) 100%);
+}
+
+/* Scrollbar eltüntetése */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
 /* ========================================= */

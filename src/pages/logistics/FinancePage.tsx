@@ -1,31 +1,14 @@
 import * as React from "react";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
-import {Card, CardContent, CardTitle} from "@/components/ui/card";
-import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
-import {Badge} from "@/components/ui/badge";
+import {Label} from "@/components/ui/label"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter
+  Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import {Textarea} from "@/components/ui/textarea";
 import {toast} from "sonner";
 import {
-  Plus,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Loader2,
-  Trash2,
-  Eye,
-  Wallet,
-  TrendingUp,
-  History,
-  DollarSign
+  Plus, Check, X, Clock, Loader2, Trash2, Eye, Wallet, History, DollarSign, FileBarChart, CreditCard
 } from "lucide-react";
 import type {BudgetRequest} from "@/types/supabase";
 import {NewBudgetRequestDialog} from "./components/NewBudgetRequestDialog";
@@ -41,7 +24,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import {Tabs, TabsList, TabsTrigger} from "@/components/ui/tabs";
+import {Tabs} from "@/components/ui/tabs";
+import {cn} from "@/lib/utils";
+
+// --- LEDGER BACKGROUND ---
+const LedgerGrid = () => (
+  <div className="absolute inset-0 pointer-events-none opacity-[0.05]"
+       style={{
+         backgroundImage: 'linear-gradient(to right, #22c55e 1px, transparent 1px), linear-gradient(to bottom, #22c55e 1px, transparent 1px)',
+         backgroundSize: '40px 40px'
+       }}
+  />
+);
 
 export function FinancePage() {
   const {supabase, profile, user} = useAuth();
@@ -50,6 +44,7 @@ export function FinancePage() {
   const [isNewOpen, setIsNewOpen] = React.useState(false);
   const [filter, setFilter] = React.useState("all");
 
+  // State
   const [selectedRequest, setSelectedRequest] = React.useState<BudgetRequest | null>(null);
   const [actionType, setActionType] = React.useState<'approve' | 'reject' | null>(null);
   const [adminComment, setAdminComment] = React.useState("");
@@ -57,15 +52,14 @@ export function FinancePage() {
 
   const [viewerOpen, setViewerOpen] = React.useState(false);
   const [viewImage, setViewImage] = React.useState<{ url: string, name: string } | null>(null);
-
   const [isCleanupAlertOpen, setIsCleanupAlertOpen] = React.useState(false);
   const [isCleaning, setIsCleaning] = React.useState(false);
 
+  // Adatok lekérése
   const fetchRequests = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      const {data, error} = await supabase
-        .from('budget_requests')
+      const {data, error} = await supabase.from('budget_requests')
         .select(`*, profiles!budget_requests_user_id_fkey (full_name, badge_number, faction_rank)`)
         .order('created_at', {ascending: false});
       if (error) throw error;
@@ -83,18 +77,19 @@ export function FinancePage() {
 
   const isExecutive = profile?.system_role === 'admin';
 
-  const stats = React.useMemo(() => {
-    const pending = requests.filter(r => r.status === 'pending').reduce((acc, curr) => acc + curr.amount, 0);
-    const approved = requests.filter(r => r.status === 'approved').reduce((acc, curr) => acc + curr.amount, 0);
-    const total = requests.length;
-    return {pending, approved, total};
-  }, [requests]);
+  // Statisztikák
+  const stats = React.useMemo(() => ({
+    pending: requests.filter(r => r.status === 'pending').reduce((acc, curr) => acc + curr.amount, 0),
+    approved: requests.filter(r => r.status === 'approved').reduce((acc, curr) => acc + curr.amount, 0),
+    total: requests.length
+  }), [requests]);
 
   const filteredRequests = React.useMemo(() => {
     if (filter === 'all') return requests;
     return requests.filter(r => r.status === filter);
   }, [requests, filter]);
 
+  // Admin műveletek
   const handleAdminAction = async () => {
     if (!selectedRequest || !actionType || !user) return;
     setIsProcessing(true);
@@ -102,10 +97,9 @@ export function FinancePage() {
       const updates: any = {
         status: actionType === 'approve' ? 'approved' : 'rejected',
         processed_by: user.id,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
-
-      if (actionType === 'reject' && !adminComment) throw new Error("Elutasításkor kötelező indoklást írni!");
+      if (actionType === 'reject' && !adminComment) throw new Error("Indoklás kötelező!");
       if (adminComment) updates.admin_comment = adminComment;
 
       const {error} = await (supabase.from('budget_requests') as any).update(updates).eq('id', selectedRequest.id);
@@ -113,13 +107,13 @@ export function FinancePage() {
 
       await supabase.from('notifications').insert({
         user_id: selectedRequest.user_id,
-        title: 'Pénzügyi Kérelem Frissítés',
-        message: `A $${selectedRequest.amount} értékű kérelmedet ${actionType === 'approve' ? 'elfogadták' : 'elutasították'}.`,
+        title: 'Pénzügyi Értesítés',
+        message: `A kérelmed státusza frissült: ${actionType === 'approve' ? 'JÓVÁHAGYVA' : 'ELUTASÍTVA'}.`,
         type: actionType === 'approve' ? 'success' : 'alert',
         link: '/finance'
       });
 
-      toast.success("Kérelem feldolgozva!");
+      toast.success("Tranzakció feldolgozva.");
       void fetchRequests();
       closeAdminDialog();
     } catch (err) {
@@ -133,12 +127,11 @@ export function FinancePage() {
     setIsCleaning(true);
     try {
       const response = await fetch('/api/cron/daily-cleanup', {method: 'POST'});
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Hiba");
-      toast.success("Takarítás kész!", {description: data.message});
+      if (!response.ok) throw new Error();
+      toast.success("Archiválás kész.");
       void fetchRequests();
-    } catch (err) {
-      toast.error("Hiba a takarítás közben");
+    } catch {
+      toast.error("Hiba a tisztítás közben");
     } finally {
       setIsCleaning(false);
       setIsCleanupAlertOpen(false);
@@ -146,13 +139,12 @@ export function FinancePage() {
   };
 
   const handleViewImage = async (path: string) => {
-    const {data} = await supabase.storage.from('finance_proofs').createSignedUrl(path, 3600);
+    const cleanPath = path.replace(/['"]+/g, '');
+    const {data} = await supabase.storage.from('finance_proofs').createSignedUrl(cleanPath, 3600);
     if (data?.signedUrl) {
       setViewImage({url: data.signedUrl, name: 'Bizonyíték'});
       setViewerOpen(true);
-    } else {
-      toast.error("Nem sikerült betölteni a képet.");
-    }
+    } else toast.error("Nem sikerült megnyitni.");
   };
 
   const closeAdminDialog = () => {
@@ -161,242 +153,273 @@ export function FinancePage() {
     setAdminComment("");
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return <Badge className="bg-green-600 hover:bg-green-700 shadow-[0_0_10px_rgba(22,163,74,0.3)]"><CheckCircle2
-          className="w-3 h-3 mr-1"/> Kifizetve</Badge>;
-      case 'rejected':
-        return <Badge className="bg-red-900 hover:bg-red-900 text-red-200 border border-red-800"><XCircle
-          className="w-3 h-3 mr-1"/> Elutasítva</Badge>;
-      default:
-        return <Badge variant="secondary"
-                      className="bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 border border-yellow-600/30 animate-pulse"><Clock
-          className="w-3 h-3 mr-1"/> Függőben</Badge>;
+  // Bizonyíték path helper
+  const getProofPaths = (req: any): string[] => {
+    const raw = req.proof_image_path;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      return [String(raw)];
     }
+    return [String(raw)];
   };
 
   if (isLoading && requests.length === 0) return <div className="flex h-screen items-center justify-center"><Loader2
-    className="w-8 h-8 animate-spin text-yellow-500"/></div>;
+    className="w-10 h-10 animate-spin text-green-500"/></div>;
 
   return (
     <div
-      className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-500 pb-10 h-[calc(100vh-6rem)] flex flex-col">
+      className="space-y-6 max-w-[1600px] mx-auto animate-in fade-in duration-500 pb-10 h-[calc(100vh-6rem)] flex flex-col">
+
+      {/* --- FINANCE HEADER --- */}
       <div
-        className="flex justify-between items-center shrink-0 bg-slate-900/50 p-6 rounded-2xl border border-slate-800 backdrop-blur-sm">
-        <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <div className="p-2 bg-green-600/20 rounded-lg text-green-500"><Wallet className="w-6 h-6"/></div>
-            Pénzügy
-          </h1>
-          <p className="text-slate-400 mt-1 ml-1">Költségtérítések, bírságok és pénzügyi tranzakciók.</p>
+        className="flex justify-between items-center shrink-0 bg-[#050a14] border-b-2 border-green-500/20 p-6 relative overflow-hidden shadow-lg">
+        <LedgerGrid/>
+        <div className="relative z-10 flex items-center gap-4">
+          <div
+            className="p-3 bg-green-500/10 border border-green-500/30 text-green-500 rounded-md shadow-[0_0_15px_rgba(34,197,94,0.15)]">
+            <Wallet className="w-8 h-8"/>
+          </div>
+          <div>
+            <h1 className="text-3xl font-black text-white tracking-tight uppercase font-mono">PÉNZÜGYI NAPLÓ</h1>
+            <p className="text-xs text-green-500/60 font-bold uppercase tracking-widest">Treasury Department Ledger</p>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="relative z-10 flex gap-3">
           {isExecutive && (
-            <Button variant="outline"
-                    className="border-red-900/50 text-red-400 hover:bg-red-950/30 hover:border-red-800 hover:text-red-300 transition-all"
-                    onClick={() => setIsCleanupAlertOpen(true)} disabled={isCleaning}>
-              <Trash2 className="w-4 h-4 mr-2"/> Régi Törlése
+            <Button variant="outline" className="border-red-900/50 text-red-400 hover:bg-red-900/20 hover:text-red-300"
+                    onClick={() => setIsCleanupAlertOpen(true)}>
+              <Trash2 className="w-4 h-4 mr-2"/> ARCHÍVUM
             </Button>
           )}
           <Button onClick={() => setIsNewOpen(true)}
-                  className="bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20 transition-all active:scale-95">
-            <Plus className="w-4 h-4 mr-2"/> Új Igénylés
+                  className="bg-green-600 hover:bg-green-500 text-white font-bold uppercase tracking-wider h-10 px-6 shadow-[0_0_20px_rgba(34,197,94,0.2)]">
+            <Plus className="w-4 h-4 mr-2"/> ÚJ TÉTEL
           </Button>
         </div>
       </div>
 
+      {/* --- STATS ROW --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
-        <Card
-          className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors bg-gradient-to-br from-slate-900 to-slate-900/50">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div
-              className="p-4 bg-yellow-500/10 rounded-2xl border border-yellow-500/20 text-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.1)]">
-              <Clock className="w-8 h-8"/></div>
-            <div><p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Függő Kifizetés</p><p
-              className="text-3xl font-bold text-white mt-1">${stats.pending.toLocaleString()}</p></div>
-          </CardContent>
-        </Card>
-        <Card
-          className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors bg-gradient-to-br from-slate-900 to-slate-900/50">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div
-              className="p-4 bg-green-500/10 rounded-2xl border border-green-500/20 text-green-500 shadow-[0_0_15px_rgba(34,197,94,0.1)]">
-              <DollarSign className="w-8 h-8"/></div>
-            <div><p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Kifizetve</p><p
-              className="text-3xl font-bold text-white mt-1">${stats.approved.toLocaleString()}</p></div>
-          </CardContent>
-        </Card>
-        <Card
-          className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors bg-gradient-to-br from-slate-900 to-slate-900/50">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div
-              className="p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20 text-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)]">
-              <TrendingUp className="w-8 h-8"/></div>
-            <div><p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Összes Kérelem</p><p
-              className="text-3xl font-bold text-white mt-1">{stats.total} db</p></div>
-          </CardContent>
-        </Card>
+        {[
+          {
+            label: 'FÜGGŐ KIFIZETÉS',
+            val: stats.pending,
+            icon: Clock,
+            color: 'text-yellow-500',
+            bg: 'bg-yellow-500/10',
+            border: 'border-yellow-500/20'
+          },
+          {
+            label: 'KIFIZETETT ÖSSZEG',
+            val: stats.approved,
+            icon: DollarSign,
+            color: 'text-green-500',
+            bg: 'bg-green-500/10',
+            border: 'border-green-500/20'
+          },
+          {
+            label: 'TRANZAKCIÓK SZÁMA',
+            val: stats.total,
+            icon: FileBarChart,
+            color: 'text-blue-500',
+            bg: 'bg-blue-500/10',
+            border: 'border-blue-500/20',
+            isCount: true
+          }
+        ].map((s, i) => (
+          <div key={i}
+               className="bg-[#0b1221] border border-slate-800 p-5 flex items-center gap-4 relative overflow-hidden group hover:border-slate-700 transition-all">
+            <div className={`p-3 rounded ${s.bg} ${s.border} ${s.color} border`}>
+              <s.icon className="w-6 h-6"/>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">{s.label}</div>
+              <div
+                className={`text-2xl font-mono font-bold text-white group-hover:scale-105 transition-transform origin-left`}>
+                {s.isCount ? s.val : `$${s.val.toLocaleString()}`}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <AlertDialog open={isCleanupAlertOpen} onOpenChange={setIsCleanupAlertOpen}>
-        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Biztosan törlöd a régi adatokat?</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">Ez a művelet véglegesen törli a 40 napnál régebbi, már
-              lezárt kérelmeket.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-slate-700 hover:bg-slate-800 text-white">Mégse</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 hover:bg-red-700 text-white border-none" onClick={handleCleanup}>
-              {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : null} Törlés
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
+      {/* --- LEDGER TABLE --- */}
       <Tabs value={filter} onValueChange={setFilter} className="flex-1 flex flex-col min-h-0">
-        <div className="flex items-center justify-between mb-2">
-          <CardTitle className="flex items-center gap-2 text-lg"><History
-            className="w-5 h-5 text-slate-400"/> Tranzakciós Napló</CardTitle>
-          <TabsList className="bg-slate-900 border border-slate-800">
-            <TabsTrigger value="all">Összes</TabsTrigger>
-            <TabsTrigger value="pending" className="data-[state=active]:text-yellow-500">Függőben</TabsTrigger>
-            <TabsTrigger value="approved" className="data-[state=active]:text-green-500">Kifizetve</TabsTrigger>
-            <TabsTrigger value="rejected" className="data-[state=active]:text-red-500">Elutasítva</TabsTrigger>
-          </TabsList>
+        <div className="flex items-center justify-between mb-2 px-1">
+          <div className="text-xs font-mono text-slate-500 uppercase tracking-widest flex items-center gap-2">
+            <History className="w-4 h-4"/> LIVE TRANSACTION FEED
+          </div>
+          <div className="flex gap-2">
+            {['all', 'pending', 'approved', 'rejected'].map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                      className={cn("px-3 py-1 rounded-sm text-[10px] font-bold uppercase tracking-wider border transition-all", filter === f ? "bg-slate-800 text-white border-slate-600" : "text-slate-500 border-transparent hover:bg-slate-900")}>
+                {f === 'all' ? 'ÖSSZES' : f}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <Card className="bg-slate-900 border-slate-800 shadow-xl flex flex-col flex-1 min-h-0 overflow-hidden">
-          <CardContent className="p-0 flex-1 min-h-0 overflow-hidden relative">
-            <ScrollArea className="h-full w-full">
-              <Table className="table-fixed w-full">
-                <TableHeader className="bg-slate-950 sticky top-0 z-10 shadow-sm">
-                  <TableRow className="border-slate-800 hover:bg-transparent">
-                    <TableHead className="w-[120px] text-slate-400 font-semibold">Státusz</TableHead>
-                    <TableHead className="w-[200px] text-slate-400 font-semibold">Igénylő</TableHead>
-                    <TableHead className="w-[120px] text-slate-400 font-semibold">Összeg</TableHead>
-                    <TableHead className="w-auto text-slate-400 font-semibold">Indoklás</TableHead>
-                    <TableHead className="w-[120px] text-slate-400 font-semibold">Bizonyítékok</TableHead>
-                    <TableHead className="w-[120px] text-slate-400 font-semibold text-right">Dátum</TableHead>
-                    {isExecutive ? <TableHead className="w-[100px] text-right"></TableHead> : null}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRequests.map((req) => (
-                    <TableRow key={req.id} className="border-slate-800 hover:bg-slate-800/50 transition-colors group">
-                      <TableCell className="align-top pt-4">{getStatusBadge(req.status)}</TableCell>
-                      <TableCell className="align-top pt-4">
-                        <div className="font-medium text-white truncate pr-2">{req.profiles?.full_name}</div>
-                        <div className="text-xs text-slate-500 font-mono">#{req.profiles?.badge_number}</div>
-                      </TableCell>
-                      <TableCell className="font-mono font-bold text-green-400 text-base align-top pt-4">
-                        ${req.amount.toLocaleString()}
-                      </TableCell>
+        <div
+          className="flex-1 bg-[#0b1221] border border-slate-800 rounded-sm relative overflow-hidden flex flex-col shadow-2xl">
+          {/* Table Header */}
+          <div
+            className="bg-slate-950/80 border-b border-slate-800 grid grid-cols-12 gap-2 px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest sticky top-0 z-10 backdrop-blur-md">
+            <div className="col-span-1">STATUS</div>
+            <div className="col-span-2">BENEFICIARY</div>
+            <div className="col-span-2 text-right pr-4">AMOUNT</div>
+            <div className="col-span-4">DESCRIPTION</div>
+            <div className="col-span-2">EVIDENCE</div>
+            <div className="col-span-1 text-right">DATE</div>
+          </div>
 
-                      <TableCell className="align-top pt-4">
-                        <div
-                          className="break-all whitespace-pre-wrap text-sm text-slate-300 w-full max-w-[300px] md:max-w-none">
-                          {req.reason}
-                        </div>
-                        {req.admin_comment && (
-                          <div
-                            className="text-xs text-red-400 mt-2 italic break-all whitespace-pre-wrap w-full bg-red-950/20 p-1.5 rounded border border-red-900/20">
-                            Megj: {req.admin_comment}
-                          </div>
-                        )}
-                      </TableCell>
+          <ScrollArea className="flex-1">
+            {filteredRequests.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 opacity-30 text-slate-500">
+                <CreditCard className="w-16 h-16 mb-4"/>
+                <p className="font-mono text-sm uppercase tracking-widest">NO TRANSACTIONS FOUND</p>
+              </div>
+            ) : filteredRequests.map((req, i) => {
+              const paths = getProofPaths(req);
+              return (
+                <div key={req.id}
+                     className={cn("grid grid-cols-12 gap-2 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-900/50 transition-colors group text-sm items-start font-mono relative", i % 2 === 0 ? 'bg-[#0b1221]' : 'bg-[#0d1526]')}>
 
-                      <TableCell className="align-top pt-4">
-                        <div className="flex flex-wrap gap-1">
-                          {req.proof_images && req.proof_images.length > 0 ? (
-                            req.proof_images.map((path, idx) => (
-                              <Button key={idx} size="sm" variant="outline"
-                                      className="h-6 text-[10px] border-slate-700 hover:bg-slate-800 px-2 mb-1 text-slate-400 hover:text-white"
-                                      onClick={() => handleViewImage(path)}>
-                                <Eye className="w-3 h-3 mr-1"/> {idx + 1}.
-                              </Button>
-                            ))
-                          ) : req.proof_image_path ? (
-                            <Button size="sm" variant="outline"
-                                    className="h-6 text-[10px] border-slate-700 hover:bg-slate-800 px-2 text-slate-400 hover:text-white"
-                                    onClick={() => handleViewImage(req.proof_image_path)}>
-                              <Eye className="w-3 h-3 mr-1"/> Megtekint
-                            </Button>
-                          ) : <span className="text-xs text-slate-500 italic">Nincs</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-slate-500 text-xs text-right font-mono align-top pt-4">
-                        {new Date(req.created_at).toLocaleDateString('hu-HU')}
-                      </TableCell>
+                  {/* Bal oldali státusz csík */}
+                  <div
+                    className={cn("absolute left-0 top-0 bottom-0 w-0.5", req.status === 'approved' ? 'bg-green-500' : req.status === 'rejected' ? 'bg-red-500' : 'bg-yellow-500')}/>
 
-                      {isExecutive ? (
-                        <TableCell className="text-right space-x-1 align-top pt-3 whitespace-nowrap">
-                          {req.status === 'pending' && (
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button size="icon" variant="ghost"
-                                      className="h-8 w-8 text-green-500 hover:text-green-400 hover:bg-green-900/20"
-                                      onClick={() => {
-                                        setSelectedRequest(req);
-                                        setActionType('approve');
-                                      }}><CheckCircle2 className="w-5 h-5"/></Button>
-                              <Button size="icon" variant="ghost"
-                                      className="h-8 w-8 text-red-500 hover:text-red-400 hover:bg-red-900/20"
-                                      onClick={() => {
-                                        setSelectedRequest(req);
-                                        setActionType('reject');
-                                      }}><XCircle className="w-5 h-5"/></Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      ) : null}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
-          </CardContent>
-        </Card>
+                  <div className="col-span-1 pt-1">
+                    {req.status === 'approved' ?
+                      <span className="text-green-500 font-bold bg-green-500/10 px-1 rounded">PAID</span> :
+                      req.status === 'rejected' ?
+                        <span className="text-red-500 font-bold bg-red-500/10 px-1 rounded">VOID</span> :
+                        <span
+                          className="text-yellow-500 font-bold bg-yellow-500/10 px-1 rounded animate-pulse">PEND</span>}
+                  </div>
+
+                  <div className="col-span-2 pt-1">
+                    <div className="text-white font-bold truncate">{req.profiles?.full_name}</div>
+                    <div className="text-[10px] text-slate-500">ID: {req.profiles?.badge_number}</div>
+                  </div>
+
+                  <div className="col-span-2 text-right pr-4 pt-1">
+                          <span
+                            className={cn("font-bold text-base", req.status === 'rejected' ? "text-slate-500 line-through" : "text-white")}>
+                             ${req.amount.toLocaleString()}
+                          </span>
+                  </div>
+
+                  <div className="col-span-4 pr-4 pt-1">
+                    <div className="text-slate-300 text-xs leading-relaxed break-words">{req.reason}</div>
+                    {req.admin_comment && <div
+                      className="mt-1 text-[10px] text-red-400 bg-red-950/20 p-1 rounded border border-red-900/30">REJECT
+                      REASON: {req.admin_comment}</div>}
+                  </div>
+
+                  <div className="col-span-2 pt-1 flex flex-wrap gap-1">
+                    {paths.length > 0 ? paths.map((path, idx) => (
+                      <button key={idx} onClick={() => handleViewImage(path)}
+                              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 text-[9px] text-slate-300 rounded flex items-center gap-1 transition-all">
+                        <Eye className="w-2.5 h-2.5"/> IMG {idx + 1}
+                      </button>
+                    )) : <span className="text-slate-600 text-[10px] italic">N/A</span>}
+                  </div>
+
+                  <div className="col-span-1 text-right text-slate-500 text-[10px] pt-1">
+                    {new Date(req.created_at).toLocaleDateString()}
+                  </div>
+
+                  {/* Quick Actions (Admin) */}
+                  {isExecutive && req.status === 'pending' && (
+                    <div
+                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 bg-[#0b1221] p-1 rounded border border-slate-700 shadow-xl">
+                      <Button size="icon" className="h-6 w-6 bg-green-600 hover:bg-green-500 text-white"
+                              onClick={() => {
+                                setSelectedRequest(req);
+                                setActionType('approve');
+                              }}><Check className="w-3.5 h-3.5"/></Button>
+                      <Button size="icon" className="h-6 w-6 bg-red-600 hover:bg-red-500 text-white" onClick={() => {
+                        setSelectedRequest(req);
+                        setActionType('reject');
+                      }}><X className="w-3.5 h-3.5"/></Button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </ScrollArea>
+        </div>
       </Tabs>
 
       <NewBudgetRequestDialog open={isNewOpen} onOpenChange={setIsNewOpen} onSuccess={fetchRequests}/>
       <ImageViewerDialog open={viewerOpen} onOpenChange={setViewerOpen} imageUrl={viewImage?.url || null}
                          fileName={viewImage?.name || "Bizonyíték"}/>
 
-      {/* ADMIN DIALOG */}
+      {/* ADMIN PROCESS DIALOG */}
       <Dialog open={!!selectedRequest} onOpenChange={(o) => !o && closeAdminDialog()}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Kérelem {actionType === 'approve' ? 'Elfogadása' : 'Elutasítása'}</DialogTitle>
-            <DialogDescription>Összeg: ${selectedRequest?.amount}</DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            {actionType === 'reject' && (
+        <DialogContent
+          className="bg-[#0b1221] border border-slate-700 text-white sm:max-w-md p-0 overflow-hidden shadow-2xl">
+          <div
+            className={`p-4 border-b border-white/10 ${actionType === 'approve' ? 'bg-green-900/20' : 'bg-red-900/20'} flex items-center gap-3`}>
+            <div
+              className={`p-2 rounded border ${actionType === 'approve' ? 'border-green-500 text-green-500' : 'border-red-500 text-red-500'}`}>
+              <DollarSign className="w-5 h-5"/>
+            </div>
+            <div>
+              <DialogTitle className="font-mono uppercase font-bold text-lg tracking-tight">
+                {actionType === 'approve' ? 'TRANZAKCIÓ JÓVÁHAGYÁSA' : 'TRANZAKCIÓ ELUTASÍTÁSA'}
+              </DialogTitle>
+              <DialogDescription
+                className="text-xs text-slate-400 font-mono">ID: {selectedRequest?.id.slice(0, 8).toUpperCase()}</DialogDescription>
+            </div>
+          </div>
+
+          <div className="p-6">
+            {actionType === 'reject' ? (
               <div className="space-y-2">
-                <Label>Elutasítás Indoka</Label>
-                {/* JAVÍTOTT TEXTAREA: break-all és resize-none */}
-                <Textarea
-                  placeholder="Elutasítás indoka..."
-                  className="bg-slate-950 border-slate-700 resize-none h-24 break-all"
-                  value={adminComment}
-                  onChange={(e) => setAdminComment(e.target.value)}
-                  autoFocus
-                />
+                <Label className="text-[10px] uppercase font-bold text-slate-500">Elutasítás Indoka</Label>
+                <Textarea className="bg-slate-950 border-slate-700 font-mono text-xs focus-visible:ring-red-500/50 break-all"
+                          placeholder="Hivatalos indoklás..." value={adminComment}
+                          onChange={e => setAdminComment(e.target.value)} autoFocus/>
+              </div>
+            ) : (
+              <div className="text-center space-y-2">
+                <p className="text-slate-400 text-xs uppercase font-bold">Kifizetendő összeg</p>
+                <p
+                  className="font-mono text-3xl font-bold text-green-400 tracking-tighter">${selectedRequest?.amount.toLocaleString()}</p>
+                <p className="text-[10px] text-slate-500 italic mt-2">A tranzakció rögzítésre kerül a főkönyvben.</p>
               </div>
             )}
-            {actionType === 'approve' && <p>Biztosan jóváhagyod a kifizetést?</p>}
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={closeAdminDialog}>Mégse</Button>
+
+          <DialogFooter className="p-4 bg-slate-950 border-t border-slate-800">
+            <Button variant="ghost" onClick={closeAdminDialog}
+                    className="hover:bg-slate-800 text-slate-400">Mégse</Button>
             <Button
-              className={actionType === 'approve' ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}
+              className={cn("font-bold uppercase tracking-wider text-black", actionType === 'approve' ? "bg-green-600 hover:bg-green-500" : "bg-red-600 hover:bg-red-500 text-white")}
               onClick={handleAdminAction} disabled={isProcessing}>
-              {isProcessing ? <Loader2
-                className="w-4 h-4 animate-spin mr-2"/> : null}{actionType === 'approve' ? 'Jóváhagyás' : 'Elutasítás'}
+              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : "VÉGREHAJTÁS"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ARCHIVE CONFIRM */}
+      <AlertDialog open={isCleanupAlertOpen} onOpenChange={setIsCleanupAlertOpen}>
+        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
+          <AlertDialogHeader><AlertDialogTitle>Archiválás</AlertDialogTitle><AlertDialogDescription>Törlöd a 40 napnál
+            régebbi lezárt tételeket?</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-700 hover:bg-slate-800 text-white">Mégse</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700 border-none" onClick={handleCleanup}>{isCleaning ?
+              <Loader2 className="animate-spin w-4 h-4"/> : "Törlés"}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

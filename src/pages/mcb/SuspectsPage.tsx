@@ -1,30 +1,57 @@
 import * as React from "react";
-import { useAuth } from "@/context/AuthContext";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { SuspectDetailDialog } from "./components/SuspectDetailDialog";
-import { Search, UserPlus, UserX, Skull, AlertTriangle, Lock, HelpCircle, Users } from "lucide-react";
-import { toast } from "sonner";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import type { Suspect, SuspectStatus } from "@/types/supabase";
+import {useAuth} from "@/context/AuthContext";
+import {Card, CardContent} from "@/components/ui/card";
+import {Button} from "@/components/ui/button";
+import {Badge} from "@/components/ui/badge";
+import {Input} from "@/components/ui/input";
+import {SuspectDetailDialog} from "./components/SuspectDetailDialog";
+import {Search, UserPlus, AlertTriangle, Lock, Skull, HelpCircle, Eye, ShieldAlert} from "lucide-react";
+import {toast} from "sonner";
+import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
+import type {Suspect, SuspectStatus} from "@/types/supabase";
 import {NewSuspectDialog} from "@/pages/mcb/components/NewSuspectDialog.tsx";
 
-// Státusz Badge Segéd
-const getStatusBadge = (status: SuspectStatus) => {
-  switch(status) {
-    case 'wanted': return <Badge className="bg-red-600 hover:bg-red-700 animate-pulse border-none"><AlertTriangle className="w-3 h-3 mr-1"/> KÖRÖZÖTT</Badge>;
-    case 'jailed': return <Badge className="bg-orange-600 hover:bg-orange-700 border-none"><Lock className="w-3 h-3 mr-1"/> BÖRTÖNBEN</Badge>;
-    case 'deceased': return <Badge variant="secondary" className="bg-slate-800 text-slate-400 border-none"><Skull className="w-3 h-3 mr-1"/> ELHUNYT</Badge>;
-    case 'free': return <Badge variant="outline" className="text-green-500 border-green-500/30 bg-green-500/10">SZABADLÁBON</Badge>;
-    default: return <Badge variant="outline"><HelpCircle className="w-3 h-3 mr-1"/> ISMERETLEN</Badge>;
+const getStatusConfig = (status: SuspectStatus) => {
+  switch (status) {
+    case 'wanted':
+      return {
+        label: 'KÖRÖZÖTT',
+        color: 'text-red-500',
+        bg: 'bg-red-500/10',
+        border: 'border-red-500/40',
+        icon: AlertTriangle
+      };
+    case 'jailed':
+      return {
+        label: 'BÖRTÖNBEN',
+        color: 'text-orange-500',
+        bg: 'bg-orange-500/10',
+        border: 'border-orange-500/40',
+        icon: Lock
+      };
+    case 'deceased':
+      return {label: 'ELHUNYT', color: 'text-slate-400', bg: 'bg-slate-800', border: 'border-slate-700', icon: Skull};
+    case 'free':
+      return {
+        label: 'SZABADLÁBON',
+        color: 'text-green-500',
+        bg: 'bg-green-500/10',
+        border: 'border-green-500/40',
+        icon: Eye
+      };
+    default:
+      return {
+        label: 'ISMERETLEN',
+        color: 'text-slate-500',
+        bg: 'bg-slate-800',
+        border: 'border-slate-700',
+        icon: HelpCircle
+      };
   }
 }
 
-// --- FŐ OLDAL ---
 export function SuspectsPage() {
-  const { supabase } = useAuth();
+  const {supabase} = useAuth();
   const [suspects, setSuspects] = React.useState<Suspect[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
@@ -33,17 +60,9 @@ export function SuspectsPage() {
 
   const fetchSuspects = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('suspects')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error(error);
-      toast.error("Nem sikerült betölteni a listát.");
-    } else {
-      setSuspects(data || []);
-    }
+    const {data, error} = await supabase.from('suspects').select('*').order('created_at', {ascending: false});
+    if (error) toast.error("Hiba az adatok betöltésekor.");
+    else setSuspects(data || []);
     setLoading(false);
   };
 
@@ -59,107 +78,99 @@ export function SuspectsPage() {
 
   return (
     <div className="space-y-6">
+      <SuspectDetailDialog open={!!selectedSuspect} onOpenChange={(o) => !o && setSelectedSuspect(null)}
+                           suspect={selectedSuspect} onUpdate={fetchSuspects}/>
+      <NewSuspectDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} onSuccess={fetchSuspects}/>
 
-      <SuspectDetailDialog
-        open={!!selectedSuspect}
-        onOpenChange={(o) => !o && setSelectedSuspect(null)}
-        suspect={selectedSuspect}
-        onUpdate={fetchSuspects}
-      />
-
-      <NewSuspectDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} onSuccess={fetchSuspects} />
-
-      {/* FEJLÉC */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/50 p-6 rounded-2xl border border-slate-800 backdrop-blur-sm">
+      {/* HEADER BAR */}
+      <div className="flex flex-col md:flex-row justify-between items-end gap-4 pb-4 border-b border-white/5">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-            <UserX className="w-8 h-8 text-red-500" /> Gyanúsítottak
+          <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+            <ShieldAlert className="w-8 h-8 text-red-500"/> CRIMINAL DATABASE
           </h1>
-          <p className="text-slate-400 mt-1">Bűnügyi nyilvántartás és körözési lista kezelése.</p>
+          <p className="text-slate-400 text-sm font-mono mt-1">Gyanúsítottak és körözött személyek nyilvántartása</p>
         </div>
-        <Button className="bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-900/20" onClick={() => setIsDialogOpen(true)}>
-          <UserPlus className="w-4 h-4 mr-2" /> Új Személy Rögzítése
+        <Button className="bg-red-600 hover:bg-red-500 text-white font-bold" onClick={() => setIsDialogOpen(true)}>
+          <UserPlus className="w-4 h-4 mr-2"/> ÚJ SZEMÉLY RÖGZÍTÉSE
         </Button>
       </div>
 
-      {/* KERESŐ SÁV */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+      {/* SEARCH BAR */}
+      <div className="relative max-w-lg">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"/>
         <Input
-          placeholder="Keresés név, alias vagy banda alapján..."
-          className="pl-12 h-12 bg-slate-900 border-slate-800 text-lg focus-visible:ring-red-500/50 rounded-xl"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
+          placeholder="Név, Alias, Szervezet..."
+          className="pl-10 bg-slate-900/50 border-slate-700 focus-visible:ring-red-500/50"
+          value={search} onChange={e => setSearch(e.target.value)}
         />
       </div>
 
-      {/* LISTA */}
+      {/* GRID VIEW */}
       {loading ? (
-        <div className="text-center py-12 text-slate-500">Adatok betöltése...</div>
+        <div className="text-center py-20 text-slate-500 font-mono animate-pulse">ADATBÁZIS LEKÉRDEZÉSE...</div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-slate-500 bg-slate-900/30 rounded-xl border border-slate-800 border-dashed flex flex-col items-center">
-          <Users className="w-12 h-12 mb-3 opacity-20" />
-          <p className="font-medium">Nincs találat a nyilvántartásban.</p>
-          <p className="text-xs mt-1">Próbálj más kifejezést, vagy rögzíts új személyt.</p>
-        </div>
+        <div className="text-center py-20 text-slate-600 border-2 border-dashed border-slate-800 rounded-xl">Nincs
+          találat.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(suspect => (
-            <Card key={suspect.id} className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-all group overflow-hidden shadow-lg">
-              {/* Felső színes csík státusz alapján */}
-              <div className={`h-2 w-full transition-colors ${
-                suspect.status === 'wanted' ? 'bg-red-600' :
-                  suspect.status === 'jailed' ? 'bg-orange-600' :
-                    'bg-slate-800'
-              }`} />
+          {filtered.map(suspect => {
+            const status = getStatusConfig(suspect.status);
+            return (
+              <Card key={suspect.id}
+                    className="bg-slate-900/60 border-slate-800 overflow-hidden group hover:border-slate-600 transition-all hover:shadow-[0_0_20px_rgba(0,0,0,0.5)] cursor-pointer"
+                    onClick={() => setSelectedSuspect(suspect)}>
 
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="w-12 h-12 border-2 border-slate-700">
-                      <AvatarImage src={suspect.mugshot_url || undefined} />
-                      <AvatarFallback className="bg-slate-800 text-slate-400 font-bold text-lg">
-                        {suspect.full_name.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h3 className="font-bold text-white leading-tight">{suspect.full_name}</h3>
-                      {suspect.alias && <p className="text-xs text-slate-400 italic">"{suspect.alias}"</p>}
-                    </div>
-                  </div>
-                </div>
+                {/* Mugshot Area with Overlay */}
+                <div
+                  className="relative h-32 bg-black/40 border-b border-slate-800 flex items-center justify-center overflow-hidden">
+                  <div
+                    className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10"></div>
+                  <Avatar
+                    className="w-20 h-20 border-2 border-slate-700 z-0 group-hover:scale-110 transition-transform duration-500">
+                    <AvatarImage src={suspect.mugshot_url || undefined} className="object-cover"/>
+                    <AvatarFallback
+                      className="bg-slate-800 text-slate-500 font-bold text-2xl">{suspect.full_name.charAt(0)}</AvatarFallback>
+                  </Avatar>
 
-                <div className="space-y-2 mb-4">
-                  <div className="flex justify-between items-center">
-                    {getStatusBadge(suspect.status)}
-                    {suspect.gender && <span className="text-xs text-slate-500 uppercase font-bold">{suspect.gender === 'male' ? 'Férfi' : 'Nő'}</span>}
-                  </div>
-                  {suspect.gang_affiliation && (
-                    <div className="text-xs bg-slate-950 px-2 py-1 rounded border border-slate-800 text-slate-300 truncate flex items-center gap-2">
-                      <span className="text-slate-500">Szervezet:</span>
-                      <span className="font-medium text-white truncate">{suspect.gang_affiliation}</span>
-                    </div>
+                  {/* Status Stamp Overlay */}
+                  {suspect.status === 'wanted' && (
+                    <div
+                      className="absolute top-2 right-2 z-20 rotate-12 border-2 border-red-500/50 text-red-500 text-[10px] font-black px-2 py-0.5 rounded opacity-70">WANTED</div>
                   )}
                 </div>
 
-                <p className="text-xs text-slate-500 line-clamp-2 min-h-[2.5em] italic bg-slate-950/50 p-2 rounded border border-slate-800/50">
-                  {suspect.description || "Nincs leírás megadva."}
-                </p>
+                <CardContent className="p-4 relative z-20">
+                  {/* Identity */}
+                  <div className="text-center -mt-10 mb-3">
+                    <h3
+                      className="font-black text-white text-lg leading-none mb-1 shadow-black drop-shadow-md">{suspect.full_name}</h3>
+                    {suspect.alias && <p className="text-xs text-slate-400 font-mono italic">"{suspect.alias}"</p>}
+                  </div>
 
-                {/* Később ide jöhet a "Részletek" vagy "Szerkesztés" gomb */}
-                <div className="mt-4 pt-3 border-t border-slate-800 flex justify-end">
-                  <span className="text-[10px] text-slate-600 font-mono">Rögzítve: {new Date(suspect.created_at).toLocaleDateString()}</span>
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full mt-4 border-slate-700 hover:bg-slate-800 text-xs h-8"
-                  onClick={() => setSelectedSuspect(suspect)} // <--- BEKÖTVE
-                >
-                  Adatlap Megnyitása
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div
+                      className={`col-span-2 flex items-center justify-center gap-2 py-1.5 rounded border ${status.bg} ${status.border} ${status.color}`}>
+                      <status.icon className="w-3.5 h-3.5"/>
+                      <span className="text-[10px] font-black uppercase tracking-widest">{status.label}</span>
+                    </div>
+
+                    {suspect.gang_affiliation && (
+                      <div className="col-span-2 text-center py-1 bg-slate-950 rounded border border-slate-800">
+                        <span className="text-[9px] text-slate-500 uppercase block">SZERVEZET</span>
+                        <span className="text-xs font-bold text-slate-300">{suspect.gang_affiliation}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    className="w-full h-8 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300">
+                    ADATLAP MEGTEKINTÉSE
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

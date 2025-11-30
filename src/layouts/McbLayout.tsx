@@ -1,100 +1,101 @@
-import { Outlet, Navigate, useLocation, Link } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
-import {Loader2, Shield, UserCog, LogOut, LayoutGrid, UserX} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import {Outlet, Navigate, useLocation, Link} from "react-router-dom";
+import {useAuth} from "@/context/AuthContext";
+import {Loader2, Shield, UserCog, LayoutGrid, UserX, Fingerprint, Database, ChevronRight} from "lucide-react";
+import {cn} from "@/lib/utils";
+
+// --- MCB SPECIFIC BACKGROUND EFFECT ---
+const McbNetworkEffect = () => (
+  <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+    {/* Kékes "Network" háló overlay */}
+    <div className="absolute inset-0 opacity-[0.08]"
+         style={{
+           backgroundImage: 'radial-gradient(circle, #0ea5e9 1px, transparent 1px)',
+           backgroundSize: '30px 30px',
+           maskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 80%)'
+         }}>
+    </div>
+    {/* Egyedi fényeffekt a jobb sarokban */}
+    <div
+      className="absolute top-0 right-0 w-[500px] h-[500px] bg-sky-900/10 blur-[100px] rounded-full mix-blend-screen"></div>
+  </div>
+);
 
 export function McbLayout() {
-  const { profile, loading, session, signOut } = useAuth();
+  const {profile, loading, session} = useAuth();
   const location = useLocation();
 
-  // 1. Töltés
-  if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-950 text-white">
-        <Loader2 className="h-16 w-16 animate-spin text-yellow-500" />
-      </div>
-    );
-  }
+  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2
+    className="h-8 w-8 animate-spin text-sky-500"/></div>;
+  if (!session || !profile) return <Navigate to="/login" state={{from: location}} replace/>;
 
-  // 2. Nincs bejelentkezve
-  if (!session || !profile) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
+  const hasAccess = profile.division === 'MCB' || profile.system_role === 'admin' || profile.system_role === 'supervisor';
+  if (!hasAccess) return <Navigate to="/dashboard" replace/>;
 
-  // 3. JOGOSULTSÁG ELLENŐRZÉS (JAVÍTVA)
-  // Akkor léphet be, ha: MCB tag VAGY Admin VAGY Supervisor
-  const hasAccess =
-    profile.division === 'MCB' ||
-    profile.system_role === 'admin' ||
-    profile.system_role === 'supervisor';
-
-  if (!hasAccess) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  // Admin link láthatósága (Admin vagy Supervisor)
   const isAdmin = profile.system_role === 'admin' || profile.system_role === 'supervisor';
 
   const mcbLinks = [
-    { path: "/mcb", label: "Áttekintés", icon: LayoutGrid },
-    { path: "/mcb/suspects", label: "Gyanúsítottak", icon: UserX },
+    {path: "/mcb", label: "Áttekintés", icon: LayoutGrid, exact: true},
+    {path: "/mcb/suspects", label: "Gyanúsítottak", icon: UserX},
+    // Ide jöhetnek majd további modulok később (pl. Bizonyíték raktár)
   ];
 
   if (isAdmin) {
-    mcbLinks.push({ path: "/mcb/admin", label: "Adminisztráció", icon: UserCog });
+    mcbLinks.push({path: "/mcb/admin", label: "Adminisztráció", icon: UserCog});
   }
 
   return (
-    <div className="text-slate-100 min-h-screen flex flex-col bg-slate-950">
-      {/* Fejléc */}
-      <header className="p-4 md:p-6 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-40">
+    <div className="relative min-h-full flex flex-col">
+      <McbNetworkEffect/>
 
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="w-10 h-10 bg-yellow-500/10 rounded-lg flex items-center justify-center border border-yellow-500/20 shadow-[0_0_10px_rgba(234,179,8,0.1)]">
-            <Shield className="w-6 h-6 text-yellow-500" />
+      {/* --- MCB HEADER MODULE --- */}
+      <div className="relative z-10 px-0 pb-6 pt-2">
+        <div
+          className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-sky-500/10 pb-4 mb-2">
+
+          {/* Címsor & Identity */}
+          <div className="flex items-center gap-4">
+            <div
+              className="w-12 h-12 bg-sky-950/30 border border-sky-500/20 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(14,165,233,0.1)]">
+              <Fingerprint className="w-6 h-6 text-sky-400"/>
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                MCB <span className="text-sky-500">DATABASE</span>
+              </h1>
+              <p className="text-[10px] text-sky-400/60 uppercase tracking-[0.2em] font-bold">Investigative Division</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Major Crimes Bureau</h1>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Nyomozói Adatbázis</p>
-          </div>
+
+          {/* Module Navigation (Tabs) */}
+          <nav
+            className="flex items-center gap-1 bg-slate-900/40 p-1 rounded-lg border border-white/5 backdrop-blur-md">
+            {mcbLinks.map(link => {
+              const isActive = link.exact
+                ? location.pathname === link.path
+                : location.pathname.startsWith(link.path);
+
+              return (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-all",
+                    isActive
+                      ? "bg-sky-500/10 text-sky-400 border border-sky-500/20 shadow-[0_0_10px_rgba(14,165,233,0.1)]"
+                      : "text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
+                  )}
+                >
+                  <link.icon className="w-3.5 h-3.5"/>
+                  {link.label}
+                </Link>
+              )
+            })}
+          </nav>
         </div>
+      </div>
 
-        {/* Navigáció */}
-        <nav className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide">
-          {mcbLinks.map(link => {
-            const isActive = location.pathname === link.path || (link.path !== '/mcb' && location.pathname.startsWith(link.path));
-            return (
-              <Link
-                key={link.path}
-                to={link.path}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all border whitespace-nowrap",
-                  isActive
-                    ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20 shadow-sm"
-                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-700"
-                )}
-              >
-                <link.icon className="w-4 h-4" />
-                {link.label}
-              </Link>
-            )
-          })}
-        </nav>
-
-        <div className="flex items-center gap-4 hidden md:flex">
-          <div className="text-right">
-            <p className="text-sm font-medium text-white">{profile.full_name}</p>
-            <p className="text-xs text-slate-500">{profile.faction_rank}</p>
-          </div>
-          <Button variant="ghost" size="icon" onClick={signOut} className="text-slate-400 hover:text-red-400 hover:bg-red-950/20">
-            <LogOut className="w-5 h-5" />
-          </Button>
-        </div>
-      </header>
-
-      <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 md:p-8 animate-in fade-in duration-500">
-        <Outlet />
+      <main className="relative z-10 flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <Outlet/>
       </main>
     </div>
   );
