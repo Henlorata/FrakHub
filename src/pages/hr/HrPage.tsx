@@ -279,11 +279,23 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
                 })} disabled={isFieldDisabled('division')}>
                   <SelectTrigger
                     className="bg-slate-900 border-slate-700 h-10 text-sm font-bold"><SelectValue/></SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-slate-800 text-white">{allowedDivisions.map(d =>
-                    <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                    {allowedDivisions.map(d => {
+                      let label = d;
+                      if (d === 'TSB') {
+                        const r = formData.faction_rank;
+                        if (r && EXECUTIVE_RANKS.includes(r)) label = "Executive Staff (TSB)";
+                        else if (r && COMMAND_RANKS.includes(r)) label = "Command Staff (TSB)";
+                        else if (r && SUPERVISORY_RANKS.includes(r)) label = "Supervisory Staff (TSB)";
+                        else label = "Field Staff (TSB)";
+                      }
+                      return <SelectItem key={d} value={d}>{label}</SelectItem>;
+                    })}
+                  </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
+                {/* ... Alosztály Rang select marad a régi ... */}
                 <Label
                   className={cn("text-[10px] uppercase font-bold text-slate-500 tracking-wider", formData.division === 'TSB' ? 'opacity-50' : '')}>Alosztály
                   Rang</Label>
@@ -422,22 +434,36 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
   )
 }
 
-function StaffSection({title, icon: Icon, users, colorClass, onEdit, currentUser, onGiveAward}: any) {
+function StaffSection({
+                        title,
+                        icon: Icon,
+                        users,
+                        colorClass,
+                        headerClass,
+                        iconColorClass,
+                        onEdit,
+                        currentUser,
+                        onGiveAward
+                      }: any) {
   if (users.length === 0) return null;
 
   return (
     <Card
-      className={`bg-[#0b1221] border border-slate-800 shadow-xl overflow-hidden mb-8 relative group ${colorClass}`}>
+      className={cn("bg-[#0b1221] border shadow-xl overflow-hidden mb-8 relative group transition-all", colorClass)}>
+      {/* Header rész */}
       <div
-        className="px-6 py-4 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center backdrop-blur-sm sticky top-0 z-10">
+        className={cn("px-6 py-4 border-b flex justify-between items-center backdrop-blur-sm sticky top-0 z-10", headerClass || "border-slate-800 bg-slate-950/50")}>
         <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-3">
-          <div className="p-1.5 rounded bg-slate-900 border border-slate-700 shadow-sm"><Icon
-            className="w-4 h-4 text-slate-400"/></div>
+          <div
+            className={cn("p-1.5 rounded border shadow-sm", iconColorClass || "bg-slate-900 border-slate-700 text-slate-400")}>
+            <Icon className="w-4 h-4"/>
+          </div>
           {title}
         </h3>
         <Badge variant="secondary"
                className="bg-slate-900 border-slate-700 text-slate-400 font-mono text-xs px-2 py-0.5">{users.length} FŐ</Badge>
       </div>
+
       <div className="p-0">
         <Table>
           <TableHeader className="bg-slate-950/30">
@@ -504,11 +530,48 @@ function StaffSection({title, icon: Icon, users, colorClass, onEdit, currentUser
                   </TableCell>
                   <TableCell>
                     {user.division !== 'TSB' ? (
+                      // EGYÉB OSZTÁLYOK (MCB, SEB) - Marad a régi
                       <div
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${user.division === 'MCB' ? 'bg-blue-900/20 text-blue-400 border-blue-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>
+                        className={cn(
+                          "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border",
+                          user.division === 'MCB'
+                            ? "bg-blue-900/20 text-blue-400 border-blue-900/50"
+                            : "bg-red-900/20 text-red-400 border-red-900/50"
+                        )}>
                         {user.division} {user.division_rank ? `• ${user.division_rank.split(' ')[0]}` : ''}
                       </div>
-                    ) : <span className="text-slate-600 text-[10px] font-mono">TSB FIELD</span>}
+                    ) : (
+                      // TSB (Field Staff) - Itt jön a változtatás
+                      <>
+                        {(() => {
+                          if (EXECUTIVE_RANKS.includes(user.faction_rank)) {
+                            return (
+                              <div
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border bg-purple-900/20 text-purple-400 border-purple-900/50 shadow-[0_0_10px_rgba(168,85,247,0.15)]">
+                                <Crown className="w-3 h-3"/> EXECUTIVE STAFF
+                              </div>
+                            );
+                          }
+                          if (COMMAND_RANKS.includes(user.faction_rank)) {
+                            return (
+                              <div
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border bg-yellow-900/20 text-yellow-500 border-yellow-900/50">
+                                <Award className="w-3 h-3"/> COMMAND STAFF
+                              </div>
+                            );
+                          }
+                          if (SUPERVISORY_RANKS.includes(user.faction_rank)) {
+                            return (
+                              <div
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border bg-green-900/20 text-green-500 border-green-900/50">
+                                <Star className="w-3 h-3"/> SUPERVISORY STAFF
+                              </div>
+                            );
+                          }
+                          return <span className="text-slate-600 text-[10px] font-mono font-bold uppercase pl-1">FIELD STAFF</span>;
+                        })()}
+                      </>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1 flex-wrap">
@@ -728,17 +791,41 @@ export function HrPage() {
             className="text-xs font-mono uppercase tracking-widest">LOADING PERSONNEL DATA...</p></div>
         ) : (
           <>
-            <StaffSection title="VEZÉRKAR (EXECUTIVE / COMMAND)" icon={Crown} users={highCommandUsers}
-                          colorClass="border-yellow-600/30 shadow-yellow-900/10" onEdit={setEditingUser}
-                          currentUser={profile}
-                          onGiveAward={(user: any) => setAwardTarget({id: user.id, name: user.full_name})}/>
-            <StaffSection title="VEZETŐSÉG (SUPERVISORY STAFF)" icon={Star} users={supervisoryUsers}
-                          colorClass="border-green-600/30 shadow-green-900/5" onEdit={setEditingUser}
-                          currentUser={profile}
-                          onGiveAward={(user: any) => setAwardTarget({id: user.id, name: user.full_name})}/>
-            <StaffSection title="ÁLLOMÁNY (FIELD STAFF)" icon={Users} users={fieldUsers} colorClass="border-slate-800"
-                          onEdit={setEditingUser} currentUser={profile}
-                          onGiveAward={(user: any) => setAwardTarget({id: user.id, name: user.full_name})}/>
+            <StaffSection
+              title="VEZÉRKAR (EXECUTIVE / COMMAND)"
+              icon={Crown}
+              users={highCommandUsers}
+              colorClass="border-yellow-500/40 shadow-[0_0_30px_rgba(234,179,8,0.1)]"
+              headerClass="bg-gradient-to-r from-yellow-900/20 to-transparent border-yellow-500/20"
+              iconColorClass="bg-yellow-500/10 text-yellow-500 border-yellow-500/50"
+              onEdit={setEditingUser}
+              currentUser={profile}
+              onGiveAward={(user: any) => setAwardTarget({id: user.id, name: user.full_name})}
+            />
+
+            <StaffSection
+              title="VEZETŐSÉG (SUPERVISORY STAFF)"
+              icon={Star}
+              users={supervisoryUsers}
+              colorClass="border-green-500/40 shadow-[0_0_30px_rgba(34,197,94,0.1)]"
+              headerClass="bg-gradient-to-r from-green-900/20 to-transparent border-green-500/20"
+              iconColorClass="bg-green-500/10 text-green-500 border-green-500/50"
+              onEdit={setEditingUser}
+              currentUser={profile}
+              onGiveAward={(user: any) => setAwardTarget({id: user.id, name: user.full_name})}
+            />
+
+            <StaffSection
+              title="ÁLLOMÁNY (FIELD STAFF)"
+              icon={Users}
+              users={fieldUsers}
+              colorClass="border-slate-800"
+              headerClass="bg-slate-950/50 border-slate-800"
+              iconColorClass="bg-slate-900 text-slate-400 border-slate-700"
+              onEdit={setEditingUser}
+              currentUser={profile}
+              onGiveAward={(user: any) => setAwardTarget({id: user.id, name: user.full_name})}
+            />
           </>
         )}
       </div>

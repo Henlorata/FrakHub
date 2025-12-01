@@ -316,10 +316,21 @@ const StatusControlDialog = ({open, onOpenChange}: { open: boolean, onOpenChange
 };
 
 // --- FEED ITEM (JAVÍTOTT) ---
+// --- FEED ITEM (FRISSÍTVE) ---
 const FeedItem = ({item, onDelete, currentUser}: { item: any, onDelete: (id: string) => void, currentUser: any }) => {
   const canDelete = (currentUser.id === item.created_by) || isCommand(currentUser) || isExecutive(currentUser) || currentUser.is_bureau_manager;
-  const authorName = item.show_author ? item.profiles?.full_name : getStaffCategory(item.profiles?.faction_rank);
-  const authorRank = item.show_author ? item.profiles?.faction_rank : "CLASSIFIED";
+
+  // Executive Staff mindig látja az adatokat
+  const isExec = isExecutive(currentUser);
+
+  // Megjelenítendő adatok logikája
+  const showRealData = item.show_author || isExec;
+
+  // Ez jelzi, hogy csak a rang miatt látjuk-e (Privileged View)
+  const isPrivilegedView = !item.show_author && isExec;
+
+  const authorName = showRealData ? item.profiles?.full_name : getStaffCategory(item.profiles?.faction_rank);
+  const authorRank = showRealData ? item.profiles?.faction_rank : "CLASSIFIED";
 
   return (
     <div
@@ -338,13 +349,28 @@ const FeedItem = ({item, onDelete, currentUser}: { item: any, onDelete: (id: str
                               className="h-5 w-5 text-slate-600 hover:text-red-500 -mr-2 opacity-0 group-hover:opacity-100 transition-all"
                               onClick={() => onDelete(item.id)}><Trash2 className="w-3 h-3"/></Button>}
       </div>
-      <h4 className="text-sm font-bold text-white group-hover:text-yellow-500 transition-colors mb-2">{item.title}</h4>
+      <h4
+        className="text-sm font-bold text-white group-hover:text-yellow-500 transition-colors mb-2 break-all">{item.title}</h4>
       <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap break-all mb-3">{item.content}</div>
-      <div className="pt-2 border-t border-white/5 flex items-center gap-2">
-        <div className={cn("w-1.5 h-1.5 rounded-full", item.show_author ? "bg-green-500" : "bg-blue-500")}></div>
-        <div className="text-[9px] text-slate-500 font-mono uppercase">FROM: <span
-          className={cn("font-bold", item.show_author ? "text-slate-300" : "text-blue-400")}>{authorName}</span> <span
-          className="mx-1 text-slate-700">|</span> RANK: {authorRank}</div>
+      <div className="pt-2 border-t border-white/5 flex flex-wrap items-center gap-2">
+        <div
+          className={cn("w-1.5 h-1.5 rounded-full", item.show_author ? "bg-green-500" : (isExec ? "bg-red-500" : "bg-blue-500"))}></div>
+        <div className="text-[9px] text-slate-500 font-mono uppercase flex items-center gap-1 flex-wrap">
+          <span>FROM:</span>
+          <span
+            className={cn("font-bold", item.show_author ? "text-slate-300" : (isExec ? "text-red-400" : "text-blue-400"))}>{authorName}</span>
+
+          {isPrivilegedView && (
+            <span
+              className="flex items-center gap-1 bg-red-500/10 border border-red-500/30 text-red-400 px-1.5 py-0.5 rounded text-[8px] tracking-wider ml-1"
+              title="Ez az információ mások számára rejtett">
+              <EyeOff className="w-2.5 h-2.5"/> REJTETT
+            </span>
+          )}
+
+          <span className="mx-1 text-slate-700">|</span>
+          <span>RANK: {authorRank}</span>
+        </div>
       </div>
     </div>
   );
