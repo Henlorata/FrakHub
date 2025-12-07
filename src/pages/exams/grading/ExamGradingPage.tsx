@@ -180,6 +180,8 @@ export function ExamGradingPage() {
         if (parsed < 0) parsed = 0;
         if (parsed > q.points) parsed = q.points;
         finalPoints = parsed;
+      } else if (submission?.status !== 'pending' && userAns && typeof userAns.points_awarded === 'number') {
+        finalPoints = userAns.points_awarded;
       }
 
       currentScore += finalPoints;
@@ -190,14 +192,14 @@ export function ExamGradingPage() {
         isCorrect,
         type: q.question_type,
         autoPoints,
-        displayPoints: rawManual !== undefined ? rawManual : autoPoints,
+        displayPoints: rawManual !== undefined ? rawManual : finalPoints,
         calcPoints: finalPoints,
         isModified: rawManual !== undefined
       });
     });
 
     return {score: currentScore, maxScore: totalMax, questionStats: stats};
-  }, [questions, answers, manualPoints]);
+  }, [questions, answers, manualPoints, submission?.status]);
 
   const handleManualPointChange = (qId: string, val: string) => {
     if (val === '') {
@@ -222,8 +224,26 @@ export function ExamGradingPage() {
     if (!submission) return;
     setIsSaving(true);
     try {
+      const answerUpdates = questionStats.map(stat => {
+        const ans = answers.find(a => a.question_id === stat.id);
+        if (ans) {
+          return {
+            ...ans,
+            points_awarded: stat.calcPoints
+          };
+        }
+        return null;
+      }).filter(Boolean);
+
+      if (answerUpdates.length > 0) {
+        const {error: ansError} = await supabase
+          .from('exam_answers')
+          .upsert(answerUpdates);
+
+        if (ansError) throw ansError;
+      }
+
       let retryDate = null;
-      // Csak bukás esetén számítunk tiltást
       if (status === 'failed') {
         const hours = parseInt(banDuration);
         if (hours > 0) {
