@@ -27,50 +27,53 @@ import {ExamEditor} from "@/pages/exams/ExamEditor.tsx";
 import {ExamGradingPage} from "@/pages/exams/grading/ExamGradingPage.tsx";
 import {ActiveExamAlert} from "@/components/ActiveExamAlert.tsx";
 import {OnboardingPage} from "@/pages/auth/OnboardingPage.tsx";
+import {SuspectCacheProvider} from "@/context/SuspectCacheContext.tsx";
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <SystemStatusProvider>
-          <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
-            <ActiveExamAlert/>
-            <Routes>
-              <Route path="/login" element={<LoginPage/>}/>
-              <Route path="/register" element={<RegisterPage/>}/>
+          <SuspectCacheProvider>
+            <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
+              <ActiveExamAlert/>
+              <Routes>
+                <Route path="/login" element={<LoginPage/>}/>
+                <Route path="/register" element={<RegisterPage/>}/>
 
-              {/* PUBLIKUS VIZSGA ÚTVONAL (Layouton kívül) */}
-              <Route path="/exam/public/:examId" element={<PublicExamPage />} />
+                {/* PUBLIKUS VIZSGA ÚTVONAL (Layouton kívül) */}
+                <Route path="/exam/public/:examId" element={<PublicExamPage/>}/>
 
-              <Route element={<AppLayout/>}>
-                <Route path="/dashboard" element={<DashboardPage/>}/>
-                <Route path="/onboarding" element={<OnboardingPage />} />
-                <Route path="/notifications" element={<NotificationsPage/>}/>
-                <Route path="/reports" element={<ReportGeneratorPage/>}/>
-                <Route path="/hr" element={<HrPage/>}/>
+                <Route element={<AppLayout/>}>
+                  <Route path="/dashboard" element={<DashboardPage/>}/>
+                  <Route path="/onboarding" element={<OnboardingPage/>}/>
+                  <Route path="/notifications" element={<NotificationsPage/>}/>
+                  <Route path="/reports" element={<ReportGeneratorPage/>}/>
+                  <Route path="/hr" element={<HrPage/>}/>
 
-                <Route path="/mcb" element={<McbLayout/>}>
-                  <Route index element={<McbDashboard/>}/>
-                  <Route path="case/:caseId" element={<CaseDetailPage/>}/>
-                  <Route path="admin" element={<AdminPage/>}/>
-                  <Route path="suspects" element={<SuspectsPage/>}/>
+                  <Route path="/mcb" element={<McbLayout/>}>
+                    <Route index element={<McbDashboard/>}/>
+                    <Route path="case/:caseId" element={<CaseDetailPage/>}/>
+                    <Route path="admin" element={<AdminPage/>}/>
+                    <Route path="suspects" element={<SuspectsPage/>}/>
+                  </Route>
+
+                  <Route path="/exams" element={<ExamHub/>}/>
+                  <Route path="/exams/editor" element={<ExamEditor/>}/>
+                  <Route path="/exams/editor/:examId" element={<ExamEditor/>}/>
+                  <Route path="/exams/grading/:submissionId" element={<ExamGradingPage/>}/>
+                  <Route path="/logistics" element={<LogisticsPage/>}/>
+                  <Route path="/finance" element={<FinancePage/>}/>
+                  <Route path="/resources" element={<ResourcesPage/>}/>
+                  <Route path="/profile" element={<ProfilePage/>}/>
+                  <Route path="/calculator" element={<CalculatorPage/>}/>
                 </Route>
 
-                <Route path="/exams" element={<ExamHub/>}/>
-                <Route path="/exams/editor" element={<ExamEditor/>}/>
-                <Route path="/exams/editor/:examId" element={<ExamEditor/>}/>
-                <Route path="/exams/grading/:submissionId" element={<ExamGradingPage/>}/>
-                <Route path="/logistics" element={<LogisticsPage/>}/>
-                <Route path="/finance" element={<FinancePage/>}/>
-                <Route path="/resources" element={<ResourcesPage/>}/>
-                <Route path="/profile" element={<ProfilePage/>}/>
-                <Route path="/calculator" element={<CalculatorPage/>}/>
-              </Route>
-
-              <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
-            </Routes>
-            <Toaster position="top-right" theme="dark"/>
-          </div>
+                <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
+              </Routes>
+              <Toaster position="top-right" theme="dark"/>
+            </div>
+          </SuspectCacheProvider>
         </SystemStatusProvider>
       </AuthProvider>
     </BrowserRouter>

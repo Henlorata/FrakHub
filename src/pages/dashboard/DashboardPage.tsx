@@ -1,18 +1,16 @@
 import * as React from "react";
 import {useAuth} from "@/context/AuthContext";
 import {useSystemStatus, type AlertLevelId} from "@/context/SystemStatusContext";
-import {Card, CardContent, CardHeader, CardTitle} from "@/components/ui/card";
+import {Card, CardHeader, CardTitle} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
 import {Badge} from "@/components/ui/badge";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
+  Dialog, DialogContent, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {Switch} from "@/components/ui/switch";
 import {
   Shield,
   Activity,
@@ -44,7 +42,6 @@ import {
   Trash2,
   EyeOff,
   User,
-  UserCheck,
   Eye, GraduationCap, Signal
 } from "lucide-react";
 import {
@@ -315,8 +312,6 @@ const StatusControlDialog = ({open, onOpenChange}: { open: boolean, onOpenChange
   );
 };
 
-// --- FEED ITEM (JAVÍTOTT) ---
-// --- FEED ITEM (FRISSÍTVE) ---
 const FeedItem = ({item, onDelete, currentUser}: { item: any, onDelete: (id: string) => void, currentUser: any }) => {
   const canDelete = (currentUser.id === item.created_by) || isCommand(currentUser) || isExecutive(currentUser) || currentUser.is_bureau_manager;
 
@@ -456,7 +451,7 @@ export function DashboardPage() {
   }, []);
 
   if (!profile) return null;
-  const canCreateNews = profile.system_role === 'admin' || isHighCommand(profile);
+  const canCreateNews = profile.system_role === 'admin' || isHighCommand(profile) || isSupervisory(profile);
   const canManageStatus = profile.system_role === 'admin' || isHighCommand(profile);
   const alertInfo = ALERT_LEVELS[alertLevel];
 

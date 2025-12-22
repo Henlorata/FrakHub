@@ -5,8 +5,8 @@ import {useSystemStatus} from "@/context/SystemStatusContext";
 import {LoadingScreen} from "@/components/ui/loading-screen";
 import {PendingApprovalPage} from "@/pages/auth/PendingApprovalPage";
 import {
-  LayoutDashboard, Users, ShieldAlert, Truck, FileText, LogOut, Menu, X,
-  Banknote, Gavel, Bell, User, ChevronRight, ClipboardPen, ClipboardList,
+  LayoutDashboard, Users, ShieldAlert, Truck, LogOut, Menu, X,
+  Banknote, Gavel, Bell, User, ClipboardPen, ClipboardList,
   Settings, Shield
 } from "lucide-react";
 import {Button} from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 
 // --- ÚJ MODERN HÁTTÉR ---
 // Nem retro, hanem modern, sötét, "High-End" érzet
@@ -223,7 +224,7 @@ export function AppLayout() {
                 <button
                   className="flex items-center w-full gap-3 group outline-none hover:bg-white/5 p-2 rounded-lg transition-colors">
                   <Avatar className="h-9 w-9 border border-slate-700 transition-colors duration-500">
-                    <AvatarImage src={profile.avatar_url}/>
+                    <AvatarImage src={getOptimizedAvatarUrl(profile.avatar_url, 100) || ""}/>
                     <AvatarFallback
                       className="bg-slate-800 text-slate-200 font-bold">{profile.badge_number}</AvatarFallback>
                   </Avatar>

@@ -3,16 +3,15 @@ import {useAuth} from "@/context/AuthContext";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogDescription
 } from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Loader2, Upload, X, FileText, HardDriveUpload} from "lucide-react";
 import {toast} from "sonner";
+import {uploadToCloudinary} from "@/lib/cloudinary";
 
 interface UploadEvidenceDialogProps {
   open: boolean;
@@ -52,25 +51,36 @@ export function UploadEvidenceDialog({open, onOpenChange, caseId, onUploadComple
     if (!file || !fileName) return toast.error("Hiányzó adatok!");
     setLoading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${caseId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const {error: uploadError} = await supabase.storage.from('case_evidence').upload(filePath, file);
-      if (uploadError) throw uploadError;
+      let finalPath = "";
 
+      if (file.type.startsWith('image/')) {
+        const cloudinaryResult = await uploadToCloudinary(file);
+        finalPath = cloudinaryResult.secure_url;
+      } else {
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${caseId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const {error: uploadError} = await supabase.storage.from('case_evidence').upload(filePath, file);
+        if (uploadError) throw uploadError;
+        finalPath = filePath;
+      }
+
+      // 2. ADATBÁZIS BEJEGYZÉS
       const {error: dbError} = await supabase.from('case_evidence').insert({
         case_id: caseId,
-        file_path: filePath,
+        file_path: finalPath,
         file_name: fileName,
         file_type: file.type.startsWith('image/') ? 'image' : 'document',
         uploaded_by: user?.id
       });
+
       if (dbError) throw dbError;
 
       toast.success("Feltöltés sikeres.");
       onUploadComplete();
       handleClose();
     } catch (error: any) {
-      toast.error("Hiba.", {description: error.message});
+      console.error(error);
+      toast.error("Hiba történt.", {description: error.message});
     } finally {
       setLoading(false);
     }

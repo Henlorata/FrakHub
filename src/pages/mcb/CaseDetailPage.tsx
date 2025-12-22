@@ -15,7 +15,7 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Palette
+  Palette, Trash2, AlertTriangle
 } from "lucide-react";
 import {toast} from "sonner";
 import {CaseEditor} from "./components/CaseEditor";
@@ -45,7 +45,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 export function CaseDetailPage() {
@@ -60,6 +60,7 @@ export function CaseDetailPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [caseSuspects, setCaseSuspects] = React.useState<any[]>([]);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   // UI STATE
   const [showLeftSidebar, setShowLeftSidebar] = React.useState(true);
@@ -89,6 +90,38 @@ export function CaseDetailPage() {
     const isCollabEditor = collaborators.some(c => c.user_id === profile?.id && c.role === 'editor');
     return canEditCase(profile, caseData, isCollabEditor);
   }, [profile, caseData, collaborators]);
+
+  const handleDeleteCase = async () => {
+    if (!caseId) return;
+    setIsDeleting(true);
+    const toastId = toast.loading("Akta és csatolt fájlok törlése...");
+
+    try {
+      // API hívás a szerver felé (ami törli a képeket és az adatbázist is)
+      const response = await fetch('/api/case/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` // Auth token küldése
+        },
+        body: JSON.stringify({caseId})
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Hiba történt a törlés során.");
+      }
+
+      toast.success("Akta és minden adat véglegesen törölve.", {id: toastId});
+      navigate('/mcb/dashboard'); // Visszairányítás
+    } catch (e: any) {
+      console.error(e);
+      toast.error("Törlés sikertelen: " + e.message, {id: toastId});
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const getHeaderStyles = (theme?: string) => {
     switch (theme) {
@@ -370,6 +403,43 @@ export function CaseDetailPage() {
                       className="border-yellow-700/50 text-yellow-500 hover:bg-yellow-900/20 h-8 text-xs uppercase"
                       onClick={() => handleStatusChange('open')}><Unlock className="w-3 h-3 mr-2"/> Újranyitás</Button>
             )
+          )}
+
+          {(caseData?.owner_id === profile?.id || profile?.is_bureau_manager || (profile?.division === 'MCB' && profile?.is_bureau_commander)) && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm"
+                        className="ml-2 bg-red-950/50 border border-red-900 hover:bg-red-900 text-red-500 hover:text-white transition-all">
+                  <Trash2 className="w-4 h-4 mr-2"/> TÖRLÉS
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="bg-red-950 border border-red-500 text-white">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-2xl font-black uppercase">
+                    <AlertTriangle className="w-8 h-8 text-white"/> Végleges Törlés
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-red-100/80 font-bold">
+                    FIGYELEM! Ez a művelet visszavonhatatlan.
+                    <br/><br/>
+                    Törlődik az akta teljes tartalma:
+                    <ul className="list-disc list-inside mt-2 text-sm opacity-80">
+                      <li>Minden bizonyíték és kép</li>
+                      <li>Minden gyanúsított kapcsolat</li>
+                      <li>Az összes jegyzet és jelentés</li>
+                      <li>Minden kiadott elfogatóparancs</li>
+                    </ul>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel
+                    className="bg-black/20 border-white/10 text-white hover:bg-black/40">Mégse</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteCase} disabled={isDeleting}
+                                     className="bg-white text-red-900 font-black hover:bg-red-100">
+                    {isDeleting ? "Törlés folyamatban..." : "IGEN, TÖRLÖM AZ AKTÁT"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
         </div>
       </div>

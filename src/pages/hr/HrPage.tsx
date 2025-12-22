@@ -6,12 +6,11 @@ import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
+  Dialog, DialogContent, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
-import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/components/ui/tooltip";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
@@ -19,7 +18,7 @@ import {
 import {toast} from "sonner";
 import {
   CheckCircle2, Loader2, Trash2, Search, Crown, Star, Users,
-  CalendarClock, Award, ShieldCheck, Medal, PenTool, ShieldAlert, UserCog, Briefcase, Lock, Check, X, Power, UserPlus
+  CalendarClock, Award, ShieldCheck, Medal, PenTool, ShieldAlert, UserCog, Briefcase, Lock, Check, X
 } from "lucide-react";
 import {
   FACTION_RANKS, type Profile, type DepartmentDivision, type Qualification,
@@ -32,6 +31,7 @@ import {
 import {differenceInDays} from "date-fns";
 import {GiveAwardDialog} from "@/pages/profile/components/GiveAwardDialog";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 
 // --- KONFIGURÁCIÓ (Eredeti) ---
 const DIVISIONS: DepartmentDivision[] = ['TSB', 'SEB', 'MCB'];
@@ -507,7 +507,7 @@ function StaffSection({
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="h-9 w-9 border border-slate-700 shadow-sm">
-                        <AvatarImage src={user.avatar_url}/>
+                        <AvatarImage src={getOptimizedAvatarUrl(user.avatar_url, 100) || ""}/>
                         <AvatarFallback
                           className="bg-slate-900 text-slate-500 font-bold text-[10px]">{user.full_name.charAt(0)}</AvatarFallback>
                       </Avatar>
