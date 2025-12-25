@@ -10,7 +10,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   }
 });
 
-// --- RANG DEFINÍCIÓK A SZERVEROLDALRA (Hogy ne kelljen importálni a src-ből) ---
+// --- RANG DEFINÍCIÓK A SZERVEROLDALRA ---
 const EXECUTIVE_STAFF = ['Commander', 'Deputy Commander'];
 const COMMAND_STAFF = ['Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.'];
 const SUPERVISORY_STAFF = ['Sergeant II.', 'Sergeant I.'];
@@ -41,7 +41,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!userId) return res.status(400).json({error: 'User ID is required'});
 
-    // 1. Jelenlegi adatok lekérése
     const {data: currentUser, error: fetchError} = await supabaseAdmin
       .from('profiles')
       .select('*')
@@ -53,16 +52,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const updates: any = {};
     const notificationsToInsert = [];
 
-    // 2. RANGVÁLTÁS ÉS AUTOMATIKUS JOGOSULTSÁG KEZELÉS
     const nextRank = faction_rank || currentUser.faction_rank;
 
-    // Kiszámoljuk, mi legyen a system_role az (új) rang alapján
     const nextSystemRole = calculateSystemRole(nextRank);
 
-    // Logika: Frissítjük a system_role-t, ha:
-    // A) A felhasználó jelenleg 'pending' (most fogadjuk el)
-    // B) A rang változott (faction_rank a body-ban van)
-    // C) A jelenlegi role nem egyezik meg a ranghoz tartozó elvárt role-lal (szinkronizálás)
     if (
       currentUser.system_role === 'pending' ||
       faction_rank !== undefined ||
@@ -70,7 +63,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ) {
       updates.system_role = nextSystemRole;
 
-      // Ha 'pending' volt, akkor üdvözlő üzenet
       if (currentUser.system_role === 'pending') {
         notificationsToInsert.push({
           user_id: userId,
@@ -81,7 +73,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 3. EGYÉB ADATOK FRISSÍTÉSE
     if (division !== undefined) {
       updates.division = division;
       if (currentUser.division !== division) {
@@ -114,13 +105,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (is_bureau_commander !== undefined) updates.is_bureau_commander = is_bureau_commander;
     if (commanded_divisions !== undefined) updates.commanded_divisions = commanded_divisions;
 
-    // 4. ADATBÁZIS UPDATE
     if (Object.keys(updates).length > 0) {
       const {error: updateError} = await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
       if (updateError) throw updateError;
     }
 
-    // 5. ÉRTESÍTÉSEK KIKÜLDÉSE
     if (notificationsToInsert.length > 0) {
       const {error: notifError} = await supabaseAdmin.from('notifications').insert(notificationsToInsert);
       if (notifError) console.error("Notification error:", notifError);

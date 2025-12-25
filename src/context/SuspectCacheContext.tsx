@@ -7,13 +7,13 @@ import {OfficerProfileDialog} from '@/components/OfficerProfileDialog';
 
 interface SuspectCacheContextType {
   suspects: Suspect[];
-  caseMap: Record<string, string[]>; // SuspectID -> CaseID[]
-  cases: Record<string, string>; // CaseID -> CaseTitle
-  creators: Record<string, string>; // UserID -> FullName
+  caseMap: Record<string, string[]>;
+  cases: Record<string, string>;
+  creators: Record<string, string>;
   loading: boolean;
   refreshSuspects: (force?: boolean) => Promise<void>;
   deleteSuspectFromCache: (id: string) => void;
-  openSuspectId: (id: string) => void; // Ezzel bárhonnan megnyithatsz egy adatlapot
+  openSuspectId: (id: string) => void;
   openOfficerId: (id: string) => void;
 }
 
@@ -30,12 +30,11 @@ export function SuspectCacheProvider({children}: { children: React.ReactNode }) 
   const [activeOfficerId, setActiveOfficerId] = useState<string | null>(null);
   const [activeOfficer, setActiveOfficer] = useState<any | null>(null);
 
-  // Globális Modal State
   const [activeSuspectId, setActiveSuspectId] = useState<string | null>(null);
   const activeSuspect = suspects.find(s => s.id === activeSuspectId) || null;
 
   const refreshSuspects = useCallback(async (force = false) => {
-    // Cache érvényesség: 5 percig nem töltünk újra, ha van adat
+    // 5 perc cache
     if (!force && Date.now() - lastFetch < 1000 * 60 * 5 && suspects.length > 0) {
       return;
     }
@@ -48,8 +47,6 @@ export function SuspectCacheProvider({children}: { children: React.ReactNode }) 
       } = await supabase.from('suspects').select('*').order('created_at', {ascending: false});
       if (sError) throw sError;
 
-      // CSAK azokat az aktákat kérjük le, amihez van jogunk (az RLS elvileg szűri a cases táblát)
-      // A !inner join biztosítja, hogy csak létező és látható aktakapcsolatokat kapjunk
       const {data: cData} = await supabase.from('case_suspects').select('suspect_id, case_id, cases!inner(id, title, case_number)');
 
       const {data: pData} = await supabase.from('profiles').select('id, full_name');
@@ -59,7 +56,6 @@ export function SuspectCacheProvider({children}: { children: React.ReactNode }) 
       const newCreators: Record<string, string> = {};
 
       cData?.forEach((link: any) => {
-        // Ha a cases null (nincs jog), akkor ignoráljuk
         if (!link.cases) return;
 
         if (!newCaseMap[link.suspect_id]) newCaseMap[link.suspect_id] = [];
@@ -87,7 +83,6 @@ export function SuspectCacheProvider({children}: { children: React.ReactNode }) 
 
   const openOfficerId = async (id: string) => {
     setActiveOfficerId(id);
-    // Cache helyett itt realtime lekérjük, mert ritkábban kell
     const {data} = await supabase.from('profiles').select('*').eq('id', id).single();
     if (data) setActiveOfficer(data);
   };
@@ -96,7 +91,6 @@ export function SuspectCacheProvider({children}: { children: React.ReactNode }) 
     refreshSuspects();
   }, [refreshSuspects]);
 
-  // Event Listener a Custom Eventhez (Editorból való híváshoz)
   useEffect(() => {
     const handleOpenSuspect = (event: CustomEvent) => {
       if (event.detail?.id) openSuspectId(event.detail.id);
@@ -137,7 +131,7 @@ export function SuspectCacheProvider({children}: { children: React.ReactNode }) 
       }}>
       {children}
 
-      {/* GLOBÁLIS DIALOG - Bárhonnan elérhető */}
+      {/* GLOBÁLIS DIALOG */}
       <SuspectDetailDialog
         open={!!activeSuspect}
         onOpenChange={(o) => !o && setActiveSuspectId(null)}

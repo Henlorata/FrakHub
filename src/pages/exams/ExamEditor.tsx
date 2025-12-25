@@ -184,7 +184,6 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
                 />
               </div>
               <div className="space-y-2 flex flex-col justify-end pb-1">
-                {/* REQ GOMB (Switch helyett) */}
                 <div
                   onClick={() => onUpdate(q.id, 'is_required', !q.is_required)}
                   className={cn(
@@ -292,7 +291,6 @@ export function ExamEditor() {
   });
   const [questions, setQuestions] = useState<any[]>([]);
 
-  // LOGIKA: Eredeti jogosultság és betöltés
   useEffect(() => {
     if (!profile) return;
     if (!examId && !canCreateAnyExam(profile)) {
@@ -439,7 +437,7 @@ export function ExamEditor() {
     }));
   }, []);
 
-  // --- PONT ÉS SZÁZALÉK INPUT KEZELÉS (Validáció) ---
+  // --- PONT ÉS SZÁZALÉK INPUT KEZELÉS ---
   const handleNumberInput = (
     value: string,
     field: 'time_limit_minutes' | 'passing_percentage',
@@ -447,10 +445,8 @@ export function ExamEditor() {
     max: number
   ) => {
     let num = parseInt(value);
-    if (isNaN(num)) return; // Vagy set 0, ízlés szerint
+    if (isNaN(num)) return;
 
-    // Itt csak a state-et állítjuk, a clamp (korlátozás) blur-nál történik
-    // De a gépelést engedjük
     setExamData(prev => ({...prev, [field]: num}));
   };
 
@@ -698,7 +694,6 @@ export function ExamEditor() {
               </div>
             </div>
 
-            {/* TOGGLE BUTTONS (SWITCH HELYETT) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t border-slate-800">
               <SettingToggle
                 title="Publikus"
@@ -738,8 +733,6 @@ export function ExamEditor() {
         </TabsContent>
 
         <TabsContent value="questions" className="mt-0 space-y-6">
-          {/* ... (Kérdések tab tartalma változatlan maradt, csak a QuestionCard lett frissítve fent) ... */}
-          {/* ISMÉTLÉS ELKERÜLÉSE VÉGETT ITT A STANDARD KÓD JÖN, AMIT FENT MÁR DEFINIÁLTUNK */}
           {submissionCount > 0 && (
             <div
               className="bg-orange-950/20 border border-orange-900/50 p-4 rounded-lg flex items-start gap-4 animate-in slide-in-from-top-2">

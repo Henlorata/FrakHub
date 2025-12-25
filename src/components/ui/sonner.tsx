@@ -14,7 +14,7 @@ const Toaster = ({...props}: ToasterProps) => {
       className="toaster group font-sans"
       position="top-right"
       expand={true}
-      richColors={false} // Saját színeket használunk
+      richColors={false} // Saját színek
       toastOptions={{
         classNames: {
           toast: "group toast group-[.toaster]:bg-[#0b1221]/95 group-[.toaster]:backdrop-blur-md group-[.toaster]:text-foreground group-[.toaster]:border-l-4 group-[.toaster]:border-y group-[.toaster]:border-r group-[.toaster]:border-slate-800 group-[.toaster]:shadow-2xl group-[.toaster]:rounded-lg group-[.toaster]:p-4",

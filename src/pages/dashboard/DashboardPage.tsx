@@ -154,7 +154,7 @@ const ModuleCard = ({title, desc, icon: Icon, colorClass, onClick, locked = fals
   </div>
 );
 
-// --- ÚJ HIRDETÉS DIALÓGUS (JAVÍTOTT GOMBOKKAL) ---
+// --- HIRDETÉS DIALÓGUS ---
 const NewAnnouncementDialog = ({open, onOpenChange, onSuccess}: {
   open: boolean,
   onOpenChange: (o: boolean) => void,
@@ -594,11 +594,6 @@ export function DashboardPage() {
                 <div
                   className="absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-[#0b1221] to-transparent pointer-events-none"></div>
               </div>
-              <div className="p-3 border-t border-slate-800 bg-slate-900/50 text-center"><Button variant="ghost"
-                                                                                                 size="sm"
-                                                                                                 className="text-[10px] uppercase font-bold text-slate-400 hover:text-white w-full"
-                                                                                                 onClick={() => navigate('/resources')}>DOKUMENTÁCIÓS
-                TÁR MEGNYITÁSA</Button></div>
             </Card>
           </div>
         </div>

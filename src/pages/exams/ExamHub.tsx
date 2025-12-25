@@ -1,12 +1,12 @@
 import {useEffect, useState, useCallback, useRef} from "react";
 import {useAuth} from "@/context/AuthContext";
-import { ScrollArea } from "@/components/ui/scroll-area"
+import {ScrollArea} from "@/components/ui/scroll-area"
 import {Button} from "@/components/ui/button";
 import {Badge} from "@/components/ui/badge";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {
   FileText, History, Plus, AlertCircle, Search, ChevronRight, GraduationCap, PenTool,
-  Link as LinkIcon, Lock, X, UserPlus, Clock, Users, Trophy, LayoutGrid, Timer
+  Link as LinkIcon, Lock, X, UserPlus, Clock, Users, Trophy, LayoutGrid, Timer, Loader2
 } from "lucide-react";
 import {useNavigate} from "react-router-dom";
 import {FACTION_RANKS} from "@/types/supabase";
@@ -190,8 +190,7 @@ export function ExamHub() {
     const canTake = (() => {
       if (exam.type === 'trainee') return false;
       if (exam.type === 'deputy_i') return profile?.faction_rank === 'Deputy Sheriff Trainee';
-      if (canEditContent) return false;
-      return true;
+      return !canEditContent;
     })();
 
     return (
@@ -212,7 +211,7 @@ export function ExamHub() {
               className="px-2 py-0.5 bg-red-950/50 text-red-500 text-[10px] font-bold border border-red-900 rounded uppercase">INAKTÍV</div>}
           </div>
 
-          {/* FIX MAGASSÁGÚ CÍM (3 sornyi hely) */}
+          {/* FIX MAGASSÁGÚ CÍM */}
           <div className="h-[4.5rem] flex items-center">
             <h3
               className="text-lg font-black text-white group-hover:text-yellow-500 transition-colors uppercase leading-tight line-clamp-3 w-full"
@@ -438,7 +437,7 @@ export function ExamHub() {
             </TabsContent>
           )}
 
-          {/* 3. MINDEN ELŐZMÉNY (Admin DB View) - TELJES VERZIÓ */}
+          {/* 3. MINDEN ELŐZMÉNY */}
           {hasGradingRights && (
             <TabsContent value="all_history" className="flex-1 min-h-0 mt-0 flex flex-col">
               <div className="flex items-center gap-4 bg-[#0b1221] p-4 rounded-t-xl border border-slate-800 shrink-0">

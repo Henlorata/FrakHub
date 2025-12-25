@@ -5,16 +5,15 @@ import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {Send, MessageSquare, ShieldCheck} from "lucide-react";
+import {Send, MessageSquare, Lock} from "lucide-react";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
 import type {CaseNote} from "@/types/supabase";
 
-export function CaseChat({caseId}: { caseId: string }) {
+export function CaseChat({caseId, readOnly = false}: { caseId: string, readOnly?: boolean }) {
   const {supabase, user, profile} = useAuth();
   const [notes, setNotes] = React.useState<CaseNote[]>([]);
   const [message, setMessage] = React.useState("");
-  const viewportRef = React.useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -54,7 +53,7 @@ export function CaseChat({caseId}: { caseId: string }) {
   }, [caseId, supabase, user?.id]);
 
   const handleSend = async () => {
-    if (!message.trim()) return;
+    if (!message.trim() || readOnly) return;
     const content = message;
     setMessage("");
 
@@ -83,8 +82,8 @@ export function CaseChat({caseId}: { caseId: string }) {
           <MessageSquare className="w-3.5 h-3.5"/> Secure Comms
         </CardTitle>
         <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-          <span className="text-[9px] font-mono text-slate-500 uppercase">Encrypted</span>
+          <div className={`w-1.5 h-1.5 rounded-full ${readOnly ? 'bg-red-500' : 'bg-green-500 animate-pulse'}`}></div>
+          <span className="text-[9px] font-mono text-slate-500 uppercase">{readOnly ? 'ARCHIVED' : 'ENCRYPTED'}</span>
         </div>
       </CardHeader>
 
@@ -92,7 +91,6 @@ export function CaseChat({caseId}: { caseId: string }) {
       <div
         className="flex-1 min-h-0 relative bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-repeat opacity-90">
         <div className="absolute inset-0 bg-slate-950/90"></div>
-        {/* Darkener */}
         <ScrollArea className="h-full w-full relative z-10">
           <div className="p-4 space-y-4">
             {notes.length === 0 && <div
@@ -110,7 +108,6 @@ export function CaseChat({caseId}: { caseId: string }) {
                   </Avatar>
 
                   <div className={`max-w-[85%] relative`}>
-                    {/* Név és Rang */}
                     <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse text-right' : ''}`}>
                        <span
                          className={`text-[10px] font-bold uppercase tracking-wide ${isMe ? 'text-sky-400' : 'text-slate-400'}`}>
@@ -120,20 +117,17 @@ export function CaseChat({caseId}: { caseId: string }) {
                         className="text-[8px] font-mono text-slate-600 uppercase">{note.profile?.faction_rank}</span>
                     </div>
 
-                    {/* Buborék */}
                     <div className={`relative p-2.5 text-xs leading-relaxed border shadow-sm ${
                       isMe
                         ? 'bg-sky-900/20 text-sky-100 border-sky-500/30 rounded-tl-lg rounded-bl-lg rounded-br-lg'
                         : 'bg-slate-900 text-slate-300 border-slate-800 rounded-tr-lg rounded-br-lg rounded-bl-lg'
                     }`}>
-                      {/* Dekoratív sarok elem */}
                       <div
                         className={`absolute top-0 w-2 h-2 border-t border-current opacity-30 ${isMe ? 'right-0 border-r rounded-tr' : 'left-0 border-l rounded-tl'}`}></div>
 
                       <p className="whitespace-pre-wrap break-words font-mono text-[11px]">{note.content}</p>
                     </div>
 
-                    {/* Időbélyeg */}
                     <div className={`text-[9px] text-slate-600 mt-1 font-mono ${isMe ? 'text-right' : ''}`}>
                       {formatDistanceToNow(new Date(note.created_at), {locale: hu, addSuffix: true})}
                     </div>
@@ -147,17 +141,26 @@ export function CaseChat({caseId}: { caseId: string }) {
 
       {/* Input Area */}
       <div className="p-2 border-t border-sky-500/10 bg-slate-900/50 backdrop-blur shrink-0 flex gap-2">
-        <Input
-          value={message}
-          onChange={e => setMessage(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder="Üzenet küldése..."
-          className="bg-slate-950 border-slate-800 h-9 text-xs font-mono focus-visible:ring-sky-500/30 pl-3"
-        />
-        <Button size="icon" className="h-9 w-9 bg-sky-600 hover:bg-sky-500 shrink-0 border border-sky-400/20"
-                onClick={handleSend}>
-          <Send className="w-3.5 h-3.5"/>
-        </Button>
+        {readOnly ? (
+          <div
+            className="w-full h-9 flex items-center justify-center bg-slate-950/50 border border-slate-800 rounded text-xs text-slate-500 font-mono gap-2">
+            <Lock className="w-3 h-3"/> Kommunikáció lezárva
+          </div>
+        ) : (
+          <>
+            <Input
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSend()}
+              placeholder="Üzenet küldése..."
+              className="bg-slate-950 border-slate-800 h-9 text-xs font-mono focus-visible:ring-sky-500/30 pl-3"
+            />
+            <Button size="icon" className="h-9 w-9 bg-sky-600 hover:bg-sky-500 shrink-0 border border-sky-400/20"
+                    onClick={handleSend}>
+              <Send className="w-3.5 h-3.5"/>
+            </Button>
+          </>
+        )}
       </div>
     </Card>
   );

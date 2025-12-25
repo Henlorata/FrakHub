@@ -59,16 +59,3 @@ export interface ExamSubmission {
     badge_number: string;
   };
 }
-
-export interface ExamOverride {
-  id: string;
-  exam_id: string;
-  user_id: string;
-  access_type: 'allow' | 'deny';
-  created_by: string;
-  created_at: string;
-  profile?: {
-    full_name: string;
-    badge_number: string;
-  };
-}

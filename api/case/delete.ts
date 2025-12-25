@@ -10,14 +10,13 @@ cloudinary.config({
   secure: true,
 });
 
-// Helper: Public ID kinyerése URL-ből
 const getPublicIdFromUrl = (url: string) => {
   if (!url || !url.includes('cloudinary.com')) return null;
   try {
     const parts = url.split('/upload/');
     if (parts.length < 2) return null;
-    const pathPart = parts[1]; // pl: v1234/evidence/abc.jpg
-    const pathWithoutVersion = pathPart.replace(/^v\d+\//, ''); // evidence/abc.jpg
+    const pathPart = parts[1];
+    const pathWithoutVersion = pathPart.replace(/^v\d+\//, '');
     const publicId = pathWithoutVersion.substring(0, pathWithoutVersion.lastIndexOf('.'));
     return publicId;
   } catch (e) {
@@ -33,44 +32,87 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!caseId) return res.status(400).json({error: 'Hiányzó Case ID'});
 
-  // 1. Supabase kliens inicializálása a felhasználó tokenjével
-  // Ez azért fontos, hogy az RLS és a jogosultságok működjenek (ne törölhessen másét)
-  const supabase = createClient(
+  const supabaseUserClient = createClient(
     process.env.VITE_SUPABASE_URL!,
     process.env.VITE_SUPABASE_ANON_KEY!,
     {global: {headers: {Authorization: authHeader!}}}
   );
 
+  const supabaseAdmin = createClient(
+    process.env.VITE_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
+  );
+
   try {
-    // 2. Bizonyítékok lekérése TÖRLÉS ELŐTT
-    const {data: evidenceList, error: fetchError} = await supabase
-      .from('case_evidence')
-      .select('file_path')
-      .eq('case_id', caseId)
-      .eq('file_type', 'image');
+    const {data: {user}, error: authError} = await supabaseUserClient.auth.getUser();
+    if (authError || !user) return res.status(401).json({error: "Nem vagy bejelentkezve."});
 
-    if (fetchError) throw fetchError;
+    const {data: profile} = await supabaseAdmin.from('profiles').select('*').eq('id', user.id).single();
+    const {data: caseData} = await supabaseAdmin.from('cases').select('owner_id').eq('id', caseId).single();
 
-    // 3. Cloudinary Törlés (Ha van mit)
-    if (evidenceList && evidenceList.length > 0) {
-      const publicIds = evidenceList
-        .map(e => getPublicIdFromUrl(e.file_path))
-        .filter(id => id !== null) as string[];
+    if (!profile || !caseData) return res.status(404).json({error: "Adatok nem találhatók."});
 
-      if (publicIds.length > 0) {
-        await cloudinary.api.delete_resources(publicIds, {resource_type: 'image'});
-      }
+    const isOwner = caseData.owner_id === user.id;
+    const isManager = profile.is_bureau_manager;
+    const isCommander = profile.division === 'MCB' && profile.is_bureau_commander;
+
+    if (!isOwner && !isManager && !isCommander) {
+      return res.status(403).json({error: "Nincs jogosultságod törölni ezt az aktát."});
     }
 
-    // 4. Adatbázis Törlés (Most már jöhet az SQL függvény)
-    const {error: rpcError} = await supabase.rpc('delete_case_securely', {_case_id: caseId});
+    console.log(`[DELETE] Authorized delete for case: ${caseId} by user: ${user.id}`);
 
-    if (rpcError) throw rpcError;
+    // --- TÖRLÉSI FOLYAMAT  ---
 
-    return res.status(200).json({success: true, message: 'Akta és fájlok törölve.'});
+    const {data: evidenceList} = await supabaseAdmin
+      .from('case_evidence')
+      .select('file_path')
+      .eq('case_id', caseId);
+
+    // Cloudinary és Storage
+    const cloudinaryIds: string[] = [];
+    const supabasePaths: string[] = [];
+
+    if (evidenceList && evidenceList.length > 0) {
+      evidenceList.forEach(item => {
+        if (item.file_path && item.file_path.includes('cloudinary.com')) {
+          const pubId = getPublicIdFromUrl(item.file_path);
+          if (pubId) cloudinaryIds.push(pubId);
+        } else if (item.file_path) {
+          supabasePaths.push(item.file_path);
+        }
+      });
+    }
+
+    if (cloudinaryIds.length > 0) {
+      await cloudinary.api.delete_resources(cloudinaryIds, {resource_type: 'image'});
+    }
+
+    if (supabasePaths.length > 0) {
+      await supabaseAdmin.storage.from('case_evidence').remove(supabasePaths);
+    }
+
+    // ADATBÁZIS TÖRLÉS
+    await Promise.all([
+      supabaseAdmin.from('case_evidence').delete().eq('case_id', caseId),
+      supabaseAdmin.from('case_notes').delete().eq('case_id', caseId),
+      supabaseAdmin.from('case_suspects').delete().eq('case_id', caseId),
+      supabaseAdmin.from('case_collaborators').delete().eq('case_id', caseId),
+      supabaseAdmin.from('case_warrants').delete().eq('case_id', caseId),
+      supabaseAdmin.from('action_logs').delete().eq('case_id', caseId)
+    ]);
+
+    const {error: dbError} = await supabaseAdmin.from('cases').delete().eq('id', caseId);
+
+    if (dbError) {
+      console.error("[DELETE ERROR]", dbError);
+      throw new Error("Az akta törlése az adatbázisból sikertelen: " + dbError.message);
+    }
+
+    return res.status(200).json({success: true, message: 'Akta és minden adat véglegesen törölve.'});
 
   } catch (error: any) {
-    console.error("Delete Error:", error);
+    console.error("[DELETE CRITICAL ERROR]:", error);
     return res.status(500).json({error: error.message || 'Szerver hiba történt.'});
   }
 }

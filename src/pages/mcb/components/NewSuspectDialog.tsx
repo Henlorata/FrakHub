@@ -3,10 +3,8 @@ import {useAuth} from "@/context/AuthContext";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription
+  DialogFooter
 } from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -14,7 +12,7 @@ import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {toast} from "sonner";
-import {UserPlus, ScanFace, FileText} from "lucide-react";
+import {ScanFace, FileText} from "lucide-react";
 import type {Suspect} from "@/types/supabase";
 
 function NewSuspectDialog({open, onOpenChange, onSuccess}: {
@@ -52,7 +50,6 @@ function NewSuspectDialog({open, onOpenChange, onSuccess}: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="bg-[#050a14] border border-slate-800 text-white sm:max-w-lg p-0 overflow-hidden shadow-2xl">
-        {/* Tech Header */}
         <div
           className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center gap-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-16 h-full bg-gradient-to-l from-red-900/20 to-transparent"></div>

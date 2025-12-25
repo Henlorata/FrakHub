@@ -47,7 +47,7 @@ export function SuspectsPage() {
   const [suspectToDelete, setSuspectToDelete] = React.useState<Suspect | null>(null);
   const [isDeleteLoading, setIsDeleteLoading] = React.useState(false);
 
-  // Navigáció (Breadcrumbs)
+  // Navigáció
   const [path, setPath] = React.useState<FolderView[]>([{type: 'root', label: 'Adatbázis'}]);
   const currentFolder = path[path.length - 1];
 
@@ -137,7 +137,7 @@ export function SuspectsPage() {
     );
   };
 
-  // 2. High-Tech Suspect Card (ÚJ DESIGN)
+  // 2. High-Tech Suspect Card
   const SuspectCard = ({suspect}: { suspect: Suspect }) => {
     const statusColors = {
       wanted: {
@@ -226,7 +226,7 @@ export function SuspectsPage() {
             </div>
           </div>
 
-          {/* Törlés Gomb (Rejtett, csak hoverre) */}
+          {/* Törlés Gomb */}
           <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
             <Button
               variant="ghost" size="icon"
@@ -390,7 +390,7 @@ export function SuspectsPage() {
           </div>
         )}
 
-        {/* GYANÚSÍTOTTAK MEGJELENÍTÉSE (Ha mappában vagyunk vagy keresünk) */}
+        {/* GYANÚSÍTOTTAK MEGJELENÍTÉSE */}
         {(displayedSuspects && (currentFolder.id || search)) && (
           <div
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in zoom-in-95 duration-300">

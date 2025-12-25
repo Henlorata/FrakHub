@@ -1,12 +1,10 @@
 import * as React from "react";
 import {useAuth} from "@/context/AuthContext";
-import {Card, CardContent} from "@/components/ui/card";
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
 import {Badge} from "@/components/ui/badge";
-import {ShieldAlert, Loader2, UserCog, CheckCircle, Search} from "lucide-react";
+import {ShieldAlert, Loader2, UserCog, Search} from "lucide-react";
 import {toast} from "sonner";
 import {Navigate} from "react-router-dom";
-import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 
 // --- RANK SÚLYOZÁS A SORRENDEZÉSHEZ ---

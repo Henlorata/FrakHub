@@ -1,12 +1,11 @@
 import {Outlet, Navigate, useLocation, Link} from "react-router-dom";
 import {useAuth} from "@/context/AuthContext";
-import {Loader2, Shield, UserCog, LayoutGrid, UserX, Fingerprint, Database, ChevronRight} from "lucide-react";
+import {Loader2, UserCog, LayoutGrid, UserX, Fingerprint} from "lucide-react";
 import {cn} from "@/lib/utils";
 
 // --- MCB SPECIFIC BACKGROUND EFFECT ---
 const McbNetworkEffect = () => (
   <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-    {/* Kékes "Network" háló overlay */}
     <div className="absolute inset-0 opacity-[0.08]"
          style={{
            backgroundImage: 'radial-gradient(circle, #0ea5e9 1px, transparent 1px)',
@@ -14,7 +13,6 @@ const McbNetworkEffect = () => (
            maskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 80%)'
          }}>
     </div>
-    {/* Egyedi fényeffekt a jobb sarokban */}
     <div
       className="absolute top-0 right-0 w-[500px] h-[500px] bg-sky-900/10 blur-[100px] rounded-full mix-blend-screen"></div>
   </div>
@@ -36,7 +34,6 @@ export function McbLayout() {
   const mcbLinks = [
     {path: "/mcb", label: "Áttekintés", icon: LayoutGrid, exact: true},
     {path: "/mcb/suspects", label: "Gyanúsítottak", icon: UserX},
-    // Ide jöhetnek majd további modulok később (pl. Bizonyíték raktár)
   ];
 
   if (isAdmin) {

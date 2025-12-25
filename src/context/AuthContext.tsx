@@ -1,6 +1,7 @@
 import React, {createContext, useContext, useEffect, useState, useRef} from 'react';
-import {createClient, type Session, type User, SupabaseClient} from '@supabase/supabase-js';
+import {type Session, type User, SupabaseClient} from '@supabase/supabase-js';
 import type {Database, Profile} from '../types/supabase';
+import {supabase} from '../lib/supabaseClient';
 
 interface AuthContextType {
   session: Session | null;
@@ -14,8 +15,6 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
 export function AuthProvider({children}: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -37,7 +36,14 @@ export function AuthProvider({children}: { children: React.ReactNode }) {
       setProfile(null);
       profileRef.current = null;
       setLoading(false);
-      localStorage.removeItem(`sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`);
+      if (supabaseUrl) {
+        try {
+          const hostname = new URL(supabaseUrl).hostname.split('.')[0];
+          localStorage.removeItem(`sb-${hostname}-auth-token`);
+        } catch (e) {
+          console.warn("Could not clear local storage token manually", e);
+        }
+      }
     }
   };
 
@@ -52,8 +58,10 @@ export function AuthProvider({children}: { children: React.ReactNode }) {
       if (error) {
         if (error.code === 'PGRST116') await signOut();
       } else {
-        setProfile(data);
-        profileRef.current = data;
+        if (JSON.stringify(profileRef.current) !== JSON.stringify(data)) {
+          setProfile(data);
+          profileRef.current = data;
+        }
       }
     } catch (error) {
       console.error('Kritikus profil hiba:', error);
@@ -82,29 +90,23 @@ export function AuthProvider({children}: { children: React.ReactNode }) {
 
     const {data: {subscription}} = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
-      setTimeout(async () => {
-        if (event === 'SIGNED_OUT') {
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-          profileRef.current = null;
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        profileRef.current = null;
+        setLoading(false);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          fetchProfile(session.user.id);
+        } else {
           setLoading(false);
-          return;
         }
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setSession(session);
-          setUser(session?.user ?? null);
-          if (session?.user) {
-            // Mindig frissítünk belépéskor
-            await fetchProfile(session.user.id);
-          } else {
-            setLoading(false);
-          }
-        }
-      }, 0);
+      }
     });
 
-    // ÚJ: Realtime feliratkozás a SAJÁT profil változásaira
     let profileSubscription: any = null;
     if (user?.id) {
       profileSubscription = supabase
@@ -115,7 +117,6 @@ export function AuthProvider({children}: { children: React.ReactNode }) {
           table: 'profiles',
           filter: `id=eq.${user.id}`
         }, (payload) => {
-          console.log("Profil frissült realtime:", payload.new);
           setProfile(payload.new as Profile);
         })
         .subscribe();

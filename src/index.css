@@ -6,20 +6,19 @@
 /* --- FŐ TÉMA KONFIGURÁCIÓ --- */
 :root {
     --radius: 0.5rem;
-    --background: #02040a; /* Mély űr sötétkék/fekete */
+    --background: #02040a;
 
     /* SFSD Színek */
     --sfsd-gold: #eab308;
     --sfsd-blue: #3b82f6;
 
-    /* Status Színek (CSS Változókban, hogy könnyen cserélhető legyen) */
-    --status-color: #eab308; /* Alapból sárga */
+    --status-color: #eab308;
     --status-glow: rgba(234, 179, 8, 0.5);
 }
 
 /* --- UI ELEMEK --- */
 
-/* Modern Status Line (Csak felül) */
+/* Modern Status Line */
 .status-line-top {
     position: fixed;
     top: 0;
@@ -34,19 +33,19 @@
 
 /* Glassmorphism Panel (Sidebar & Cards) */
 .glass-panel {
-    background: rgba(10, 15, 28, 0.7); /* Sötét, enyhén áttetsző */
+    background: rgba(10, 15, 28, 0.7);
     backdrop-filter: blur(12px);
     border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* Nav Link Hover Effect (Modern) */
+/* Nav Link Hover Effect */
 .nav-item-active {
     background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
     border-left: 3px solid var(--status-color);
     color: white;
 }
 
-/* Ambient Background Animation (Lassú fények) */
+/* Ambient Background Animation */
 @keyframes ambient-float {
     0%, 100% {
         transform: translate(0, 0);
@@ -74,17 +73,17 @@
 }
 
 ::-webkit-scrollbar-track {
-    background: transparent; /* Vagy nagyon halvány sötét */
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(30, 41, 59, 0.8); /* Slate-800 */
+    background: rgba(30, 41, 59, 0.8);
     border-radius: 99px;
     border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(56, 189, 248, 0.4); /* Sky-400 áttetszően */
+    background: rgba(56, 189, 248, 0.4);
 }
 
 ::-webkit-scrollbar-corner {
@@ -97,7 +96,6 @@
     scrollbar-color: rgba(56, 189, 248, 0.3) transparent;
 }
 
-/* --- SHERIFF BACKGROUND V2 ANIMATIONS --- */
 
 /* --- BACKGROUND ANIMÁCIÓK (SheriffBackground) --- */
 
@@ -174,9 +172,6 @@
     scrollbar-width: none;
 }
 
-/* ========================================= */
-/* SFSD CUSTOM ANIMATIONS              */
-/* ========================================= */
 
 /* --- SHARED / COMMON --- */
 
@@ -218,7 +213,7 @@
     }
 }
 
-/* --- LOGIN PAGE ANIMÁCIÓK (Data Center Style) --- */
+/* --- LOGIN PAGE ANIMÁCIÓK --- */
 
 /* Padló Rács (Floor Grid) */
 @keyframes grid-move-floor {
@@ -245,7 +240,6 @@
 }
 
 /* Vízszintes Adatcsíkok (Data Beams) */
-/* Vízszintes Adatcsíkok (Data Beams) - JAVÍTVA */
 @keyframes beam-slide-right {
     0% {
         transform: translateX(-100vw);
@@ -291,7 +285,7 @@
 
 /* --- REGISTER PAGE ANIMÁCIÓK (Tactical & Patrol) --- */
 
-/* 1. Keresőfény Mozgása (Nagyobb ívben) */
+/* 1. Keresőfény Mozgása */
 @keyframes search-patrol {
     0% {
         left: 10%;
@@ -320,7 +314,7 @@
     }
 }
 
-/* 2. Háttérben lévő piros-kék fények "lélegzése" */
+/* 2. Háttérben lévő piros-kék fények */
 @keyframes ambient-pulse {
     0%, 100% {
         opacity: 0.15;
@@ -328,11 +322,10 @@
     50% {
         opacity: 0.3;
     }
-    /* Soha nem tűnik el teljesen, de nem is vakít */
 }
 
 /* 3. Eső */
-/* Eső Zuhanás (Természetes sebesség) */
+/* Eső Zuhanás */
 @keyframes rain-fall-natural {
     0% {
         background-position: 0 0;
@@ -340,7 +333,6 @@
     100% {
         background-position: -20px 100vh;
     }
-    /* Enyhébb dőlés */
 }
 
 /* KÖZÖS ALAP */
@@ -355,37 +347,29 @@
     pointer-events: none;
 }
 
-/* TÁVOLI ESŐ (Háttérben, alig látható, sűrűbb) */
+/* TÁVOLI ESŐ */
 .rain-layer-far {
-    background-size: 400px 400px; /* Ritkítottuk (előzőleg 300px volt) */
-    opacity: 0.25; /* Halványabb */
-    animation: rain-fall-natural 1.5s linear infinite; /* Lassú */
-
-    /* Enyhe nyújtás: Csepp forma, nem csík */
+    background-size: 400px 400px;
+    opacity: 0.25;
+    animation: rain-fall-natural 1.5s linear infinite;
     transform: rotate(-10deg) scaleY(4);
 }
 
-/* KÖZELI ESŐ (Előtérben, látható csíkok, de nem durvák) */
+/* KÖZELI ESŐ */
 .rain-layer-near {
-    background-size: 800px 800px; /* Sokkal ritkább (előzőleg 500-600px volt) -> KEVESEBB CSEPP */
-    opacity: 0.5; /* Nem vakít, belesimul a fénybe */
-
-    /* Természetesebb zuhanás (előzőleg 0.4s volt) -> LASSABB */
+    background-size: 800px 800px;
+    opacity: 0.5;
     animation: rain-fall-natural 0.8s linear infinite;
-
-    /* Közepes nyújtás: Egyértelmű csík, de nem lézerkard (előzőleg 30 volt) -> FINOMABB */
     transform: rotate(-10deg) scaleY(12);
-
-    /* Lágyabb élek */
     filter: blur(0.5px);
 }
 
-/* Pára a földön (Opcionális, maradhat halványan) */
+/* Pára a földön */
 .rain-mist {
     position: absolute;
     inset: 0;
     background-image: url("https://www.transparenttextures.com/patterns/noise.png");
-    opacity: 0.05; /* Nagyon finom */
+    opacity: 0.05;
     mix-blend-mode: overlay;
     animation: rain-fall-natural 0.5s steps(3) infinite;
 }
@@ -400,50 +384,47 @@
     }
 }
 
-/* ALAP HÁTTÉR (Aszfalt) */
+/* ALAP HÁTTÉR */
 .night-asphalt-bg {
     position: absolute;
     inset: 0;
-    background-color: #080a0f; /* Kékes-feketés alap */
+    background-color: #080a0f;
     background-image: url("https://www.transparenttextures.com/patterns/asfalt-dark.png");
     background-size: 500px 500px;
     z-index: 0;
 }
 
-/* ÚJ ELEM: Ambient Járőr Fények (Hogy ne legyen üres a sötét) */
+/* Ambient Járőr Fények */
 .ambient-patrol-bg {
     position: absolute;
     inset: 0;
     z-index: 1;
     pointer-events: none;
-    /* Két hatalmas elmosott folt: Balra lent Piros, Jobbra fent Kék */
     background: radial-gradient(circle at 10% 90%, rgba(220, 38, 38, 0.4), transparent 50%),
     radial-gradient(circle at 90% 10%, rgba(37, 99, 235, 0.4), transparent 50%);
-    filter: blur(80px); /* Nagyon elmosva, mintha ködös lenne */
-    animation: ambient-pulse 8s ease-in-out infinite; /* Lassú lüktetés */
+    filter: blur(80px);
+    animation: ambient-pulse 8s ease-in-out infinite;
     mix-blend-mode: screen;
 }
 
-/* KERESŐFÉNY KONTÉNER - NAGYOBB MÉRET */
+/* KERESŐFÉNY KONTÉNER */
 .searchlight-container {
     position: absolute;
-    /* Növeltük a méretet, így kevesebb a holttér */
     width: 100vw;
     height: 100vw;
-    max-width: 1200px; /* Desktop limit is nagyobb */
+    max-width: 1200px;
     max-height: 1200px;
 
-    animation: search-patrol 35s infinite ease-in-out; /* Lassabb, mert nagyobb a terület */
+    animation: search-patrol 35s infinite ease-in-out;
     will-change: left, top, transform;
     pointer-events: none;
     z-index: 10;
 
-    /* Lágy szélű maszk */
     -webkit-mask-image: radial-gradient(circle, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, rgba(0, 0, 0, 0) 65%);
     mask-image: radial-gradient(circle, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, rgba(0, 0, 0, 0) 65%);
 }
 
-/* Réteg 1: Megvilágítás (Sárga) */
+/* Réteg 1: Megvilágítás */
 .searchlight-illumination {
     position: absolute;
     inset: 0;
@@ -453,7 +434,7 @@
             rgba(234, 179, 8, 0.15) 35%,
             transparent 70%
     );
-    mix-blend-mode: screen; /* Világosít, nem éget */
+    mix-blend-mode: screen;
 }
 
 /* Réteg 2: Volumetrikus Köd */
@@ -469,7 +450,7 @@
     mix-blend-mode: overlay;
 }
 
-/* Réteg 3: Eső (Fényes) */
+/* Réteg 3: Eső */
 .rain-layer {
     position: absolute;
     inset: -100%;
@@ -483,7 +464,7 @@
     mix-blend-mode: color-dodge;
 }
 
-/* 2. SEB: DRONE SCANNER (Vörös lézer) */
+/* 2. SEB: DRONE SCANNER */
 @keyframes scan-down {
     0% {
         transform: translateY(-100%);
@@ -517,7 +498,7 @@
     opacity: 0.1;
 }
 
-/* 3. MCB: DIGITAL NETWORK (Kék hálózat) */
+/* 3. MCB: DIGITAL NETWORK */
 @keyframes network-drift {
     0% {
         background-position: 0% 0%;

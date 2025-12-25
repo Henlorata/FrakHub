@@ -3,7 +3,7 @@ import {useParams, useNavigate} from "react-router-dom";
 import {useAuth} from "@/context/AuthContext";
 import {supabase} from "@/lib/supabaseClient";
 import {ExamRunner} from "./ExamRunner";
-import {Loader2, AlertTriangle, Clock, ShieldAlert, FileX, ArrowLeft, Lock} from "lucide-react";
+import {Loader2, AlertTriangle, Clock, ArrowLeft, Lock} from "lucide-react";
 import type {Exam} from "@/types/exams";
 import {Card, CardContent} from "@/components/ui/card";
 import {formatDistanceToNow} from "date-fns";

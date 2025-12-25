@@ -26,14 +26,15 @@ import {
 } from "@/types/supabase";
 import {
   cn, canEditUser, getAllowedPromotionRanks, canAwardRibbon,
-  isExecutive, isSupervisory, isCommand
+  isExecutive, isSupervisory, isCommand,
+  canManageUserRank, canManageUserDivision, canManageUserQualification, getDepartmentLabel
 } from "@/lib/utils";
 import {differenceInDays} from "date-fns";
 import {GiveAwardDialog} from "@/pages/profile/components/GiveAwardDialog";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 
-// --- KONFIGURÁCIÓ (Eredeti) ---
+// --- KONFIGURÁCIÓ ---
 const DIVISIONS: DepartmentDivision[] = ['TSB', 'SEB', 'MCB'];
 const QUALIFICATIONS: Qualification[] = ['SAHP', 'AB', 'MU', 'GW', 'FAB', 'SIB', 'TB'];
 const INVESTIGATOR_RANKS: InvestigatorRank[] = ['Investigator III.', 'Investigator II.', 'Investigator I.'];
@@ -45,7 +46,6 @@ const SUPERVISORY_RANKS = ['Sergeant II.', 'Sergeant I.'];
 const HIGH_COMMAND_RANKS = [...EXECUTIVE_RANKS, ...COMMAND_RANKS];
 
 // --- SEGÉDKOMPONENS: TOGGLE CARD ---
-// Jól látható, nagy gomb a beállításokhoz
 const ToggleCard = ({title, description, active, onChange, colorClass, icon: Icon, disabled}: any) => (
   <div
     onClick={() => !disabled && onChange(!active)}
@@ -53,8 +53,8 @@ const ToggleCard = ({title, description, active, onChange, colorClass, icon: Ico
       "flex items-center justify-between p-4 rounded-lg border-2 transition-all cursor-pointer select-none group",
       disabled ? "opacity-50 cursor-not-allowed border-slate-800 bg-slate-900/50" :
         active
-          ? cn("bg-slate-900/80 shadow-[0_0_15px_rgba(0,0,0,0.5)]", colorClass) // Aktív
-          : "bg-slate-950 border-slate-700 hover:border-slate-500 hover:bg-slate-900" // Inaktív (de jól látható)
+          ? cn("bg-slate-900/80 shadow-[0_0_15px_rgba(0,0,0,0.5)]", colorClass)
+          : "bg-slate-950 border-slate-700 hover:border-slate-500 hover:bg-slate-900"
     )}
   >
     <div className="flex items-center gap-3">
@@ -100,38 +100,21 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
     }
   }, [user, open]);
 
-  // --- EREDETI LOGIKA VISSZAÁLLÍTVA ---
-  const isFieldDisabled = (field: 'rank' | 'division' | 'div_rank' | 'qual' | 'manager') => {
-    if (!currentUser || !user) return true;
-    if (currentUser.is_bureau_manager) return false;
-
-    const hasStaffRights = (isSupervisory(currentUser) || isCommand(currentUser) || isExecutive(currentUser)) && canEditUser(currentUser, user);
-
-    switch (field) {
-      case 'rank':
-        return (isExecutive(currentUser) && currentUser.id === user.id) ? false : !canEditUser(currentUser, user);
-      case 'division':
-        if (user.is_bureau_commander && !currentUser.is_bureau_manager) return true;
-        if (currentUser.is_bureau_commander && (user.division === currentUser.division || user.division === 'TSB')) return false;
-        return !hasStaffRights;
-      case 'div_rank':
-        return !(currentUser.is_bureau_commander && user.division === currentUser.division) && !hasStaffRights;
-      case 'qual':
-        if (currentUser.is_bureau_commander && user.division === currentUser.division) return false;
-        if (currentUser.commanded_divisions && currentUser.commanded_divisions.length > 0) return false;
-        return !hasStaffRights;
-      case 'manager':
-        return !currentUser.is_bureau_manager;
-      default:
-        return true;
-    }
-  };
+  // JOGOSULTSÁGOK
+  const hasRankRight = currentUser && user ? canManageUserRank(currentUser, user) : false;
+  const hasDivisionRight = currentUser && user ? canManageUserDivision(currentUser, user) : false;
+  const isManager = currentUser?.is_bureau_manager;
 
   const allowedRanks = currentUser ? getAllowedPromotionRanks(currentUser) : [];
+
   const allowedDivisions = React.useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.is_bureau_manager || isSupervisory(currentUser) || isCommand(currentUser) || isExecutive(currentUser)) return DIVISIONS;
-    if (currentUser.is_bureau_commander) return DIVISIONS.filter(d => d === 'TSB' || d === currentUser.division);
+    if (currentUser.is_bureau_manager) return DIVISIONS;
+    if (currentUser.is_bureau_commander && currentUser.division) {
+      return DIVISIONS.filter(d => d === 'TSB' || d === currentUser.division);
+    }
+    if (isSupervisory(currentUser) || isCommand(currentUser) || isExecutive(currentUser)) return DIVISIONS;
+
     return [];
   }, [currentUser]);
 
@@ -139,29 +122,51 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
     if (!user || !currentUser) return;
     setLoading(true);
     try {
-      const {error: rpcError} = await supabase.rpc('hr_update_user_profile_v2', {
-        _target_user_id: user.id, _full_name: formData.full_name, _badge_number: formData.badge_number,
-        _faction_rank: formData.faction_rank, _division: formData.division, _division_rank: formData.division_rank,
-        _qualifications: formData.qualifications
-      });
+      const updates: any = {
+        _target_user_id: user.id,
+        _full_name: formData.full_name,
+        _badge_number: formData.badge_number,
+        _division_rank: formData.division_rank,
+      };
+
+      if (hasRankRight) updates._faction_rank = formData.faction_rank;
+      else updates._faction_rank = user.faction_rank;
+
+      if (hasDivisionRight) updates._division = formData.division;
+      else updates._division = user.division;
+
+      const finalQuals = QUALIFICATIONS.reduce((acc, q) => {
+        const hasRight = canManageUserQualification(currentUser, user, q);
+        const isSetInForm = formData.qualifications?.includes(q);
+        const isSetOriginally = user.qualifications?.includes(q);
+
+        if (hasRight) {
+          if (isSetInForm) acc.push(q);
+        } else {
+          if (isSetOriginally) acc.push(q);
+        }
+        return acc;
+      }, [] as Qualification[]);
+      updates._qualifications = finalQuals;
+
+      const {error: rpcError} = await supabase.rpc('hr_update_user_profile_v2', updates);
       if (rpcError) throw rpcError;
 
-      if (!isFieldDisabled('manager')) {
-        const updates: any = {};
-        if (formData.is_bureau_manager !== user.is_bureau_manager) updates.is_bureau_manager = formData.is_bureau_manager;
-        if (formData.is_bureau_commander !== user.is_bureau_commander) updates.is_bureau_commander = formData.is_bureau_commander;
+      if (isManager) {
+        const roleUpdates: any = {};
+        if (formData.is_bureau_manager !== user.is_bureau_manager) roleUpdates.is_bureau_manager = formData.is_bureau_manager;
+        if (formData.is_bureau_commander !== user.is_bureau_commander) roleUpdates.is_bureau_commander = formData.is_bureau_commander;
 
         const oldCmd = JSON.stringify(user.commanded_divisions?.sort() || []);
         const newCmd = JSON.stringify(formData.commanded_divisions?.sort() || []);
-        if (oldCmd !== newCmd) updates.commanded_divisions = formData.commanded_divisions;
+        if (oldCmd !== newCmd) roleUpdates.commanded_divisions = formData.commanded_divisions;
 
-        if (Object.keys(updates).length > 0) {
-          const response = await fetch('/api/admin/update-role', {
+        if (Object.keys(roleUpdates).length > 0) {
+          await fetch('/api/admin/update-role', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}`},
-            body: JSON.stringify({userId: user.id, ...updates})
+            body: JSON.stringify({userId: user.id, ...roleUpdates})
           });
-          if (!response.ok) throw new Error("Hiba a vezetői jogkörök mentésekor");
         }
       }
       toast.success("Sikeres mentés!");
@@ -176,21 +181,14 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
 
   const toggleQual = (q: Qualification) => {
     if (!currentUser || !user) return;
-    let canToggle = false;
-    if (currentUser.is_bureau_manager) canToggle = true;
-    else if (currentUser.is_bureau_commander && user.division === currentUser.division) canToggle = true;
-    else if (currentUser.commanded_divisions?.includes(q)) canToggle = true;
-    else if ((isSupervisory(currentUser) || isCommand(currentUser) || isExecutive(currentUser)) && canEditUser(currentUser, user)) canToggle = true;
-
-    if (user.commanded_divisions?.includes(q) && !currentUser.is_bureau_manager) canToggle = false;
-    if (!canToggle) return;
+    if (!canManageUserQualification(currentUser, user, q)) return;
 
     const current = formData.qualifications || [];
     setFormData({...formData, qualifications: current.includes(q) ? current.filter(x => x !== q) : [...current, q]});
   };
 
   const toggleCommandedDivision = (q: Qualification) => {
-    if (isFieldDisabled('manager')) return;
+    if (!isManager) return;
     const currentCmd = formData.commanded_divisions || [];
     const currentQuals = formData.qualifications || [];
     if (currentCmd.includes(q)) {
@@ -242,24 +240,36 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
                 className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Teljes Név</Label><Input
                 value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})}
                 className="bg-slate-950 border-slate-700 h-10 font-bold text-sm focus-visible:ring-blue-500/50"
-                disabled={isFieldDisabled('rank')}/></div>
+                disabled={!hasRankRight}/></div>
               <div className="space-y-1.5"><Label
                 className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Jelvényszám</Label><Input
                 value={formData.badge_number} onChange={e => setFormData({...formData, badge_number: e.target.value})}
                 className="bg-slate-950 border-slate-700 h-10 font-mono text-yellow-500 font-bold tracking-wider focus-visible:ring-blue-500/50"
-                disabled={isFieldDisabled('rank')}/></div>
+                disabled={!hasRankRight}/></div>
             </div>
+
+            {/* RANG */}
             <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Rendfokozat</Label>
-              <Select value={formData.faction_rank}
-                      onValueChange={(val: any) => setFormData({...formData, faction_rank: val})}
-                      disabled={isFieldDisabled('rank')}>
-                <SelectTrigger className="bg-slate-950 border-slate-700 h-10 font-medium"><SelectValue/></SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white max-h-[300px]">
-                  {allowedRanks.map(r => <SelectItem key={r} value={r}
-                                                     className="font-mono text-xs focus:bg-blue-900/30 focus:text-blue-200">{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider flex items-center gap-2">
+                Rendfokozat {!hasRankRight && <Lock className="w-3 h-3 text-red-500"/>}
+              </Label>
+              {hasRankRight ? (
+                <Select value={formData.faction_rank}
+                        onValueChange={(val: any) => setFormData({...formData, faction_rank: val})}>
+                  <SelectTrigger
+                    className="bg-slate-900 border-slate-700 h-10 font-medium"><SelectValue/></SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-white max-h-[300px]">
+                    {allowedRanks.map(r => <SelectItem key={r} value={r}
+                                                       className="font-mono text-xs focus:bg-blue-900/30 focus:text-blue-200">{r}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="relative opacity-60">
+                  <Input value={user.faction_rank} readOnly
+                         className="bg-slate-950 border-slate-800 text-slate-400 pl-9 cursor-not-allowed"/>
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3"/>
+                </div>
+              )}
             </div>
           </section>
 
@@ -270,39 +280,55 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
               <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Osztály Beosztás</h4>
             </div>
             <div className="grid grid-cols-2 gap-5 p-5 bg-slate-950/40 rounded-xl border border-slate-800/60">
+
+              {/* FŐ OSZTÁLY */}
               <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Fő Osztály</Label>
-                <Select value={formData.division} onValueChange={(val: any) => setFormData({
-                  ...formData,
-                  division: val,
-                  division_rank: val === 'TSB' ? null : formData.division_rank
-                })} disabled={isFieldDisabled('division')}>
-                  <SelectTrigger
-                    className="bg-slate-900 border-slate-700 h-10 text-sm font-bold"><SelectValue/></SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                    {allowedDivisions.map(d => {
-                      let label = d;
-                      if (d === 'TSB') {
-                        const r = formData.faction_rank;
-                        if (r && EXECUTIVE_RANKS.includes(r)) label = "Executive Staff (TSB)";
-                        else if (r && COMMAND_RANKS.includes(r)) label = "Command Staff (TSB)";
-                        else if (r && SUPERVISORY_RANKS.includes(r)) label = "Supervisory Staff (TSB)";
-                        else label = "Field Staff (TSB)";
-                      }
-                      return <SelectItem key={d} value={d}>{label}</SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
+                <Label
+                  className="text-[10px] uppercase font-bold text-slate-500 tracking-wider flex items-center gap-2">
+                  Fő Osztály {!hasDivisionRight && <Lock className="w-3 h-3 text-red-500"/>}
+                </Label>
+                {hasDivisionRight ? (
+                  <Select value={formData.division} onValueChange={(val: any) => setFormData({
+                    ...formData,
+                    division: val,
+                    division_rank: val === 'TSB' ? null : formData.division_rank
+                  })}>
+                    <SelectTrigger
+                      className="bg-slate-900 border-slate-700 h-10 text-sm font-bold"><SelectValue/></SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                      {allowedDivisions.map(d => {
+                        let label = d;
+                        if (d === 'TSB') {
+                          const r = formData.faction_rank;
+                          if (r && EXECUTIVE_RANKS.includes(r)) label = "Executive Staff (TSB)";
+                          else if (r && COMMAND_RANKS.includes(r)) label = "Command Staff (TSB)";
+                          else if (r && SUPERVISORY_RANKS.includes(r)) label = "Supervisory Staff (TSB)";
+                          else label = "Field Staff (TSB)";
+                        } else if (d === 'MCB') label = "Major Crimes Bureau";
+                        else if (d === 'SEB') label = "Special Enforcement Bureau";
+
+                        return <SelectItem key={d} value={d}>{label}</SelectItem>;
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="relative opacity-60">
+                    <Input value={getDepartmentLabel(user.division || "Nincs")} readOnly
+                           className="bg-slate-950 border-slate-800 text-slate-400 pl-9 cursor-not-allowed"/>
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3"/>
+                  </div>
+                )}
               </div>
+
+              {/* ALOSZTÁLY RANG */}
               <div className="space-y-1.5">
-                {/* ... Alosztály Rang select marad a régi ... */}
                 <Label
                   className={cn("text-[10px] uppercase font-bold text-slate-500 tracking-wider", formData.division === 'TSB' ? 'opacity-50' : '')}>Alosztály
                   Rang</Label>
                 <Select value={formData.division_rank || "none"} onValueChange={(val) => setFormData({
                   ...formData,
                   division_rank: val === "none" ? null : val as any
-                })} disabled={formData.division === 'TSB' || isFieldDisabled('div_rank')}>
+                })} disabled={formData.division === 'TSB' || !hasDivisionRight}>
                   <SelectTrigger className="bg-slate-900 border-slate-700 h-10 text-sm"><SelectValue
                     placeholder="Nincs"/></SelectTrigger>
                   <SelectContent className="bg-slate-900 border-slate-800 text-white">
@@ -317,41 +343,49 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
             </div>
           </section>
 
-          {/* 3. KÉPESÍTÉSEK (JÓL LÁTHATÓ GOMBOKKAL) */}
+          {/* 3. KÉPESÍTÉSEK */}
           <section className="space-y-4">
             <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
               <Medal className="w-4 h-4 text-slate-400"/>
               <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Képesítések</h4>
             </div>
-            <div className={cn("flex flex-wrap gap-3", isFieldDisabled('qual') && 'opacity-60 pointer-events-none')}>
+            <div className="flex flex-wrap gap-3">
               {QUALIFICATIONS.map(q => {
                 const isSelected = formData.qualifications?.includes(q);
-                const canToggleSpecific = !isFieldDisabled('qual') || (currentUser?.commanded_divisions?.includes(q));
+                const hasRight = currentUser && user ? canManageUserQualification(currentUser, user, q) : false;
 
-                // Explicit gomb kinézet
-                return (
-                  <div key={q} onClick={() => canToggleSpecific && toggleQual(q)}
-                       className={cn(
-                         "flex items-center gap-2 px-3 py-2 rounded border-2 cursor-pointer transition-all select-none",
-                         !canToggleSpecific ? "opacity-50 cursor-not-allowed bg-slate-950 border-slate-800 text-slate-600" :
+                if (hasRight) {
+                  return (
+                    <div key={q} onClick={() => toggleQual(q)}
+                         className={cn(
+                           "flex items-center gap-2 px-3 py-2 rounded border-2 cursor-pointer transition-all select-none",
                            isSelected
                              ? "bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-900/50" // AKTÍV
                              : "bg-slate-900 border-slate-600 text-slate-400 hover:border-slate-400 hover:text-white" // INAKTÍV
-                       )}
-                  >
-                    <div
-                      className={cn("w-3 h-3 rounded-full border flex items-center justify-center", isSelected ? "border-white bg-white text-blue-600" : "border-slate-500 bg-transparent")}>
-                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-current"/>}
+                         )}
+                    >
+                      <div
+                        className={cn("w-3 h-3 rounded-full border flex items-center justify-center", isSelected ? "border-white bg-white text-blue-600" : "border-slate-500 bg-transparent")}>
+                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-current"/>}
+                      </div>
+                      <span className="text-xs font-bold uppercase tracking-wider">{q}</span>
                     </div>
-                    <span className="text-xs font-bold uppercase tracking-wider">{q}</span>
-                  </div>
-                );
+                  );
+                } else {
+                  return (
+                    <div key={q}
+                         className="flex items-center gap-2 px-3 py-2 rounded border-2 border-transparent bg-slate-950/50 text-slate-600 opacity-60 cursor-not-allowed select-none">
+                      <Lock className="w-3 h-3"/>
+                      <span className="text-xs font-bold uppercase tracking-wider">{q}</span>
+                    </div>
+                  );
+                }
               })}
             </div>
           </section>
 
-          {/* 4. VEZETŐI JOGKÖRÖK (CSAK MANAGER) - NAGY KÁRTYÁKKAL */}
-          {!isFieldDisabled('manager') && (
+          {/* 4. VEZETŐI JOGKÖRÖK */}
+          {isManager && (
             <section className="space-y-4 pt-4">
               <div className="p-6 border border-yellow-600/30 rounded-xl bg-yellow-950/10 space-y-6 relative">
                 <div className="flex items-center gap-2 border-b border-yellow-600/20 pb-3">
@@ -360,7 +394,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
                     (MANAGER ONLY)</h4>
                 </div>
 
-                {/* Global Roles - CARD STYLE TOGGLES */}
+                {/* Global Roles */}
                 <div className="space-y-3">
                   <ToggleCard
                     title="BUREAU MANAGER"
@@ -416,7 +450,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
           className="p-5 bg-slate-950 border-t border-slate-800 flex justify-between gap-2 shrink-0 relative z-20">
           <Button type="button" variant="ghost" size="sm" onClick={onKickRequest}
                   className="text-red-500 hover:text-red-400 hover:bg-red-950/20 border border-transparent hover:border-red-900/50"
-                  disabled={loading || (isFieldDisabled('rank') && !(currentUser?.is_bureau_commander && currentUser?.division === user.division))}>
+                  disabled={loading || (!hasRankRight && !isManager)}>
             <Trash2 className="w-4 h-4 mr-2"/> ELBOCSÁTÁS
           </Button>
           <div className="flex gap-3">
@@ -489,11 +523,7 @@ function StaffSection({
 
               let showEdit = false;
               if (currentUser) {
-                if (currentUser.is_bureau_manager) showEdit = true;
-                else if (isExecutive(currentUser)) showEdit = true;
-                else if (currentUser.is_bureau_commander) showEdit = true;
-                else if (currentUser.commanded_divisions && currentUser.commanded_divisions.length > 0) showEdit = true;
-                else if (!isMe && canEditUser(currentUser, user)) showEdit = true;
+                if (canEditUser(currentUser, user)) showEdit = true;
               }
 
               const canAward = currentUser && canAwardRibbon(currentUser) && !isMe;
@@ -530,7 +560,7 @@ function StaffSection({
                   </TableCell>
                   <TableCell>
                     {user.division !== 'TSB' ? (
-                      // EGYÉB OSZTÁLYOK (MCB, SEB) - Marad a régi
+                      // EGYÉB OSZTÁLYOK (MCB, SEB)
                       <div
                         className={cn(
                           "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border",
@@ -541,7 +571,7 @@ function StaffSection({
                         {user.division} {user.division_rank ? `• ${user.division_rank.split(' ')[0]}` : ''}
                       </div>
                     ) : (
-                      // TSB (Field Staff) - Itt jön a változtatás
+                      // TSB (Field Staff)
                       <>
                         {(() => {
                           if (EXECUTIVE_RANKS.includes(user.faction_rank)) {
@@ -731,7 +761,6 @@ export function HrPage() {
 
         <div className="relative z-10 flex items-center gap-4">
           {canManageRecruitment && (
-            // TGF GOMB CSERE: EGYÉRTELMŰ BUTTON
             <Button onClick={toggleRecruitment}
                     className={cn("h-10 px-4 font-bold border-2 transition-all uppercase tracking-wider text-xs",
                       recruitmentOpen ? "bg-green-600 hover:bg-green-500 border-green-400 text-white shadow-[0_0_15px_rgba(34,197,94,0.4)]" : "bg-red-600 hover:bg-red-500 border-red-400 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)]")}>

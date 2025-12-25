@@ -3,7 +3,7 @@ import {useAuth} from "@/context/AuthContext";
 import {Card} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
 import {ScrollArea} from "@/components/ui/scroll-area";
-import {Bell, Check, Trash2, Info, AlertTriangle, CheckCircle2, Eye, EyeOff, Radio, Inbox, Filter} from "lucide-react";
+import {Bell, Check, Trash2, Info, AlertTriangle, CheckCircle2, Eye, EyeOff, Radio, Inbox} from "lucide-react";
 import {toast} from "sonner";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
@@ -20,7 +20,6 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import {SheriffBackground} from "@/components/SheriffBackground";
-import {Badge} from "@/components/ui/badge";
 import {cn} from "@/lib/utils";
 
 // --- STÍLUSOK ---

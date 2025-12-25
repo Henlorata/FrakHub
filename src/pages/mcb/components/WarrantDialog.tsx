@@ -3,10 +3,8 @@ import {useAuth} from "@/context/AuthContext";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription
+  DialogFooter
 } from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -15,8 +13,6 @@ import {Textarea} from "@/components/ui/textarea";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {toast} from "sonner";
 import {Loader2, MapPin, User, CheckSquare, Square, FileWarning, AlertTriangle, ShieldAlert} from "lucide-react";
-import {ScrollArea} from "@/components/ui/scroll-area";
-import {Badge} from "@/components/ui/badge";
 import {cn} from "@/lib/utils";
 
 interface WarrantDialogProps {
@@ -106,7 +102,7 @@ export function WarrantDialog({open, onOpenChange, caseId, suspects, onSuccess}:
             status: 'pending'
           });
         }
-      } else { // Search
+      } else {
         if (selectedSuspectId && selectedSuspectId !== 'unknown') {
           if (selectedPropertyIds.length > 0) {
             for (const propId of selectedPropertyIds) {

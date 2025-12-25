@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
-import { toast } from "sonner";
-import type { PenalCodeItem, Tetel } from "@/types/penalcode";
+import {useState, useEffect, useMemo} from "react";
+import {toast} from "sonner";
+import type {PenalCodeItem, Tetel} from "@/types/penalcode";
 
 // --- TÍPUSOK ---
 export interface SelectedItem extends PenalCodeItem {
@@ -33,14 +33,18 @@ export function usePenalCalculator() {
     try {
       const item = localStorage.getItem(STORAGE_KEY_HISTORY);
       return item ? JSON.parse(item) : [];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   });
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     try {
       const item = localStorage.getItem(STORAGE_KEY_FAVORITES);
       return item ? JSON.parse(item) : [];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   });
 
   useEffect(() => {
@@ -76,7 +80,7 @@ export function usePenalCalculator() {
       maxJail = Math.floor(maxJail / 2);
     }
 
-    return { minFine, maxFine, minJail, maxJail, warnings };
+    return {minFine, maxFine, minJail, maxJail, warnings};
   }, [cart, isAccomplice]);
 
   useEffect(() => {
@@ -85,10 +89,8 @@ export function usePenalCalculator() {
   }, [stats.maxFine, stats.maxJail]);
 
   // --- MŰVELETEK ---
-  // Elfogadunk PenalCodeItem-et vagy Tetel-t is, és konvertáljuk
   const addItem = (item: PenalCodeItem | Tetel) => {
     const newItem: SelectedItem = {
-      // Alapértelmezett értékek, ha Tetel-ként jönne
       id: (item as any).id || `gen-${Date.now()}-${Math.random()}`,
       kategoria_nev: (item as any).kategoria_nev || "Egyéb",
       isWarning: (item as any).isWarning || false,
@@ -109,7 +111,7 @@ export function usePenalCalculator() {
     if (delta > 0) {
       const itemToClone = cart.find(c => c.id === itemId);
       if (itemToClone) {
-        const newItem = { ...itemToClone, uniqueId: crypto.randomUUID() };
+        const newItem = {...itemToClone, uniqueId: crypto.randomUUID()};
         setCart(prev => [...prev, newItem]);
       }
     } else {

@@ -21,7 +21,6 @@ import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
 import {SheriffBackground} from "@/components/SheriffBackground";
 import {cn} from "@/lib/utils";
-// ÚJ IMPORTOK
 import {uploadToCloudinary, getOptimizedAvatarUrl, getPublicIdFromUrl} from "@/lib/cloudinary";
 
 // --- TURBO COUNTER ---
@@ -81,9 +80,8 @@ const TiltCard = ({children, className}: { children: React.ReactNode, className?
   );
 };
 
-// --- FINGERPRINT SCANNER (FRISSÍTVE) ---
+// --- FINGERPRINT SCANNER ---
 const FingerprintScanner = ({colorClass, profile}: { colorClass: string, profile: any }) => {
-  // Optimalizált URL használata (400px elég ide)
   const avatarSrc = getOptimizedAvatarUrl(profile.avatar_url, 400) || profile.avatar_url;
 
   return (
@@ -104,7 +102,7 @@ const FingerprintScanner = ({colorClass, profile}: { colorClass: string, profile
         </div>
       </div>
 
-      {/* Hover: Profilkép (FRISSÍTVE) */}
+      {/* Hover: Profilkép */}
       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-slate-900">
         <Avatar className="w-full h-full rounded-none">
           <AvatarImage src={avatarSrc || ""} className="object-cover"/>
@@ -245,7 +243,7 @@ export function ProfilePage() {
   const {alertLevel} = useSystemStatus();
 
   const [isUpdating, setIsUpdating] = React.useState(false);
-  const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false); // ÚJ STATE
+  const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
   const [stats, setStats] = React.useState({serviceDays: 0, closedCases: 0});
   const [ribbons, setRibbons] = React.useState<any[]>([]);
   const [notifications, setNotifications] = React.useState<any[]>([]);
@@ -299,7 +297,6 @@ export function ProfilePage() {
       const {error} = await supabase.rpc('change_user_name', {_new_name: newName});
       if (error) throw error;
       toast.success("Név frissítve!");
-      // window.location.reload(); // Context realtime frissítés miatt elvileg nem kell
     } catch (e: any) {
       toast.error("Hiba: " + e.message);
     } finally {
@@ -331,12 +328,10 @@ export function ProfilePage() {
 
     try {
       // 1. RÉGI KÉP TÖRLÉSE (Garbage Collection)
-      // Ha van jelenleg Cloudinary-s profilképe, azt töröljük le, mielőtt újat teszünk fel.
       const currentAvatarUrl = profile.avatar_url;
       const oldPublicId = getPublicIdFromUrl(currentAvatarUrl);
 
       if (oldPublicId) {
-        // API hívás a szerver felé (nem várjuk meg feltétlenül a végét, mehet a háttérben is, de biztonságosabb megvárni)
         await fetch('/api/delete-image', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -355,14 +350,7 @@ export function ProfilePage() {
 
       if (error) throw error;
 
-      // 4. SIKER
       toast.success("Profilkép sikeresen cserélve!", {id: toastId});
-
-      // Frissítsük a lokális state-et is azonnal, hogy ne kelljen várni a realtime-ra
-      // (Bár az AuthContext majd felülírja, de jobb a felhasználói élmény)
-      // setAvatarUrl(secureUrl); // Ha van ilyen state, vagy:
-      // window.location.reload(); // Végső esetben, de elvileg a context realtime megoldja
-
     } catch (error: any) {
       console.error(error);
       toast.error("Hiba történt", {id: toastId, description: error.message});
@@ -373,7 +361,6 @@ export function ProfilePage() {
   };
 
   if (!profile) return null;
-  const isCommandStaff = ['Captain', 'Lieutenant', 'Commander', 'Deputy'].some(r => profile.faction_rank.includes(r));
   const showAwardButton = isExecutive(profile);
   const isVeteran = stats.serviceDays > 365;
 
@@ -411,7 +398,7 @@ export function ProfilePage() {
   };
   const theme = getTheme();
 
-  // --- ID KÁRTYA (Nagyított) ---
+  // --- ID KÁRTYA ---
   const IDCard = () => (
     <TiltCard
       className={`relative overflow-hidden rounded-xl border-2 ${theme.border} ${theme.shadow} shadow-2xl ${theme.bg} p-8 w-full min-h-[400px] flex flex-col justify-between group select-none`}>
@@ -534,7 +521,7 @@ export function ProfilePage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
-          {/* BAL OLDAL (6 col) */}
+          {/* BAL OLDAL */}
           <div className="lg:col-span-6 space-y-8 animate-in slide-in-from-left-8 duration-700 delay-100">
             <IDCard/>
 
@@ -558,7 +545,7 @@ export function ProfilePage() {
             <SystemMonitor alertLevel={alertLevel}/>
           </div>
 
-          {/* JOBB OLDAL (6 col) */}
+          {/* JOBB OLDAL */}
           <div className="lg:col-span-6 space-y-6 animate-in slide-in-from-right-8 duration-700 delay-200">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <NotificationFeed notifications={notifications} markRead={markRead}/>
@@ -654,7 +641,7 @@ export function ProfilePage() {
                 </div>
               </TabsContent>
 
-              {/* SETTINGS TAB: ÚJ KÉPFELTÖLTÉS FUNKCIÓVAL */}
+              {/* SETTINGS TAB */}
               <TabsContent value="settings" className="mt-0">
                 <Card className="bg-slate-900/60 border-slate-800 backdrop-blur-md shadow-xl">
                   <CardHeader>
@@ -663,7 +650,7 @@ export function ProfilePage() {
                   </CardHeader>
                   <CardContent className="space-y-8">
 
-                    {/* ÚJ: PROFILKÉP CSERE */}
+                    {/* PROFILKÉP CSERE */}
                     <div
                       className="space-y-3 p-5 rounded-xl bg-slate-950/50 border border-slate-800/50 relative overflow-hidden group">
                       <div className="absolute top-0 right-0 p-4 opacity-50"><Camera
@@ -671,7 +658,6 @@ export function ProfilePage() {
                       <Label className="text-xs uppercase text-slate-500 font-bold tracking-wider relative z-10">Profilkép
                         Kezelés</Label>
                       <div className="flex items-center gap-4 relative z-10">
-                        {/* Előnézet: Optimized URL-t használja */}
                         <Avatar className="w-16 h-16 border-2 border-slate-700">
                           <AvatarImage src={getOptimizedAvatarUrl(profile.avatar_url, 150) || ""}
                                        className="object-cover"/>
@@ -696,7 +682,6 @@ export function ProfilePage() {
                                 disabled={isUploadingAvatar}
                               />
                             </label>
-                            {/* Opcionális: Törlés gombot is lehetne ide tenni később */}
                           </div>
                           <p className="text-[10px] text-slate-500 mt-2 font-mono">
                             Támogatott formátumok: JPG, PNG, WEBP. Max 5MB.

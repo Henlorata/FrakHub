@@ -5,7 +5,6 @@ import {Card, CardContent, CardHeader, CardTitle, CardDescription} from "@/compo
 import {Button} from "@/components/ui/button";
 import {Badge} from "@/components/ui/badge";
 import {Textarea} from "@/components/ui/textarea";
-import {Switch} from "@/components/ui/switch";
 import {Label} from "@/components/ui/label";
 import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
@@ -13,7 +12,7 @@ import {Separator} from "@/components/ui/separator";
 import {toast} from "sonner";
 import {
   Loader2, CheckCircle2, XCircle, ArrowLeft, User, Clock, ShieldAlert,
-  ChevronLeft, ChevronRight, Eye, Target, Bot, PenLine, EyeOff, Hourglass
+  ChevronLeft, ChevronRight, Target, Bot, PenLine, EyeOff, Hourglass
 } from "lucide-react";
 import type {ExamSubmission} from "@/types/exams";
 import {formatDistanceToNow} from "date-fns";
@@ -60,7 +59,7 @@ export function ExamGradingPage() {
   // Javítás state-ek
   const [gradingNotes, setGradingNotes] = useState("");
   const [feedbackVisible, setFeedbackVisible] = useState(false);
-  const [banDuration, setBanDuration] = useState("0"); // Stringként tároljuk a Select miatt
+  const [banDuration, setBanDuration] = useState("0");
   const [isSaving, setIsSaving] = useState(false);
 
   // Manuális pontozás state
@@ -111,7 +110,6 @@ export function ExamGradingPage() {
           navigate('/exams');
           return;
         }
-        // ------------------------------
 
         const {
           data: ansData,
@@ -514,7 +512,7 @@ export function ExamGradingPage() {
                     </div>
                   </div>
 
-                  {/* ÚJ: TILTÁS BEÁLLÍTÁS */}
+                  {/* TILTÁS BEÁLLÍTÁS */}
                   <div className="space-y-1.5 pt-2 border-t border-slate-800">
                     <Label className="text-xs text-slate-400 flex items-center gap-2"><Hourglass
                       className="w-3 h-3"/> Újrapróbálkozás Tiltása (Bukás esetén)</Label>

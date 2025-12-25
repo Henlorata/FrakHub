@@ -2,9 +2,7 @@ import {BrowserRouter, Routes, Route, Navigate} from "react-router-dom";
 import {AuthProvider} from "@/context/AuthContext";
 import {SystemStatusProvider} from "@/context/SystemStatusContext";
 import {Toaster} from "@/components/ui/sonner";
-// Layout
 import {AppLayout} from "@/layouts/AppLayout";
-// Oldalak
 import {LoginPage} from "@/pages/auth/LoginPage";
 import {RegisterPage} from "@/pages/auth/RegisterPage";
 import {DashboardPage} from "@/pages/dashboard/DashboardPage";
@@ -14,7 +12,6 @@ import {CaseDetailPage} from "@/pages/mcb/CaseDetailPage";
 import {ProfilePage} from "@/pages/profile/ProfilePage";
 import {LogisticsPage} from "@/pages/logistics/LogisticsPage";
 import {FinancePage} from "@/pages/logistics/FinancePage";
-import {ResourcesPage} from "@/pages/resources/ResourcesPage";
 import {CalculatorPage} from "@/pages/calculator/CalculatorPage";
 import {AdminPage} from "@/pages/mcb/AdminPage";
 import {McbLayout} from "@/layouts/McbLayout";
@@ -41,7 +38,6 @@ function App() {
                 <Route path="/login" element={<LoginPage/>}/>
                 <Route path="/register" element={<RegisterPage/>}/>
 
-                {/* PUBLIKUS VIZSGA ÚTVONAL (Layouton kívül) */}
                 <Route path="/exam/public/:examId" element={<PublicExamPage/>}/>
 
                 <Route element={<AppLayout/>}>
@@ -64,7 +60,6 @@ function App() {
                   <Route path="/exams/grading/:submissionId" element={<ExamGradingPage/>}/>
                   <Route path="/logistics" element={<LogisticsPage/>}/>
                   <Route path="/finance" element={<FinancePage/>}/>
-                  <Route path="/resources" element={<ResourcesPage/>}/>
                   <Route path="/profile" element={<ProfilePage/>}/>
                   <Route path="/calculator" element={<CalculatorPage/>}/>
                 </Route>

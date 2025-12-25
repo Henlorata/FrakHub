@@ -5,16 +5,12 @@ import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {toast} from "sonner";
 import {
-  Loader2, Shield, LogIn, Lock, Mail,
-  Server, Eye, EyeOff, FileKey2, ShieldCheck, Scale, Wifi
+  Loader2, Shield, LogIn, Lock, Server, Eye, EyeOff, FileKey2, ShieldCheck, Scale, Wifi
 } from "lucide-react";
-// Importáljuk a hook-ot a méretezéshez
 import {useMediaQuery} from "@/hooks/use-media-query";
 
-// --- LOGIN HÁTTÉR: SECURE GATEWAY (Clean Version) ---
+// --- LOGIN HÁTTÉR ---
 const SecureGatewayBackground = ({children}: { children: React.ReactNode }) => {
-  // Reszponzív logikák:
-  // Ha a magasság kisebb mint 800px VAGY a szélesség kisebb mint 1024px, akkor "Kompakt Mód".
   const isHeightSafe = useMediaQuery("(min-height: 800px)");
   const isWidthSafe = useMediaQuery("(min-width: 1024px)");
   const isDesktopMode = isHeightSafe && isWidthSafe;
@@ -115,7 +111,6 @@ const SecureGatewayBackground = ({children}: { children: React.ReactNode }) => {
       )}
 
       {/* TARTALOM (CARD) */}
-      {/* Mobilon picit feljebb toljuk (pb-12), hogy a lenti sáv ne takarja ki */}
       <div className={`relative z-20 w-full max-w-md px-4 ${!isDesktopMode ? 'pb-12' : ''}`}>
         {children}
       </div>

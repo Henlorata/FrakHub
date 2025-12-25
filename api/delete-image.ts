@@ -4,8 +4,8 @@ import {v2 as cloudinary} from 'cloudinary';
 // Cloudinary konfigurálása a szerver oldalon
 cloudinary.config({
   cloud_name: process.env.VITE_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,       // Ezt add hozzá a .env-hez!
-  api_secret: process.env.CLOUDINARY_API_SECRET, // Ezt add hozzá a .env-hez!
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
   secure: true,
 });
 
@@ -21,9 +21,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Törlés hívása a Cloudinary Admin API-n keresztül
     const result = await cloudinary.uploader.destroy(publicId, {
-      invalidate: true, // CDN cache ürítése is
+      invalidate: true, // CDN cache
       resource_type: 'image'
     });
 

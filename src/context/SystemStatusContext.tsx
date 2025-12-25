@@ -47,7 +47,6 @@ export function SystemStatusProvider({children}: { children: React.ReactNode }) 
         {event: 'UPDATE', schema: 'public', table: 'system_status', filter: 'id=eq.global'},
         (payload) => {
           if (payload.new.alert_level) setAlertLevelState(payload.new.alert_level as AlertLevelId);
-          // Ellenőrizzük, hogy létezik-e a mező a payloadban
           if (Object.prototype.hasOwnProperty.call(payload.new, 'recruitment_open')) {
             setRecruitmentOpen(payload.new.recruitment_open);
             toast.info(`Létszámstop státusz frissült!`);
@@ -63,11 +62,10 @@ export function SystemStatusProvider({children}: { children: React.ReactNode }) 
 
   const setAlertLevel = async (level: AlertLevelId) => {
     if (!user) return;
-    // Mindent elküldünk, hogy az insert ne haljon el hiányzó mező miatt
     const {error} = await supabase.from('system_status').upsert({
       id: 'global',
       alert_level: level,
-      recruitment_open: recruitmentOpen, // Meglévő érték
+      recruitment_open: recruitmentOpen,
       updated_by: user.id,
       updated_at: new Date().toISOString()
     });
@@ -79,11 +77,10 @@ export function SystemStatusProvider({children}: { children: React.ReactNode }) 
     if (!user) return;
     const newState = !recruitmentOpen;
 
-    // Ha a DB-ben még nincs recruitment_open oszlop, ez 400-at dobhat.
     try {
       const {error} = await supabase.from('system_status').upsert({
         id: 'global',
-        alert_level: alertLevel, // Meglévő érték
+        alert_level: alertLevel,
         recruitment_open: newState,
         updated_by: user.id,
         updated_at: new Date().toISOString()
