@@ -8,8 +8,7 @@ import {
 import {toast} from "sonner";
 import {
   Loader2, Shield, User, Mail, Lock, Hash,
-  Building2, Fingerprint, Activity, AlertTriangle,
-  ScanLine, Target, Network
+  Building2, Fingerprint, Activity, ScanLine, Target, Network
 } from "lucide-react";
 import {FACTION_RANKS, type DepartmentDivision} from "@/types/supabase";
 import {useAuth} from "@/context/AuthContext";
@@ -37,8 +36,6 @@ const DynamicSheriffBackground = ({
 }) => {
   const [time, setTime] = React.useState(new Date());
 
-  // ENYHÍTETT MÉRETKORLÁTOK:
-  // Már 1024px széles (iPad Pro / kis laptop) és 700px magas kijelzőn is bekapcsol a Desktop mód.
   const isHeightSafe = useMediaQuery("(min-height: 700px)");
   const isWidthSafe = useMediaQuery("(min-width: 1024px)");
   const isDesktopMode = isHeightSafe && isWidthSafe;
@@ -101,7 +98,7 @@ const DynamicSheriffBackground = ({
               {/* Füst/Köd */}
               <div className="volumetric-fog"></div>
 
-              {/* --- BALANCED RAIN --- */}
+              {/* BALANCED RAIN */}
               <div className="rain-base rain-layer-far"></div>
               <div className="rain-base rain-layer-near"></div>
             </div>
@@ -126,7 +123,7 @@ const DynamicSheriffBackground = ({
       {/* --- DESKTOP WIDGETEK --- */}
       {isDesktopMode && (
         <>
-          {/* 1. TOP RIGHT: BODYCAM (Marad) */}
+          {/* 1. TOP RIGHT: BODYCAM */}
           <div
             className="absolute top-8 right-8 z-20 flex flex-col items-end gap-1 opacity-90 pointer-events-none select-none font-mono">
             <div
@@ -142,7 +139,7 @@ const DynamicSheriffBackground = ({
             </div>
           </div>
 
-          {/* 2. BOTTOM LEFT: MAINFRAME STATUS (Áthelyezve ide!) */}
+          {/* 2. BOTTOM LEFT: MAINFRAME STATUS */}
           <div className="absolute bottom-8 right-8 z-0 select-none opacity-80">
             <div
               className={`flex flex-col gap-1 ${accentColor} font-mono text-sm font-bold tracking-wider drop-shadow-md border-l-2 border-current/30 pl-3`}>
@@ -174,7 +171,7 @@ const DynamicSheriffBackground = ({
         </div>
       )}
 
-      {/* TARTALOM (Standard középre igazítás) */}
+      {/* TARTALOM */}
       <div
         className={`relative z-10 w-full max-w-6xl p-4 transition-all duration-700 ${!isDesktopMode ? 'pt-20' : 'pt-4'}`}>
         {children}
@@ -201,11 +198,6 @@ const FingerprintScanner = ({active, colorClass}: { active: boolean, colorClass:
 export function RegisterPage() {
   const navigate = useNavigate();
   const {supabase} = useAuth();
-
-  // ITT IS LAZÍTOTTUK A FELTÉTELEKET:
-  const isHeightSafe = useMediaQuery("(min-height: 700px)");
-  const isWidthSafe = useMediaQuery("(min-width: 1024px)");
-  const isDesktopMode = isHeightSafe && isWidthSafe;
 
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -453,7 +445,7 @@ export function RegisterPage() {
         {/* JOBB OLDAL: KÁRTYA ÉS FEJLÉC */}
         <div className="hidden lg:flex flex-col items-center justify-center perspective-1000 relative">
 
-          {/* ÚJ FEJLÉC A KÁRTYA FELETT */}
+          {/* FEJLÉC */}
           <div className="mb-6 text-center select-none">
             <div className={`${theme.authColor} font-bold text-2xl tracking-tighter uppercase font-mono`}>
               San Fierro Sheriff's Dept
@@ -464,7 +456,7 @@ export function RegisterPage() {
             </div>
           </div>
 
-          {/* A KÁRTYA */}
+          {/* KÁRTYA */}
           <div className={`
                 relative w-[500px] h-[310px] rounded-xl overflow-hidden transition-all duration-700
                 ${theme.cardBg} border-2 ${theme.cardBorder}

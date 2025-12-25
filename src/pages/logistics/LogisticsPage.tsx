@@ -1,10 +1,9 @@
 import * as React from "react";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
-import {Card, CardContent} from "@/components/ui/card";
 import {Badge} from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
+  Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
@@ -12,8 +11,8 @@ import {Textarea} from "@/components/ui/textarea";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {toast} from "sonner";
 import {
-  Plus, CheckSquare, XSquare, Search, Loader2, Car, Truck, Ship, Plane,
-  AlertTriangle, ShieldCheck, Clock, Box, Container, Wrench, ChevronRight, Hash
+  Plus, CheckSquare, XSquare, Loader2, Car, Truck, Ship, Plane,
+  AlertTriangle, ShieldCheck, Box, Container, Wrench, Hash
 } from "lucide-react";
 import type {VehicleRequest} from "@/types/supabase";
 import {NewVehicleRequestDialog} from "./components/NewVehicleRequestDialog";

@@ -15,7 +15,7 @@ import {
 import {cn} from "@/lib/utils";
 import {SheriffBackground} from "@/components/SheriffBackground";
 
-// BŐVÍTETT SABLONOK (Eredeti szövegezés)
+// SABLONOK
 const TEMPLATES = {
   trafficStop: `A mai napon járőrszolgálatot teljesítettem, amikor figyelmes lettem egy [JÁRMŰ TÍPUS]-ra, amely [OK, PL. ÁTHAJTOTT A PIROSON]. A járművet fény- és hangjelzés kíséretében félreállítottam a [HELYSZÍN]-en. A sofőrt igazoltattam, az iratokat rendben találtam.`,
   ticket: `Az igazoltatás során megállapítottam, hogy a sofőr [VÉTSÉG OKA]. A vétséget közöltem vele, amit elismert. Helyszíni bírságot állítottam ki [ÖSSZEG] értékben, majd útjára engedtem.`,
@@ -88,9 +88,8 @@ export function ReportGeneratorPage() {
     return `${cleanVal} hónap`;
   };
 
-  // --- SZIGORÚ INPUT VALIDÁCIÓ ---
+  // --- INPUT VALIDÁCIÓ ---
   const handleNumberOrDashChange = (field: string, value: string) => {
-    // Csak számok vagy egyetlen "-" jel
     if (/^$|^-?$|^\d+$/.test(value)) {
       setFormData(prev => ({...prev, [field]: value}));
     }
@@ -100,7 +99,7 @@ export function ReportGeneratorPage() {
     setFormData(prev => ({...prev, [field]: value}));
   };
 
-  // --- GENERÁTOROK (EREDETI) ---
+  // --- GENERÁTOROK ---
   const generateFolderCode = () => {
     return `[CENTER][IMG]https://i.imgur.com/ClUbwZP.png[/IMG]
 [SIZE=5][FONT=book antiqua]San Fierro Sheriff's Department - Personnel Administration Bureau: ${folderName} jelentési mappája[/FONT][/SIZE]
@@ -248,7 +247,6 @@ ${formData.description}
                   className="w-3 h-3 mr-1.5"/> Törlés</Button>
               </div>
 
-              {/* JAVÍTÁS: A ScrollArea szülője flex-1 és overflow-hidden, hogy működjön a görgetés */}
               <div className="flex-1 overflow-hidden relative">
                 <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
                   <div className="p-6 space-y-8">
@@ -352,7 +350,7 @@ ${formData.description}
                       </CardContent>
                     </Card>
 
-                    {/* IV. LEÍRÁS (KÁRTYÁBAN, JÓL LÁTHATÓAN) */}
+                    {/* IV. LEÍRÁS */}
                     <Card className="bg-[#0b1221] border border-slate-800">
                       <CardHeader
                         className="pb-3 border-b border-slate-800/50 bg-slate-950/30 flex flex-row items-center justify-between py-3">

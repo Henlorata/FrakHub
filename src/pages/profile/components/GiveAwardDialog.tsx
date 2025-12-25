@@ -1,6 +1,6 @@
 import {useState, useEffect} from "react";
 import {useAuth} from "@/context/AuthContext";
-import {Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter} from "@/components/ui/dialog";
+import {Dialog, DialogContent, DialogTitle, DialogFooter} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Label} from "@/components/ui/label";
@@ -52,7 +52,6 @@ export function GiveAwardDialog({open, onOpenChange, targetUserId, targetUserNam
       <DialogContent
         className="bg-[#0b1221] border border-yellow-600/30 text-white sm:max-w-md p-0 overflow-hidden shadow-[0_0_40px_rgba(234,179,8,0.15)]">
 
-        {/* Tech Header */}
         <div className="bg-yellow-600/10 border-b border-yellow-600/20 p-5 flex items-center gap-3">
           <div
             className="w-12 h-12 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shadow-lg">

@@ -20,146 +20,126 @@ export const isHighCommand = (p?: Profile | null) => isExecutive(p) || isCommand
 export const isInvestigatorIII = (p?: Profile | null) => p?.division === 'MCB' && p?.division_rank === 'Investigator III.';
 export const isMcbMember = (p?: Profile | null) => p?.division === 'MCB';
 
-
-// 1. Ki szerkesztheti a másikat? (Név, Jelvény, Adatlap megnyitása)
-export const canEditUser = (editor: Profile, target: Profile): boolean => {
-  // Bureau Manager mindent vihet
-  if (editor.is_bureau_manager) return true;
-
-  // Saját magát senki ne szerkessze itt (arra ott a profil) - vagy ha igen, akkor return true
-  if (editor.id === target.id) return false;
-
-  const editorRankIdx = getRankPriority(editor.faction_rank);
-  const targetRankIdx = getRankPriority(target.faction_rank);
-
-  // Executive Staff: Bárkit szerkeszthet (kivéve Bureau Managert, ha ők nem azok)
-  if (isExecutive(editor)) {
-    return !target.is_bureau_manager;
-  }
-
-  // Command Staff: Csak Command Staff ALATT (Supervisory és lefelé)
-  // Tehát target index > Lieutenant I. indexe
-  if (isCommand(editor)) {
-    const lowestCommandIdx = getRankPriority('Lieutenant I.');
-    return targetRankIdx > lowestCommandIdx;
-  }
-
-  // Supervisory Staff: Csak Corporalig (Corporal és lefelé)
-  if (isSupervisory(editor)) {
-    const corporalIdx = getRankPriority('Corporal');
-    return targetRankIdx >= corporalIdx;
-  }
-
-  // TB Staff (Training Bureau): Csak Trainee-t szerkeszthet (és csak előléptetésre, de itt az edit jogot nézzük)
-  if (editor.qualifications?.includes('TB') && target.faction_rank === 'Deputy Sheriff Trainee') {
-    return true;
-  }
-
-  return false;
-};
-
-// 2. Milyen rangra léptethet elő a felhasználó?
-// Visszaadja az engedélyezett rangokat a legördülőhöz
-export const getAllowedPromotionRanks = (editor: Profile): FactionRank[] => {
-  if (editor.is_bureau_manager) return [...FACTION_RANKS];
-
-  if (isExecutive(editor)) {
-    // Executive mindent adhat, kivéve Bureau Manager specifikus dolgokat (de rangot igen)
-    return [...FACTION_RANKS];
-  }
-
-  if (isCommand(editor)) {
-    // Command Staff alattig (Supervisory-tól lefelé)
-    const sergeantII_Idx = getRankPriority('Sergeant II.');
-    return FACTION_RANKS.slice(sergeantII_Idx);
-  }
-
-  if (isSupervisory(editor)) {
-    // Corporalig (Corporal-tól lefelé)
-    const corporalIdx = getRankPriority('Corporal');
-    return FACTION_RANKS.slice(corporalIdx);
-  }
-
-  if (editor.qualifications?.includes('TB')) {
-    // TB Staff: Csak Deputy Sheriff I. és Trainee
-    return ['Deputy Sheriff I.', 'Deputy Sheriff Trainee'];
-  }
-
-  return [];
-};
-
-// 3. Ki adhat kitüntetést?
-export const canAwardRibbon = (editor: Profile) => {
-  return editor.is_bureau_manager || isExecutive(editor);
-}
-
-// 4. Ki jelölhet ki parancsnokokat? (Division Commander, Bureau Commander)
-export const canManageCommanders = (editor: Profile) => {
-  return !!editor.is_bureau_manager;
-}
-
-// --- VIZSGA JOGOSULTSÁGOK ---
-
-// Rang segéd: Minél kisebb a szám, annál magasabb a rang (0 = Commander)
 export const getRankPriority = (rank: FactionRank | string | null | undefined): number => {
   if (!rank) return 999;
   const index = FACTION_RANKS.indexOf(rank as FactionRank);
   return index === -1 ? 999 : index;
 }
 
-// Vizsga TARTALMI szerkesztése (Editor)
-export const canManageExamContent = (user: Profile, exam: Exam) => {
-  // 1. Bureau Manager mindent vihet
-  if (user.is_bureau_manager) return true;
+// --- JOGOSULTSÁG LOGIKA (HR) ---
 
-  // 2. Trainee és Deputy I. vizsgák: KIZÁRÓLAG Bureau Manager
+// 1. Profil Megnyitása
+export const canEditUser = (editor: Profile, target: Profile): boolean => {
+  if (editor.is_bureau_manager) return true;
+  if (editor.id === target.id) return false;
+
+  if (editor.commanded_divisions && editor.commanded_divisions.length > 0) return true;
+
+  if (isSupervisory(editor) || isHighCommand(editor)) {
+    return !target.is_bureau_manager;
+  }
+
+  return !!(editor.qualifications?.includes('TB') && target.faction_rank === 'Deputy Sheriff Trainee');
+};
+
+// 2. Kiosztható Rangok Listája
+export const getAllowedPromotionRanks = (editor: Profile): FactionRank[] => {
+  if (editor.is_bureau_manager) return [...FACTION_RANKS];
+  if (isExecutive(editor)) return [...FACTION_RANKS];
+
+  if (isCommand(editor)) {
+    const startIdx = getRankPriority('Sergeant II.');
+    return FACTION_RANKS.slice(startIdx);
+  }
+
+  if (isSupervisory(editor)) {
+    const startIdx = getRankPriority('Corporal');
+    return FACTION_RANKS.slice(startIdx);
+  }
+
+  if (editor.qualifications?.includes('TB')) {
+    return ['Deputy Sheriff I.', 'Deputy Sheriff Trainee'];
+  }
+
+  return [];
+};
+
+// 3. RANG MÓDOSÍTÁSI JOG
+export const canManageUserRank = (editor: Profile, target: Profile): boolean => {
+  if (editor.is_bureau_manager) return true;
+  if (target.is_bureau_manager) return false;
+
+  if ((!isSupervisory(editor) && !isHighCommand(editor)) && editor.commanded_divisions?.length) {
+    return false;
+  }
+
+  const allowedRanks = getAllowedPromotionRanks(editor);
+  return allowedRanks.includes(target.faction_rank);
+};
+
+// 4. ALOSZTÁLY MÓDOSÍTÁSA
+export const canManageUserDivision = (editor: Profile, target: Profile): boolean => {
+  if (editor.is_bureau_manager) return true;
+
+  if (target.is_bureau_manager) return false;
+  if (target.is_bureau_commander) return false;
+
+  if (editor.is_bureau_commander) {
+    return target.division === 'TSB' || target.division === editor.division;
+  }
+
+  return isSupervisory(editor) || isHighCommand(editor);
+};
+
+// 5. KÉPESÍTÉSEK MÓDOSÍTÁSA
+export const canManageUserQualification = (editor: Profile, target: Profile, qualification: string): boolean => {
+  if (editor.is_bureau_manager) return true;
+  if (target.is_bureau_manager) return false;
+
+  // CÉLPONT VÉDELEM
+  const targetCommands = target.commanded_divisions || [];
+  if (targetCommands.includes(qualification as any)) return false;
+  if (target.is_bureau_commander && target.division === qualification) return false;
+
+  // SZERKESZTŐ KORLÁTOZÁS:
+  const editorCommands = editor.commanded_divisions || [];
+  if (editorCommands.length > 0) {
+    return editorCommands.includes(qualification as any);
+  }
+
+  return isSupervisory(editor) || isHighCommand(editor);
+};
+
+// --- EGYÉB FUNKCIÓK ---
+
+export const canAwardRibbon = (editor: Profile) => editor.is_bureau_manager || isExecutive(editor);
+export const canManageCommanders = (editor: Profile) => !!editor.is_bureau_manager;
+
+export const canManageExamContent = (user: Profile, exam: Exam) => {
+  if (user.is_bureau_manager) return true;
   if (exam.type === 'trainee' || exam.type === 'deputy_i') return false;
   if (exam.required_rank === 'Deputy Sheriff Trainee' || exam.required_rank === 'Deputy Sheriff I.') return false;
 
-  // 3. Osztály / Képesítés vizsgák SZIGORÚ ELLENŐRZÉSE
+  if (exam.division && user.commanded_divisions?.includes(exam.division)) return true;
+  if (user.is_bureau_commander && user.division === exam.division) return true;
 
-  // A) Division Commander (Képesítés vezető): Csak akkor, ha a vizsga az ő "commanded" listájában van.
-  if (exam.division && user.commanded_divisions?.includes(exam.division)) {
-    return true;
-  }
-
-  // B) Bureau Commander (Osztályvezető): Csak akkor, ha a vizsga az Ő saját osztályához tartozik.
-  // Fontos: Ha a vizsga egy Képesítéshez tartozik (pl. 'TB'), de a User a 'TSB' Bureau Commandere,
-  // akkor ez FALSE lesz, ami helyes, mert a képesítés vizsgáját csak a képesítés vezetője szerkesztheti (fenti A pont).
-  if (user.is_bureau_commander && user.division === exam.division) {
-    return true;
-  }
-
-  // Minden más esetben (pl. sima Supervisory Staff, vagy illetéktelen parancsnok)
   return false;
 }
 
-// Vizsga létrehozása (Új gomb)
 export const canCreateAnyExam = (user: Profile) => {
   return user.is_bureau_manager || user.is_bureau_commander || (user.commanded_divisions && user.commanded_divisions.length > 0);
 }
 
 export const canManageExamAccess = (p: Profile, exam: Exam) => {
-  // Trainee és Deputy I vizsgák speciális kezelése
   if (exam.type === 'trainee' || exam.type === 'deputy_i') {
-    // TB tagok láthatják/javíthatják
     if (p.qualifications?.includes('TB')) return true;
-    // Supervisory Staff láthatja/javíthatja
     if (isSupervisory(p) || isHighCommand(p)) return true;
-
     return !!p.is_bureau_manager;
   }
-
-  // Egyéb vizsgáknál ugyanaz a jog, mint a szerkesztésnél
   return canManageExamContent(p, exam);
 };
 
-// Vizsga JAVÍTÁSA (Ugyanaz, mint a hozzáférés kezelés)
-export const canGradeExam = (p: Profile, exam: Exam) => {
-  return canManageExamAccess(p, exam);
-};
-
-export const canManageExam = canManageExamContent;
+export const canGradeExam = (p: Profile, exam: Exam) => canManageExamAccess(p, exam);
 
 export const canDeleteExam = (user: Profile, exam: Exam) => {
   if (user.is_bureau_manager) return true;
@@ -182,7 +162,6 @@ export const canViewCaseDetails = (p?: Profile | null, caseData?: Case | null, i
   if (isInvestigatorIII(p)) return true;
   if (p.is_bureau_commander && p.division === 'MCB') return true;
   if (isHighCommand(p) || p.system_role === 'admin') return true;
-  if (isSupervisory(p)) return false;
   return false;
 };
 
@@ -212,16 +191,5 @@ export const getDepartmentLabel = (div: string) => {
       return 'Major Crimes Bureau';
     default:
       return div;
-  }
-};
-
-export const getDivisionColor = (div: string) => {
-  switch (div) {
-    case 'SEB':
-      return 'bg-red-900/40 text-red-100 border-red-700/50';
-    case 'MCB':
-      return 'bg-blue-900/40 text-blue-100 border-blue-700/50';
-    default:
-      return 'bg-green-900/40 text-green-100 border-green-700/50';
   }
 };

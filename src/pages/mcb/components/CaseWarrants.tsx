@@ -12,7 +12,11 @@ import {WarrantDialog} from "./WarrantDialog";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
 
-export function CaseWarrants({caseId, suspects}: { caseId: string, suspects: any[] }) {
+export function CaseWarrants({caseId, suspects, readOnly = false}: {
+  caseId: string,
+  suspects: any[],
+  readOnly?: boolean
+}) {
   const {supabase, profile, user} = useAuth();
   const [warrants, setWarrants] = React.useState<CaseWarrant[]>([]);
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
@@ -37,7 +41,9 @@ export function CaseWarrants({caseId, suspects}: { caseId: string, suspects: any
     }
   }, [caseId, supabase]);
 
-  const handleWarrantAction = async (id: string, status: 'approved' | 'rejected' | 'executed', requesterId?: string, warrantType?: string) => {
+  const handleWarrantAction = async (id: string, status: 'approved' | 'rejected' | 'executed') => {
+    if (readOnly) return;
+
     const {error} = await supabase.from('case_warrants').update({
       status,
       approved_by: user?.id,
@@ -52,21 +58,28 @@ export function CaseWarrants({caseId, suspects}: { caseId: string, suspects: any
   };
 
   const getTargetName = (w: CaseWarrant) => w.suspect ? w.suspect.full_name : w.property ? w.property.address : w.target_name || "Ismeretlen";
-  const canManage = canApproveWarrant(profile);
+
+  // Csak akkor kezelhet, ha van joga ÉS nem readOnly az akta
+  const canManage = canApproveWarrant(profile) && !readOnly;
 
   return (
     <Card
       className="bg-slate-950/80 border border-slate-800 backdrop-blur-md flex flex-col h-[400px] shrink-0 shadow-lg group">
-      <WarrantDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} caseId={caseId} suspects={suspects}
-                     onSuccess={fetchWarrants}/>
+
+      {!readOnly && (
+        <WarrantDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} caseId={caseId} suspects={suspects}
+                       onSuccess={fetchWarrants}/>
+      )}
 
       <CardHeader
         className="pb-2 py-3 border-b border-slate-800/50 bg-slate-900/30 flex flex-row items-center justify-between space-y-0 shrink-0">
         <CardTitle className="text-[10px] uppercase tracking-[0.2em] text-red-500 font-bold flex items-center gap-2">
           <FileWarning className="w-3.5 h-3.5"/> Aktív Parancsok
         </CardTitle>
-        <Button size="icon" variant="ghost" className="h-5 w-5 text-slate-400 hover:text-white -mr-2"
-                onClick={() => setIsDialogOpen(true)}><Plus className="w-3.5 h-3.5"/></Button>
+        {!readOnly && (
+          <Button size="icon" variant="ghost" className="h-5 w-5 text-slate-400 hover:text-white -mr-2"
+                  onClick={() => setIsDialogOpen(true)}><Plus className="w-3.5 h-3.5"/></Button>
+        )}
       </CardHeader>
 
       <div className="flex-1 min-h-0 relative">
@@ -80,7 +93,6 @@ export function CaseWarrants({caseId, suspects}: { caseId: string, suspects: any
             ) : warrants.map(w => (
               <div key={w.id}
                    className="relative bg-[#0b1221] border border-slate-800 rounded overflow-hidden group hover:border-slate-600 transition-all">
-                {/* Left Colored Stripe */}
                 <div className={cn("absolute left-0 top-0 bottom-0 w-1",
                   w.type === 'arrest' ? 'bg-red-600' : 'bg-orange-500',
                   w.status === 'executed' ? 'bg-blue-500' : w.status === 'rejected' ? 'bg-slate-700' : '')}/>
@@ -112,25 +124,25 @@ export function CaseWarrants({caseId, suspects}: { caseId: string, suspects: any
 
                   <p className="text-[10px] text-slate-400 italic mb-3 line-clamp-1 opacity-80">{w.reason}</p>
 
-                  {/* Footer Actions */}
                   <div className="flex items-center justify-between pt-2 border-t border-slate-800/50">
                     <div className="text-[9px] text-slate-600 font-mono uppercase">
                       REQ: {w.requester?.badge_number}
                     </div>
 
                     <div className="flex gap-1">
+                      {/* Gombok megjelenítése státusz és jogosultság alapján */}
                       {w.status === 'pending' && canManage ? (
                         <>
                           <Button size="icon"
                                   className="h-6 w-6 bg-green-900/20 text-green-500 hover:bg-green-600 hover:text-white border border-green-900/50"
-                                  onClick={() => handleWarrantAction(w.id, 'approved', w.requested_by, w.type)}><Check
+                                  onClick={() => handleWarrantAction(w.id, 'approved')}><Check
                             className="w-3 h-3"/></Button>
                           <Button size="icon"
                                   className="h-6 w-6 bg-red-900/20 text-red-500 hover:bg-red-600 hover:text-white border border-red-900/50"
-                                  onClick={() => handleWarrantAction(w.id, 'rejected', w.requested_by, w.type)}><X
+                                  onClick={() => handleWarrantAction(w.id, 'rejected')}><X
                             className="w-3 h-3"/></Button>
                         </>
-                      ) : w.status === 'approved' ? (
+                      ) : w.status === 'approved' && !readOnly ? (
                         <Button size="sm"
                                 className="h-6 text-[9px] bg-blue-600/10 text-blue-400 border border-blue-500/30 hover:bg-blue-600 hover:text-white px-2"
                                 onClick={() => handleWarrantAction(w.id, 'executed')}>

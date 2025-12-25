@@ -1,5 +1,3 @@
-// FrakHub/src/types/supabase.ts
-
 export type Json =
   | string
   | number
@@ -98,7 +96,6 @@ export interface ActionLog {
   action_type: 'ticket' | 'arrest' | 'other';
   details: string;
   created_at: string;
-  // Joinolt profil (opcionális)
   profiles?: {
     full_name: string;
     badge_number: string;
@@ -151,7 +148,7 @@ export interface CaseEvidence {
   created_at: string;
 }
 
-// --- GYANÚSÍTOTTAK (ÚJ) ---
+// --- GYANÚSÍTOTTAK ---
 export type SuspectStatus = 'free' | 'wanted' | 'jailed' | 'deceased' | 'unknown';
 
 export interface Suspect {
@@ -191,7 +188,6 @@ export interface CaseSuspect {
   suspect_id: string;
   involvement_type: string;
   notes: string | null;
-  // Joinolt adat
   suspect?: Suspect;
 }
 
@@ -201,7 +197,6 @@ export interface SuspectAssociate {
   associate_id: string;
   relationship: string;
   notes: string | null;
-  // Joinolt adat (a másik fél)
   associate?: Suspect;
 }
 
@@ -211,7 +206,6 @@ export interface CaseNote {
   user_id: string;
   content: string;
   created_at: string;
-  // Join
   profile?: { full_name: string; avatar_url?: string; };
 }
 

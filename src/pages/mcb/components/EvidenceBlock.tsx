@@ -3,9 +3,19 @@ import {useCaseEditorContext} from "./CaseEditorContext";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
-import {LayoutTemplate, CreditCard, Image, Square, Maximize2, Minimize2, HardDrive, FileImage} from "lucide-react";
+import {
+  LayoutTemplate,
+  CreditCard,
+  Image,
+  Square,
+  Maximize2,
+  Minimize2,
+  HardDrive,
+  FileImage,
+  Loader2
+} from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
-import {useEffect, useState} from "react";
+import {useEffect, useState, useRef} from "react";
 import {cn} from "@/lib/utils";
 
 export const EvidenceBlock = createReactBlockSpec(
@@ -24,35 +34,77 @@ export const EvidenceBlock = createReactBlockSpec(
       const {evidenceList, readOnly} = useCaseEditorContext();
       const {supabase} = useAuth();
       const [imageUrl, setImageUrl] = useState<string | null>(null);
+      const [loading, setLoading] = useState(false);
+
+      // Keresés ID alapján
       const selectedEvidence = evidenceList.find(e => e.id === props.block.props.evidenceId);
       const {layout, width} = props.block.props;
 
+      const lastEvidenceIdRef = useRef<string | null>(null);
+
       useEffect(() => {
-        if (selectedEvidence && selectedEvidence.file_type === 'image') {
-          supabase.storage.from('case_evidence').createSignedUrl(selectedEvidence.file_path, 3600).then(({data}) => {
-            if (data) setImageUrl(data.signedUrl);
-          });
+        if (!selectedEvidence || selectedEvidence.file_type !== 'image') {
+          setImageUrl(null);
+          return;
         }
-      }, [selectedEvidence]);
+
+        if (lastEvidenceIdRef.current === selectedEvidence.id && imageUrl) return;
+
+        let isMounted = true;
+        setLoading(true);
+
+        const fetchImage = async () => {
+          try {
+            // CLOUDINARY VAGY EXTERNAL URL KEZELÉSE
+            if (selectedEvidence.file_path.startsWith('http')) {
+              if (isMounted) {
+                setImageUrl(selectedEvidence.file_path);
+                lastEvidenceIdRef.current = selectedEvidence.id;
+              }
+            }
+            // SUPABASE STORAGE KEZELÉSE
+            else {
+              const {data, error} = await supabase.storage
+                .from('case_evidence')
+                .createSignedUrl(selectedEvidence.file_path, 3600); // 1 órás URL
+
+              if (error) throw error;
+              if (isMounted && data) {
+                setImageUrl(data.signedUrl);
+                lastEvidenceIdRef.current = selectedEvidence.id;
+              }
+            }
+          } catch (err) {
+            console.error("Error loading evidence image:", err);
+          } finally {
+            if (isMounted) setLoading(false);
+          }
+        };
+
+        fetchImage();
+
+        return () => {
+          isMounted = false;
+        };
+      }, [selectedEvidence, supabase]);
 
       // --- ÜRES ÁLLAPOT (Placeholder) ---
       if (!props.block.props.evidenceId) {
         if (readOnly) return null;
         return (
           <div
-            className="my-6 p-8 bg-slate-950/30 border border-dashed border-slate-700 rounded-xl flex flex-col items-center justify-center group hover:border-sky-500/50 hover:bg-slate-900/50 transition-all select-none relative overflow-hidden">
-            {/* Tech háttér elem */}
+            className="my-6 p-8 bg-slate-950/30 border border-dashed border-slate-700 rounded-xl flex flex-col items-center justify-center group hover:border-[#c5a065]/50 hover:bg-slate-900/50 transition-all select-none relative overflow-hidden">
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{
               backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)',
               backgroundSize: '10px 10px'
             }}></div>
 
             <div
-              className="w-12 h-12 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center mb-3 group-hover:border-sky-500 group-hover:text-sky-400 text-slate-500 transition-all shadow-lg">
+              className="w-12 h-12 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center mb-3 group-hover:border-[#c5a065] group-hover:text-[#c5a065] text-slate-500 transition-all shadow-lg">
               <HardDrive className="w-6 h-6"/>
             </div>
             <Label
-              className="mb-4 text-xs uppercase text-slate-400 font-bold tracking-widest group-hover:text-sky-400 transition-colors">Bizonyíték
+              className="mb-4 text-xs uppercase text-slate-400 font-bold tracking-widest group-hover:text-[#c5a065] transition-colors">Bizonyíték
               Beillesztése</Label>
 
             <Select onValueChange={(val) => props.editor.updateBlock(props.block, {
@@ -62,9 +114,9 @@ export const EvidenceBlock = createReactBlockSpec(
               }
             })}>
               <SelectTrigger
-                className="w-[320px] bg-slate-950 border-slate-700 focus:ring-sky-500/30 h-10 text-sm font-mono"><SelectValue
+                className="w-[320px] bg-slate-950 border-slate-700 focus:ring-[#c5a065]/30 h-10 text-sm font-mono"><SelectValue
                 placeholder="VÁLASSZ FÁJLT AZ AKTÁBÓL..."/></SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+              <SelectContent className="bg-slate-900 border-slate-800 text-white z-[9999]">
                 {evidenceList.length === 0 ? <SelectItem value="none" disabled>Nincs feltöltött fájl</SelectItem> :
                   evidenceList.map(e => <SelectItem key={e.id} value={e.id}
                                                     className="font-mono text-xs">{e.file_type === 'image' ? '📷' : '📄'} {e.file_name}</SelectItem>)
@@ -89,16 +141,15 @@ export const EvidenceBlock = createReactBlockSpec(
             <div
               className="absolute -top-10 left-0 right-0 flex justify-center opacity-0 group-hover/evidence:opacity-100 transition-all z-50 pb-2 pointer-events-none group-hover/evidence:pointer-events-auto">
               <div
-                className="bg-slate-900 border border-slate-700 rounded shadow-xl p-1 flex gap-1 pointer-events-auto scale-90">
+                className="bg-slate-900 border border-slate-700 rounded shadow-xl p-1 flex gap-1 pointer-events-auto scale-90 backdrop-blur-md">
                 <div className="flex gap-1 border-r border-slate-700 pr-2">
-                  {/* Layout Buttons... (Same logic, styling tweaked) */}
                   <button onClick={() => props.editor.updateBlock(props.block, {
                     props: {
                       ...props.block.props,
                       layout: 'side'
                     }
                   })}
-                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'side' && "text-sky-400 bg-slate-800")}>
+                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'side' && "text-[#c5a065] bg-slate-800")}>
                     <CreditCard className="w-3.5 h-3.5"/></button>
                   <button onClick={() => props.editor.updateBlock(props.block, {
                     props: {
@@ -106,7 +157,7 @@ export const EvidenceBlock = createReactBlockSpec(
                       layout: 'bottom'
                     }
                   })}
-                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'bottom' && "text-sky-400 bg-slate-800")}>
+                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'bottom' && "text-[#c5a065] bg-slate-800")}>
                     <LayoutTemplate className="w-3.5 h-3.5"/></button>
                   <button onClick={() => props.editor.updateBlock(props.block, {
                     props: {
@@ -114,7 +165,7 @@ export const EvidenceBlock = createReactBlockSpec(
                       layout: 'card'
                     }
                   })}
-                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'card' && "text-sky-400 bg-slate-800")}>
+                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'card' && "text-[#c5a065] bg-slate-800")}>
                     <Square className="w-3.5 h-3.5"/></button>
                   <button onClick={() => props.editor.updateBlock(props.block, {
                     props: {
@@ -122,7 +173,7 @@ export const EvidenceBlock = createReactBlockSpec(
                       layout: 'image-only'
                     }
                   })}
-                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'image-only' && "text-sky-400 bg-slate-800")}>
+                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'image-only' && "text-[#c5a065] bg-slate-800")}>
                     <Image className="w-3.5 h-3.5"/></button>
                 </div>
                 <div className="flex gap-1 border-r border-slate-700 pr-2">
@@ -131,15 +182,17 @@ export const EvidenceBlock = createReactBlockSpec(
                       ...props.block.props,
                       width: 'full'
                     }
-                  })} className={cn("p-1.5 rounded hover:bg-slate-800", width === 'full' && "text-sky-400")}><Maximize2
-                    className="w-3.5 h-3.5"/></button>
+                  })} className={cn("p-1.5 rounded hover:bg-slate-800", width === 'full' && "text-[#c5a065]")}>
+                    <Maximize2
+                      className="w-3.5 h-3.5"/></button>
                   <button onClick={() => props.editor.updateBlock(props.block, {
                     props: {
                       ...props.block.props,
                       width: 'half'
                     }
-                  })} className={cn("p-1.5 rounded hover:bg-slate-800", width === 'half' && "text-sky-400")}><Minimize2
-                    className="w-3.5 h-3.5"/></button>
+                  })} className={cn("p-1.5 rounded hover:bg-slate-800", width === 'half' && "text-[#c5a065]")}>
+                    <Minimize2
+                      className="w-3.5 h-3.5"/></button>
                 </div>
                 <button
                   onClick={() => props.editor.updateBlock(props.block, {props: {...props.block.props, evidenceId: ""}})}
@@ -161,7 +214,12 @@ export const EvidenceBlock = createReactBlockSpec(
               isSide ? "w-full md:w-1/3 min-h-[120px] border border-slate-800" : "w-full",
               isOverlay && "w-full h-full rounded-none"
             )}>
-              {selectedEvidence?.file_type === 'image' && imageUrl ? (
+              {loading ? (
+                <div className="p-10 flex flex-col items-center gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-[#c5a065]"/>
+                  <span className="text-[10px] text-slate-500 uppercase">Betöltés...</span>
+                </div>
+              ) : selectedEvidence?.file_type === 'image' && imageUrl ? (
                 <img src={imageUrl} alt="Ev"
                      className={cn("object-contain", isImageOnly ? "max-h-[800px]" : "max-h-[500px]", isOverlay && "w-full h-auto")}/>
               ) : (
@@ -175,7 +233,7 @@ export const EvidenceBlock = createReactBlockSpec(
               <div
                 className={cn("flex-1 w-full min-w-0 flex flex-col justify-center", isSide && "py-1", isCard && "p-3", isOverlay && "absolute bottom-0 left-0 right-0 bg-black/80 p-3 backdrop-blur-sm")}>
                 <div
-                  className={cn("text-[9px] font-mono font-bold uppercase tracking-widest mb-1 text-sky-500")}>EVIDENCE: {selectedEvidence?.file_name}</div>
+                  className={cn("text-[9px] font-mono font-bold uppercase tracking-widest mb-1 text-[#c5a065]")}>BIZONYÍTÉK: {selectedEvidence?.file_name}</div>
                 {readOnly ? (
                   <p
                     className={cn("text-xs leading-relaxed font-mono", isOverlay ? "text-slate-300" : "text-slate-400")}>{props.block.props.caption}</p>

@@ -4,7 +4,7 @@ import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {Shield, Users, FileText, Plus, Paperclip, UserPlus, Fingerprint, X, Trash2, ExternalLink} from "lucide-react";
+import {Shield, Users, FileText, Plus, Paperclip, UserPlus, Fingerprint, X, Trash2} from "lucide-react";
 import type {Case} from "@/types/supabase";
 import {cn} from "@/lib/utils";
 import {useAuth} from "@/context/AuthContext";
@@ -18,7 +18,6 @@ const TECH_TITLE = "text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bol
 export function CaseInfoCard({caseData}: { caseData: Case }) {
   return (
     <Card className={TECH_CARD_BASE}>
-      {/* Dekoratív sarok elem */}
       <div
         className="absolute top-0 right-0 w-8 h-8 border-t border-r border-sky-500/30 rounded-tr-lg pointer-events-none"></div>
 
@@ -102,7 +101,6 @@ export function SuspectsCard({suspects, onAdd, onView, onDelete}: {
                 <div key={item.id}
                      className="flex items-center justify-between p-2 rounded-md bg-slate-900/50 border border-slate-800 hover:border-sky-500/30 hover:bg-slate-900 transition-all group cursor-pointer relative overflow-hidden"
                 >
-                  {/* Status Indicator Stripe */}
                   <div className={cn("absolute left-0 top-0 bottom-0 w-0.5",
                     item.involvement_type === 'suspect' ? 'bg-red-500' :
                       item.involvement_type === 'perpetrator' ? 'bg-red-700' :
@@ -152,6 +150,70 @@ export function SuspectsCard({suspects, onAdd, onView, onDelete}: {
   );
 }
 
+// --- SEGÉD KOMPONENS: EVIDENCE ITEM ---
+const EvidenceItem = React.memo(({file, onView, onDelete}: {
+  file: any,
+  onView: (f: any) => void,
+  onDelete?: (id: string) => void
+}) => {
+  const {supabase} = useAuth();
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    if (file.file_type === 'image') {
+      // 1. Cloudinary / External URL ellenőrzés
+      if (file.file_path.startsWith('http')) {
+        setPreviewUrl(file.file_path);
+      }
+      // 2. Supabase Storage URL generálás
+      else {
+        supabase.storage.from('case_evidence').createSignedUrl(file.file_path, 3600).then(({data}) => {
+          if (isMounted && data) setPreviewUrl(data.signedUrl);
+        });
+      }
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [file.file_path, file.file_type, supabase]);
+
+  return (
+    <div
+      className="flex items-center gap-3 p-2 rounded-md bg-slate-900/50 border border-slate-800 hover:border-sky-500/30 transition-all group cursor-pointer"
+      onClick={() => onView(file)}>
+      <div
+        className="w-10 h-10 rounded bg-black/50 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0 relative">
+        {previewUrl ? (
+          <img src={previewUrl} alt=""
+               className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"/>
+        ) : (
+          <FileText className="w-5 h-5 text-slate-600 group-hover:text-sky-400"/>
+        )}
+        {file.file_type === 'image' &&
+          <div className="absolute inset-0 bg-sky-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/>}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p
+          className="text-xs font-medium text-slate-300 truncate group-hover:text-sky-400 transition-colors">{file.file_name}</p>
+        <p className="text-[9px] text-slate-500 font-mono">{new Date(file.created_at).toLocaleDateString('hu-HU')}</p>
+      </div>
+      {onDelete && (
+        <Button variant="ghost" size="icon"
+                className="h-7 w-7 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(file.id);
+                }}>
+          <Trash2 className="w-3 h-3"/>
+        </Button>
+      )}
+    </div>
+  );
+});
+
 // --- BIZONYÍTÉKOK ---
 export function EvidenceCard({evidence, onUpload, onView, onDelete}: {
   evidence: any[],
@@ -159,53 +221,6 @@ export function EvidenceCard({evidence, onUpload, onView, onDelete}: {
   onView: (file: any) => void,
   onDelete?: (id: string) => void
 }) {
-  const {supabase} = useAuth();
-
-  // Komponens az egyes fájloknak, hogy a preview URL működjön
-  const EvidenceItem = ({file}: { file: any }) => {
-    const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
-    React.useEffect(() => {
-      if (file.file_type === 'image') {
-        supabase.storage.from('case_evidence').createSignedUrl(file.file_path, 3600).then(({data}) => {
-          if (data) setPreviewUrl(data.signedUrl);
-        });
-      }
-    }, [file]);
-
-    return (
-      <div
-        className="flex items-center gap-3 p-2 rounded-md bg-slate-900/50 border border-slate-800 hover:border-sky-500/30 transition-all group cursor-pointer"
-        onClick={() => onView(file)}>
-        <div
-          className="w-10 h-10 rounded bg-black/50 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0 relative">
-          {previewUrl ? (
-            <img src={previewUrl} alt=""
-                 className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"/>
-          ) : (
-            <FileText className="w-5 h-5 text-slate-600 group-hover:text-sky-400"/>
-          )}
-          {file.file_type === 'image' &&
-            <div className="absolute inset-0 bg-sky-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/>}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p
-            className="text-xs font-medium text-slate-300 truncate group-hover:text-sky-400 transition-colors">{file.file_name}</p>
-          <p className="text-[9px] text-slate-500 font-mono">{new Date(file.created_at).toLocaleDateString('hu-HU')}</p>
-        </div>
-        {onDelete && (
-          <Button variant="ghost" size="icon"
-                  className="h-7 w-7 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(file.id);
-                  }}>
-            <Trash2 className="w-3 h-3"/>
-          </Button>
-        )}
-      </div>
-    );
-  };
-
   return (
     <Card className={cn(TECH_CARD_BASE, "flex flex-col h-full min-h-0")}>
       <CardHeader className={cn(TECH_HEADER, "flex flex-row items-center justify-between space-y-0 shrink-0")}>
@@ -228,7 +243,7 @@ export function EvidenceCard({evidence, onUpload, onView, onDelete}: {
                 <p className="text-[10px] uppercase tracking-widest">Üres mappa</p>
               </div>
             ) : (
-              evidence.map((file) => <EvidenceItem key={file.id} file={file}/>)
+              evidence.map((file) => <EvidenceItem key={file.id} file={file} onView={onView} onDelete={onDelete}/>)
             )}
           </div>
         </ScrollArea>
@@ -237,7 +252,7 @@ export function EvidenceCard({evidence, onUpload, onView, onDelete}: {
   );
 }
 
-// --- KÖZREMŰKÖDŐK (Collaborators) ---
+// --- KÖZREMŰKÖDŐK ---
 export function CollaboratorsCard({collaborators, onAdd, onDelete}: {
   collaborators: any[], onAdd?: () => void, onDelete?: (id: string) => void
 }) {

@@ -21,8 +21,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  AlertTriangle, Clock, Save, Lock, ChevronLeft, ChevronRight,
-  Play, CheckCircle2, Copy, AlertCircle, Terminal, Shield, ShieldAlert, Cpu, Activity
+  AlertTriangle, Clock, Save, ChevronLeft, ChevronRight,
+  Play, CheckCircle2, Copy, Terminal, Shield, ShieldAlert, Activity
 } from 'lucide-react';
 import {useNavigate} from 'react-router-dom';
 import {cn} from '@/lib/utils';
@@ -35,13 +35,11 @@ const generateClaimToken = () => {
 };
 
 // --- STÍLUS KONSTANSOK (Tech UI) ---
-const TERMINAL_BG = "bg-[#0b1221] border-slate-800";
 const HUD_HEADER = "sticky top-0 z-50 bg-[#0b1221]/95 backdrop-blur border-b border-slate-800 shadow-2xl";
 const QUESTION_CARD = "bg-slate-900/50 border border-slate-800 relative overflow-hidden transition-all hover:border-slate-700";
 const OPTION_ITEM = "flex items-center space-x-3 p-4 rounded border transition-all cursor-pointer group bg-slate-950/50 hover:bg-slate-900";
 const INPUT_STYLE = "bg-slate-950 border-slate-800 focus-visible:ring-yellow-500/30 focus-visible:border-yellow-500/50 font-mono text-sm text-white placeholder:text-slate-600";
 
-// KÜLÖN KOMPONENS A KÉRDÉSLISTÁNAK (Optimalizáció + Tech Dizájn)
 const QuestionList = React.memo(({
                                    questions,
                                    answers,
@@ -57,7 +55,6 @@ const QuestionList = React.memo(({
     <div className="space-y-8">
       {questions.map((q, index) => (
         <Card key={q.id} className={QUESTION_CARD}>
-          {/* Bal oldali dekorációs csík */}
           <div className={cn("absolute top-0 left-0 w-1 h-full", q.is_required ? "bg-yellow-600" : "bg-slate-700")}/>
 
           <CardHeader className="pb-4 border-b border-slate-800/50 bg-slate-950/30 px-6 pt-5">
@@ -163,9 +160,8 @@ export function ExamRunner({exam}: { exam: Exam }) {
   const sessionUserId = user?.id || 'guest';
   const storageKey = getStorageKey(exam.id, sessionUserId);
 
-  // --- STATE (EREDETI LOGIKA) ---
+  // --- STATE ---
   const [isStarted, setIsStarted] = useState(() => {
-    // Ha van mentett session, akkor indítottnak tekintjük
     return !!localStorage.getItem(storageKey);
   });
 
@@ -189,7 +185,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
   const [startTime, setStartTime] = useState<number>(() => {
     const saved = localStorage.getItem(storageKey);
     if (saved) return JSON.parse(saved).startTime;
-    return Date.now(); // Ez frissül, ha megnyomja a Start gombot
+    return Date.now();
   });
 
   const [currentPage, setCurrentPage] = useState<number>(() => {
@@ -210,7 +206,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
 
   const hasWarnedRef = useRef(false);
 
-  // --- LOCALSTORAGE SYNC (EREDETI LOGIKA) ---
+  // --- LOCALSTORAGE SYNC ---
   useEffect(() => {
     if (!isStarted || successToken) return;
 
@@ -227,7 +223,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
   }, [answers, tabSwitches, applicantName, startTime, currentPage, storageKey, exam.title, exam.id, isStarted, successToken]);
 
 
-  // --- ANTI-CHEAT (EREDETI LOGIKA) ---
+  // --- ANTI-CHEAT ---
   useEffect(() => {
     if (!isStarted || successToken) return;
 
@@ -261,7 +257,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
     };
   }, [isStarted, successToken]);
 
-  // --- NAVIGATION LOCK (EREDETI LOGIKA) ---
+  // --- NAVIGATION LOCK ---
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isStarted && !isSubmitting && !successToken) {
@@ -274,7 +270,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
   }, [isSubmitting, isStarted, successToken]);
 
 
-  // --- TIMER (EREDETI LOGIKA) ---
+  // --- TIMER ---
   useEffect(() => {
     if (!isStarted || successToken) return;
 
@@ -292,7 +288,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
     return () => clearInterval(timer);
   }, [startTime, isStarted, successToken]);
 
-  // --- KÉRDÉSEK ÉS LAPOZÁS (EREDETI LOGIKA) ---
+  // --- KÉRDÉSEK ÉS LAPOZÁS ---
   const allQuestions = useMemo(() => {
     const sorted = (exam.exam_questions || []).sort((a, b) => {
       if ((a.page_number || 1) !== (b.page_number || 1)) {
@@ -308,7 +304,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
       allQuestions.filter(q => (q.page_number || 1) === currentPage),
     [allQuestions, currentPage]);
 
-  // --- HANDLERS (EREDETI LOGIKA) ---
+  // --- HANDLERS ---
   const handleAnswerChange = useCallback((questionId: string, value: any) => {
     setAnswers(prev => ({...prev, [questionId]: value}));
   }, []);
@@ -331,8 +327,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
       const val = answers[q.id];
       if (val === undefined || val === null) return true;
       if (typeof val === 'string' && val.trim() === '') return true;
-      if (Array.isArray(val) && val.length === 0) return true;
-      return false;
+      return Array.isArray(val) && val.length === 0;
     });
 
     if (missingOnPage.length > 0) {
@@ -374,8 +369,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
       const val = answers[q.id];
       if (val === undefined || val === null) return true;
       if (typeof val === 'string' && val.trim() === '') return true;
-      if (Array.isArray(val) && val.length === 0) return true;
-      return false;
+      return Array.isArray(val) && val.length === 0;
     });
 
     if (missing && missing.length > 0) {
@@ -478,7 +472,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
   const totalQuestions = exam.exam_questions?.length || 0;
   const progress = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
 
-  // --- LOBBY KÉPERNYŐ (TECH DIZÁJN) ---
+  // --- LOBBY KÉPERNYŐ ---
   if (!isStarted && !successToken) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
@@ -539,7 +533,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
     );
   }
 
-  // --- TOKEN SIKER KÉPERNYŐ (TECH DIZÁJN) ---
+  // --- TOKEN SIKER KÉPERNYŐ ---
   if (successToken) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">

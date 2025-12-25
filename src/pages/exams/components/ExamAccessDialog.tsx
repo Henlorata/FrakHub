@@ -1,6 +1,6 @@
 import * as React from "react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
+  Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
@@ -29,7 +29,6 @@ export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAcces
   const [overrides, setOverrides] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  // LOGIKA: Eredeti adatlekérás
   const fetchData = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -98,11 +97,10 @@ export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAcces
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* JAVÍTÁS: h-[80vh] és flex flex-col a teljes magasság kitöltéséhez */}
       <DialogContent
         className="bg-[#0b1221] border border-blue-900/30 text-white sm:max-w-xl h-[80vh] max-h-[800px] flex flex-col p-0 shadow-2xl overflow-hidden">
 
-        {/* Header (Fix magasság) */}
+        {/* Header */}
         <div className="bg-blue-950/20 border-b border-blue-900/30 p-5 flex items-center gap-4 shrink-0">
           <div
             className="w-10 h-10 bg-blue-600/10 border border-blue-500/30 rounded flex items-center justify-center text-blue-400">
@@ -117,7 +115,7 @@ export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAcces
           </div>
         </div>
 
-        {/* Tabs Container (Kitölti a maradék helyet) */}
+        {/* Tabs Container */}
         <Tabs defaultValue="add" className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <TabsList
             className="grid w-full grid-cols-2 bg-slate-950 border-b border-slate-800 rounded-none h-12 p-0 shrink-0">
@@ -131,7 +129,7 @@ export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAcces
             </TabsTrigger>
           </TabsList>
 
-          {/* ADD TAB CONTENT (Görgethető) */}
+          {/* ADD TAB CONTENT */}
           <TabsContent value="add" className="flex-1 flex flex-col min-h-0 p-0 m-0 bg-[#050a14] overflow-hidden">
             <div className="p-4 border-b border-slate-800 bg-slate-900/50 shrink-0">
               <div className="relative">
@@ -142,7 +140,6 @@ export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAcces
               </div>
             </div>
 
-            {/* A ScrollArea-nak kell a flex-1, hogy kitöltse a helyet, és overflow-hidden a szülőn */}
             <div className="flex-1 min-h-0 overflow-hidden relative">
               <ScrollArea className="h-full w-full">
                 <div className="p-2 space-y-1">
@@ -182,7 +179,7 @@ export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAcces
             </div>
           </TabsContent>
 
-          {/* ACTIVE TAB CONTENT (Görgethető) */}
+          {/* ACTIVE TAB CONTENT */}
           <TabsContent value="active" className="flex-1 flex flex-col min-h-0 p-0 m-0 bg-[#050a14] overflow-hidden">
             <div className="flex-1 min-h-0 overflow-hidden relative">
               <ScrollArea className="h-full w-full">

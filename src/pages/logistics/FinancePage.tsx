@@ -382,9 +382,10 @@ export function FinancePage() {
             {actionType === 'reject' ? (
               <div className="space-y-2">
                 <Label className="text-[10px] uppercase font-bold text-slate-500">Elutasítás Indoka</Label>
-                <Textarea className="bg-slate-950 border-slate-700 font-mono text-xs focus-visible:ring-red-500/50 break-all"
-                          placeholder="Hivatalos indoklás..." value={adminComment}
-                          onChange={e => setAdminComment(e.target.value)} autoFocus/>
+                <Textarea
+                  className="bg-slate-950 border-slate-700 font-mono text-xs focus-visible:ring-red-500/50 break-all"
+                  placeholder="Hivatalos indoklás..." value={adminComment}
+                  onChange={e => setAdminComment(e.target.value)} autoFocus/>
               </div>
             ) : (
               <div className="text-center space-y-2">

@@ -3,17 +3,14 @@ import {useAuth} from "@/context/AuthContext";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter
 } from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {toast} from "sonner";
-import {Search, UserCheck, Loader2, RefreshCw, UserPlus, Link, User} from "lucide-react";
+import {Search, Loader2, RefreshCw, Link, User} from "lucide-react";
 import {Badge} from "@/components/ui/badge";
-import type {Profile} from "@/types/supabase";
 import {cn} from "@/lib/utils";
 
 interface AdminExamAssignDialogProps {
@@ -30,7 +27,6 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // EREDETI LOGIKA
   const fetchData = async (query = "") => {
     setIsLoading(true);
     try {

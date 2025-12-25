@@ -3,19 +3,8 @@ import {useParams, useNavigate} from "react-router-dom";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
 import {
-  Loader2,
-  ArrowLeft,
-  Lock,
-  Unlock,
-  Archive,
-  ShieldAlert,
-  Laptop2,
-  Terminal,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-  Palette
+  Loader2, ArrowLeft, Lock, Unlock, Archive, Laptop2, Terminal,
+  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Palette, Trash2, AlertTriangle, ShieldAlert
 } from "lucide-react";
 import {toast} from "sonner";
 import {CaseEditor} from "./components/CaseEditor";
@@ -26,27 +15,26 @@ import {CaseChat} from "./components/CaseChat";
 import {CaseWarrants} from "./components/CaseWarrants";
 import {Badge} from "@/components/ui/badge";
 import {AddCollaboratorDialog} from "./components/AddCollaboratorDialog";
-import {canViewCaseDetails, canEditCase, isHighCommand, cn} from "@/lib/utils";
+import {canViewCaseDetails, canEditCase, cn} from "@/lib/utils";
 import type {Case, CaseCollaborator, CaseEvidence} from "@/types/supabase";
 import {SuspectDetailDialog} from "@/pages/mcb/components/SuspectDetailDialog";
 import {ImageViewerDialog} from "@/pages/mcb/components/ImageViewerDialog";
+import {OfficerProfileDialog} from "@/components/OfficerProfileDialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+let globalLastEventTime = 0;
 
 export function CaseDetailPage() {
   const {caseId} = useParams<{ caseId: string }>();
@@ -60,6 +48,7 @@ export function CaseDetailPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [caseSuspects, setCaseSuspects] = React.useState<any[]>([]);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   // UI STATE
   const [showLeftSidebar, setShowLeftSidebar] = React.useState(true);
@@ -78,17 +67,112 @@ export function CaseDetailPage() {
     }, actionLabel: "Végrehajtás", variant: "default"
   });
 
-  // DIALOGS
+  // DIALOGS STATE
   const [isAddSuspectOpen, setIsAddSuspectOpen] = React.useState(false);
   const [viewSuspect, setViewSuspect] = React.useState<any>(null);
   const [isUploadOpen, setIsUploadOpen] = React.useState(false);
   const [isAddCollabOpen, setIsAddCollabOpen] = React.useState(false);
   const [viewEvidence, setViewEvidence] = React.useState<any>(null);
+  const [viewOfficerId, setViewOfficerId] = React.useState<string | null>(null);
+
+  // --- ESEMÉNYFIGYELŐK ---
+  React.useEffect(() => {
+    const handleOpenOfficer = (e: Event) => {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+
+      const now = Date.now();
+      // Ha 1 másodpercen belül jön új kérés, eldobjuk
+      if (now - globalLastEventTime < 1000) return;
+
+      const customEvent = e as CustomEvent;
+      const id = customEvent.detail?.id;
+
+      if (id) {
+        globalLastEventTime = now;
+        setTimeout(() => setViewOfficerId(id), 0);
+      }
+    };
+
+    const handleOpenSuspect = (e: Event) => {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+
+      const now = Date.now();
+      if (now - globalLastEventTime < 1000) return;
+
+      const customEvent = e as CustomEvent;
+      const id = customEvent.detail?.id;
+
+      if (id) {
+        globalLastEventTime = now;
+        const found = caseSuspects.find(s => s.suspect_id === id);
+        if (found?.suspect) {
+          setViewSuspect(found.suspect);
+        } else {
+          supabase.from('suspects').select('*').eq('id', id).single().then(({data}) => {
+            if (data) setViewSuspect(data);
+          });
+        }
+      }
+    };
+
+    window.addEventListener('FRAKHUB_V2_OPEN_OFFICER', handleOpenOfficer);
+    window.addEventListener('FRAKHUB_V2_OPEN_SUSPECT', handleOpenSuspect);
+
+    return () => {
+      window.removeEventListener('FRAKHUB_V2_OPEN_OFFICER', handleOpenOfficer);
+      window.removeEventListener('FRAKHUB_V2_OPEN_SUSPECT', handleOpenSuspect);
+    };
+  }, [caseSuspects, supabase]);
 
   const canEdit = React.useMemo(() => {
     const isCollabEditor = collaborators.some(c => c.user_id === profile?.id && c.role === 'editor');
     return canEditCase(profile, caseData, isCollabEditor);
   }, [profile, caseData, collaborators]);
+
+  // JOGOSULTSÁGOK ÉS STÁTUSZ
+  const isOwner = caseData?.owner_id === profile?.id;
+  const isBureauManager = profile?.is_bureau_manager;
+  const isMcbCommander = profile?.division === 'MCB' && profile?.is_bureau_commander;
+
+  const canManageStatus = isOwner || isBureauManager || isMcbCommander;
+  const canArchive = isBureauManager || isMcbCommander; // Csak vezetők archiválhatnak elvileg
+
+  // Ha nem OPEN, vagy nincs jogod szerkeszteni -> Read Only
+  const isCaseClosed = caseData?.status !== 'open';
+  const isReadOnly = isCaseClosed || !canEdit;
+
+  const handleDeleteCase = async () => {
+    if (!caseId) return;
+    setIsDeleting(true);
+    const toastId = toast.loading("Akta és csatolt fájlok törlése...");
+
+    try {
+      const response = await fetch('/api/case/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        },
+        body: JSON.stringify({caseId})
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Hiba történt a törlés során.");
+      }
+
+      toast.success("Akta és minden adat véglegesen törölve.", {id: toastId});
+      navigate('/mcb');
+    } catch (e: any) {
+      console.error(e);
+      toast.error("Törlés sikertelen: " + e.message, {id: toastId});
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const getHeaderStyles = (theme?: string) => {
     switch (theme) {
@@ -118,13 +202,12 @@ export function CaseDetailPage() {
       case 'blue':
         return '#0f172a';
       case 'classic':
-        return '#f1f5f9'; // Szürke háttér a fehér lap mögött
+        return '#f1f5f9';
       default:
         return undefined;
     }
   };
 
-  // DATA FETCH
   const fetchData = React.useCallback(async () => {
     if (!caseId) return;
     setLoading(true);
@@ -156,7 +239,6 @@ export function CaseDetailPage() {
     fetchData();
   }, [fetchData]);
 
-  // AUTH CHECK (After fetch)
   React.useEffect(() => {
     if (!loading && profile && caseData) {
       if (!canViewCaseDetails(profile, caseData, collaborators.some(c => c.user_id === profile.id))) {
@@ -165,7 +247,6 @@ export function CaseDetailPage() {
     }
   }, [loading, profile, caseData, collaborators]);
 
-  // HELPER: Alert Trigger
   const showAlert = (title: string, description: string, action: () => Promise<void> | void, actionLabel = "Igen", variant: "default" | "destructive" = "default") => {
     setAlertConfig({open: true, title, description, action, actionLabel, variant});
   };
@@ -175,9 +256,8 @@ export function CaseDetailPage() {
     setAlertConfig(prev => ({...prev, open: false}));
   };
 
-  // HANDLERS
   const handleDeleteSuspect = (id: string) => {
-    showAlert("Gyanúsított eltávolítása", "Biztosan eltávolítod ezt a személyt az aktából? Az adatbázisból nem törlődik végleg, csak innen.", async () => {
+    showAlert("Gyanúsított eltávolítása", "Biztosan eltávolítod ezt a személyt az aktából?", async () => {
       await supabase.from('case_suspects').delete().eq('id', id);
       fetchData();
       toast.success("Eltávolítva.");
@@ -201,7 +281,7 @@ export function CaseDetailPage() {
   };
 
   const handleStatusChange = (newStatus: 'open' | 'closed' | 'archived') => {
-    const labels = {open: "Újranyitás", closed: "Lezárás", archived: "Archiválás"};
+    const labels: Record<string, string> = {open: "Újranyitás", closed: "Lezárás", archived: "Archiválás"};
     showAlert(
       `${labels[newStatus]} megerősítése`,
       `Biztosan módosítani szeretnéd az akta státuszát erre: ${labels[newStatus]}?`,
@@ -209,7 +289,7 @@ export function CaseDetailPage() {
         const {error} = await supabase.from('cases').update({status: newStatus}).eq('id', caseId!);
         if (!error) {
           toast.success("Státusz frissítve!");
-          setCaseData(prev => prev ? ({...prev, status: newStatus}) : null);
+          setCaseData(prev => prev ? ({...prev, status: newStatus} as Case) : null);
         }
       },
       "Módosítás"
@@ -218,11 +298,11 @@ export function CaseDetailPage() {
 
   const handleThemeChange = async (newTheme: string) => {
     if (!caseData) return;
-    setCaseData({...caseData, theme: newTheme}); // Optimistic update
+    setCaseData({...caseData, theme: newTheme});
     const {error} = await supabase.from('cases').update({theme: newTheme} as any).eq('id', caseId!);
     if (error) {
       toast.error("Nem sikerült menteni a témát");
-      fetchData(); // Revert on error
+      fetchData();
     } else {
       toast.success("Téma módosítva");
     }
@@ -230,8 +310,12 @@ export function CaseDetailPage() {
 
   const openEvidenceViewer = async (file: any) => {
     if (file.file_type === 'image') {
-      const {data} = await supabase.storage.from('case_evidence').createSignedUrl(file.file_path, 3600);
-      if (data) setViewEvidence({...file, url: data.signedUrl});
+      if (file.file_path.startsWith('http')) {
+        setViewEvidence({...file, url: file.file_path});
+      } else {
+        const {data} = await supabase.storage.from('case_evidence').createSignedUrl(file.file_path, 3600);
+        if (data) setViewEvidence({...file, url: data.signedUrl});
+      }
     } else toast.info("Ez a fájltípus nem támogatott.");
   };
 
@@ -244,8 +328,6 @@ export function CaseDetailPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] overflow-hidden space-y-4">
-
-      {/* GLOBAL ALERT DIALOG */}
       <AlertDialog open={alertConfig.open} onOpenChange={(open) => setAlertConfig(prev => ({...prev, open}))}>
         <AlertDialogContent className="bg-slate-950 border-slate-800 text-white">
           <AlertDialogHeader>
@@ -257,17 +339,14 @@ export function CaseDetailPage() {
           <AlertDialogFooter>
             <AlertDialogCancel
               className="bg-transparent border-slate-700 hover:bg-slate-800 text-slate-300">Mégse</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleAlertConfirm}
-              className={cn(alertConfig.variant === 'destructive' ? "bg-red-600 hover:bg-red-700 text-white" : "bg-sky-600 hover:bg-sky-500 text-white")}
-            >
+            <AlertDialogAction onClick={handleAlertConfirm}
+                               className={cn(alertConfig.variant === 'destructive' ? "bg-red-600 hover:bg-red-700 text-white" : "bg-sky-600 hover:bg-sky-500 text-white")}>
               {alertConfig.actionLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* DIALOGS */}
       <AddSuspectDialog open={isAddSuspectOpen} onOpenChange={setIsAddSuspectOpen} caseId={caseId!}
                         onSuspectAdded={fetchData} existingSuspectIds={caseSuspects.map(s => s.suspect_id)}/>
       <SuspectDetailDialog open={!!viewSuspect} onOpenChange={(o) => !o && setViewSuspect(null)} suspect={viewSuspect}
@@ -275,6 +354,17 @@ export function CaseDetailPage() {
                              fetchData();
                              setViewSuspect(null);
                            }}/>
+
+      {/* OFFICER PROFILE DIALOG */}
+      <OfficerProfileDialog
+        open={!!viewOfficerId}
+        onOpenChange={(open) => {
+          if (!open) setViewOfficerId(null);
+        }}
+        userId={viewOfficerId || ""}
+        caseId={caseId}
+      />
+
       <UploadEvidenceDialog open={isUploadOpen} onOpenChange={setIsUploadOpen} caseId={caseId!}
                             onUploadComplete={fetchData}/>
       <AddCollaboratorDialog open={isAddCollabOpen} onOpenChange={setIsAddCollabOpen} caseId={caseId!}
@@ -287,16 +377,15 @@ export function CaseDetailPage() {
         className="shrink-0 bg-slate-950/80 border-y border-sky-900/30 backdrop-blur-md px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/mcb')}
-                  className="text-sky-500 hover:text-white hover:bg-sky-500/10">
-            <ArrowLeft className="w-5 h-5"/>
-          </Button>
+                  className="text-sky-500 hover:text-white hover:bg-sky-500/10"><ArrowLeft
+            className="w-5 h-5"/></Button>
           <div>
             <div className="flex items-center gap-3">
               <Terminal className="w-5 h-5 text-sky-500"/>
               <h1 className="text-xl font-bold text-white tracking-tight uppercase font-mono">{caseData.title}</h1>
-              <Badge className="font-mono bg-sky-900/50 text-sky-400 border-sky-500/30">
-                {caseData.case_number}
-              </Badge>
+              <Badge className="font-mono bg-sky-900/50 text-sky-400 border-sky-500/30">{caseData.case_number}</Badge>
+              {isCaseClosed && <Badge variant="outline"
+                                      className="text-[10px] border-red-500 text-red-500 bg-red-500/10 uppercase">Lezárt</Badge>}
             </div>
           </div>
         </div>
@@ -324,52 +413,97 @@ export function CaseDetailPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="bg-slate-900 border-slate-800 text-white w-56">
-                <DropdownMenuItem onClick={() => handleThemeChange('default')}>
-                  <div className="w-3 h-3 rounded-full bg-slate-800 border border-slate-600 mr-2"></div>
-                  Alapértelmezett (Modern)
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-slate-800"/>
-                <DropdownMenuItem onClick={() => handleThemeChange('paper')}>
-                  <div className="w-3 h-3 rounded-full bg-[#f5f0e6] border border-[#d4c5a8] mr-2"></div>
-                  Papír akta (Klasszikus)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleThemeChange('classic')}>
-                  <div className="w-3 h-3 rounded-full bg-white border border-slate-300 mr-2"></div>
-                  Hivatalos Dokumentum (Fehér)
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-slate-800"/>
-                <DropdownMenuItem onClick={() => handleThemeChange('terminal')}>
-                  <div className="w-3 h-3 rounded-full bg-black border border-green-500 mr-2"></div>
-                  Terminál (Zöld)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleThemeChange('amber')}>
-                  <div className="w-3 h-3 rounded-full bg-[#1a1200] border border-amber-500 mr-2"></div>
-                  Retro CRT (Borostyán)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleThemeChange('blue')}>
-                  <div className="w-3 h-3 rounded-full bg-[#0f172a] border border-blue-500 mr-2"></div>
-                  Rendőrségi (Kék)
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleThemeChange('default')}>Alapértelmezett
+                  (Modern)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleThemeChange('paper')}>Papír akta (Klasszikus)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleThemeChange('classic')}>Hivatalos Dokumentum</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleThemeChange('terminal')}>Terminál (Zöld)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleThemeChange('amber')}>Retro CRT (Borostyán)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleThemeChange('blue')}>Rendőrségi (Kék)</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
 
-          {canEdit ? (
-            <>
+          {caseData.status === 'open' ? (
+            canManageStatus && (
               <Button variant="outline" size="sm"
                       className="border-sky-800 text-sky-400 hover:bg-sky-900/50 h-8 text-xs font-mono uppercase"
-                      onClick={() => handleStatusChange('closed')}><Lock className="w-3 h-3 mr-2"/> Lezárás</Button>
-              <Button variant="ghost" size="sm"
-                      className="text-red-400 hover:bg-red-950/20 h-8 text-xs font-mono uppercase"
-                      onClick={() => handleStatusChange('archived')}><Archive
-                className="w-3 h-3 mr-2"/> Archiválás</Button>
-            </>
-          ) : (
-            caseData.status !== 'open' && isHighCommand(profile) && (
-              <Button variant="outline" size="sm"
-                      className="border-yellow-700/50 text-yellow-500 hover:bg-yellow-900/20 h-8 text-xs uppercase"
-                      onClick={() => handleStatusChange('open')}><Unlock className="w-3 h-3 mr-2"/> Újranyitás</Button>
+                      onClick={() => handleStatusChange('closed')}>
+                <Lock className="w-3 h-3 mr-2"/> Lezárás
+              </Button>
             )
+          ) : (
+            <>
+              {canManageStatus && (
+                <Button variant="outline" size="sm"
+                        className="border-yellow-700/50 text-yellow-500 hover:bg-yellow-900/20 h-8 text-xs uppercase"
+                        onClick={() => handleStatusChange('open')}>
+                  <Unlock className="w-3 h-3 mr-2"/> Újranyitás
+                </Button>
+              )}
+              {canArchive && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-block cursor-not-allowed ml-2">
+                        <Button variant="ghost" size="sm" disabled
+                                className="text-red-400/50 border border-red-900/20 bg-red-950/10 h-8 text-xs font-mono uppercase">
+                          <Archive className="w-3 h-3 mr-2"/> Archiválás
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="bg-red-950 border-red-800 text-red-200 max-w-xs">
+                      <p className="font-bold flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> FIGYELEM!
+                      </p>
+                      <p className="text-xs mt-1">Az archiválás végleges lezárást jelent.</p>
+                      <p className="text-xs mt-1 font-mono bg-black/30 p-1 rounded">Az akta 40 nap múlva automatikusan
+                        törlődik. Kérjük, előtte töltse le az anyagot!</p>
+                      <p className="text-[10px] mt-2 opacity-50 italic">Ez a funkció jelenleg fejlesztés alatt áll.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </>
+          )}
+
+          {canManageStatus && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm"
+                        className="ml-2 bg-red-950/50 border border-red-900 hover:bg-red-900 text-red-500 hover:text-white transition-all">
+                  <Trash2 className="w-4 h-4 mr-2"/> TÖRLÉS
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="bg-red-950 border border-red-500 text-white">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-2xl font-black uppercase"><AlertTriangle
+                    className="w-8 h-8 text-white"/> Végleges Törlés</AlertDialogTitle>
+
+                  <AlertDialogDescription asChild>
+                    <div className="text-red-100/80 font-bold text-sm">
+                      FIGYELEM! Ez a művelet visszavonhatatlan.
+                      <br/><br/>
+                      Törlődik az akta teljes tartalma:
+                      <ul className="list-disc list-inside mt-2 text-sm opacity-80">
+                        <li>Minden bizonyíték és kép</li>
+                        <li>Minden gyanúsított kapcsolat</li>
+                        <li>Az összes jegyzet és jelentés</li>
+                        <li>Minden kiadott elfogatóparancs</li>
+                      </ul>
+                    </div>
+                  </AlertDialogDescription>
+
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel
+                    className="bg-black/20 border-white/10 text-white hover:bg-black/40">Mégse</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteCase} disabled={isDeleting}
+                                     className="bg-white text-red-900 font-black hover:bg-red-100">
+                    {isDeleting ? "Törlés folyamatban..." : "IGEN, TÖRLÖM AZ AKTÁT"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
         </div>
       </div>
@@ -382,11 +516,17 @@ export function CaseDetailPage() {
           <div
             className="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar shrink-0 animate-in slide-in-from-left-4 duration-300">
             <CaseInfoCard caseData={caseData}/>
-            <SuspectsCard suspects={caseSuspects} onAdd={canEdit ? () => setIsAddSuspectOpen(true) : undefined}
-                          onView={(s) => setViewSuspect(s)} onDelete={canEdit ? handleDeleteSuspect : undefined}/>
-            <CollaboratorsCard collaborators={collaborators}
-                               onAdd={canEdit ? () => setIsAddCollabOpen(true) : undefined}
-                               onDelete={canEdit ? handleDeleteCollaborator : undefined}/>
+            <SuspectsCard
+              suspects={caseSuspects}
+              onAdd={!isReadOnly ? () => setIsAddSuspectOpen(true) : undefined}
+              onView={(s) => setViewSuspect(s)}
+              onDelete={!isReadOnly ? handleDeleteSuspect : undefined}
+            />
+            <CollaboratorsCard
+              collaborators={collaborators}
+              onAdd={!isReadOnly ? () => setIsAddCollabOpen(true) : undefined}
+              onDelete={!isReadOnly ? handleDeleteCollaborator : undefined}
+            />
           </div>
         )}
 
@@ -399,10 +539,8 @@ export function CaseDetailPage() {
                   'border-slate-800'
           )} style={{backgroundColor: getBackgroundStyle(caseData.theme)}}>
 
-          {/* Editor Header styling matches theme */}
-          <div className={cn("h-8 border-b flex items-center px-3 justify-between transition-colors",
-            getHeaderStyles(caseData.theme)
-          )}>
+          <div
+            className={cn("h-8 border-b flex items-center px-3 justify-between transition-colors shrink-0", getHeaderStyles(caseData.theme))}>
             <span className="text-[10px] font-mono uppercase flex items-center gap-2">
               <Laptop2 className="w-3 h-3"/> Investigation Log
             </span>
@@ -413,11 +551,11 @@ export function CaseDetailPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-hidden relative">
+          <div className="flex-1 overflow-hidden relative w-full h-full">
             <CaseEditor
               caseId={caseId!}
               initialContent={caseData.body}
-              readOnly={!canEdit}
+              readOnly={isReadOnly}
               evidenceList={evidence}
               theme={caseData.theme}
             />
@@ -429,12 +567,16 @@ export function CaseDetailPage() {
           <div
             className="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar shrink-0 animate-in slide-in-from-right-4 duration-300">
             <div className="flex-1 min-h-[250px] max-h-[400px]">
-              <EvidenceCard evidence={evidence} onUpload={canEdit ? () => setIsUploadOpen(true) : undefined}
-                            onView={openEvidenceViewer} onDelete={canEdit ? handleDeleteEvidence : undefined}/>
+              <EvidenceCard
+                evidence={evidence}
+                onUpload={!isReadOnly ? () => setIsUploadOpen(true) : undefined}
+                onView={openEvidenceViewer}
+                onDelete={!isReadOnly ? handleDeleteEvidence : undefined}
+              />
             </div>
-            <CaseWarrants caseId={caseId!} suspects={caseSuspects}/>
+            <CaseWarrants caseId={caseId!} suspects={caseSuspects} readOnly={isReadOnly}/>
             <div className="flex-1 min-h-[300px] flex flex-col">
-              <CaseChat caseId={caseId!}/>
+              <CaseChat caseId={caseId!} readOnly={isReadOnly}/>
             </div>
           </div>
         )}

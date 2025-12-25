@@ -1,6 +1,6 @@
 import * as React from "react";
 import {useAuth} from "@/context/AuthContext";
-import {Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter} from "@/components/ui/dialog";
+import {Dialog, DialogContent, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
@@ -26,7 +26,7 @@ import {ScrollArea} from "@/components/ui/scroll-area";
 import {Badge} from "@/components/ui/badge";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {useNavigate} from "react-router-dom";
-import {canViewCaseDetails, cn} from "@/lib/utils";
+import {cn} from "@/lib/utils";
 
 interface SuspectDetailDialogProps {
   suspect: Suspect | null;
@@ -50,7 +50,6 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
   const [criminalRecord, setCriminalRecord] = React.useState<any[]>([]);
   const [allSuspects, setAllSuspects] = React.useState<Suspect[]>([]);
 
-  // Új elemek state
   const [newVehicle, setNewVehicle] = React.useState({plate: "", type: "", color: "", notes: ""});
   const [newProperty, setNewProperty] = React.useState({address: "", type: "house", notes: ""});
   const [newAssociate, setNewAssociate] = React.useState({targetId: "", relation: "", notes: ""});
@@ -451,7 +450,7 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
           </div>
         </div>
 
-        {/* --- FOOTER (Only when editing details) --- */}
+        {/* --- FOOTER --- */}
         {activeTab === 'details' && isEditing && (
           <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-between shrink-0">
             <Button variant="destructive" onClick={handleDelete}

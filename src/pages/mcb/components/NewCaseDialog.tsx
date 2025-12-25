@@ -3,10 +3,8 @@ import {useAuth} from "@/context/AuthContext";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription
+  DialogFooter
 } from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -55,7 +53,6 @@ export function NewCaseDialog({open, onOpenChange, onCaseCreated}: NewCaseDialog
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="bg-[#0a0f1c] border border-sky-900/50 text-slate-100 sm:max-w-md shadow-[0_0_50px_rgba(14,165,233,0.1)] p-0 overflow-hidden">
-        {/* Tech Header Strip */}
         <div className="bg-sky-950/30 border-b border-sky-900/30 px-6 py-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded bg-sky-500/10 flex items-center justify-center border border-sky-500/20">
             <FolderPlus className="w-5 h-5 text-sky-400"/>

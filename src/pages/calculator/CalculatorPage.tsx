@@ -10,7 +10,7 @@ import type {
   PenalCodeGroup,
 } from "@/types/penalcode";
 import {useMediaQuery} from "@/hooks/use-media-query";
-import { useAuth } from "@/context/AuthContext";
+import {useAuth} from "@/context/AuthContext";
 
 // UI Komponensek
 import {
@@ -187,7 +187,14 @@ interface FormattedNumberInputProps extends Omit<React.InputHTMLAttributes<HTMLI
   max?: number;
 }
 
-function FormattedNumberInput({ value, onValueChange, min = 0, max = Infinity, className, ...props }: FormattedNumberInputProps) {
+function FormattedNumberInput({
+                                value,
+                                onValueChange,
+                                min = 0,
+                                max = Infinity,
+                                className,
+                                ...props
+                              }: FormattedNumberInputProps) {
   const [displayValue, setDisplayValue] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -234,10 +241,20 @@ function FormattedNumberInput({ value, onValueChange, min = 0, max = Infinity, c
 }
 
 // --- Modálisok ---
-function SaveTemplateDialog({open, onOpenChange, onSave}: { open: boolean; onOpenChange: (o: boolean) => void; onSave: (n: string) => void }) {
+function SaveTemplateDialog({open, onOpenChange, onSave}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onSave: (n: string) => void
+}) {
   const [name, setName] = React.useState("");
-  const handleSave = () => { onSave(name); setName(""); onOpenChange(false); };
-  React.useEffect(() => { if (open) setName(""); }, [open]);
+  const handleSave = () => {
+    onSave(name);
+    setName("");
+    onOpenChange(false);
+  };
+  React.useEffect(() => {
+    if (open) setName("");
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -248,18 +265,26 @@ function SaveTemplateDialog({open, onOpenChange, onSave}: { open: boolean; onOpe
         </DialogHeader>
         <div className="space-y-2">
           <label htmlFor="templateName" className="text-sm font-medium">Sablon neve</label>
-          <Input id="templateName" placeholder="pl. Alap közúti menekülés" value={name} onChange={(e) => setName(e.target.value)} className="bg-slate-950 border-slate-700" />
+          <Input id="templateName" placeholder="pl. Alap közúti menekülés" value={name}
+                 onChange={(e) => setName(e.target.value)} className="bg-slate-950 border-slate-700"/>
         </div>
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Mégse</Button></DialogClose>
-          <Button onClick={handleSave} disabled={!name.trim()} className="bg-yellow-600 text-black hover:bg-yellow-700"><Save className="w-4 h-4 mr-2"/> Mentés</Button>
+          <Button onClick={handleSave} disabled={!name.trim()} className="bg-yellow-600 text-black hover:bg-yellow-700"><Save
+            className="w-4 h-4 mr-2"/> Mentés</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function HistoryModal({isDesktop, open, onOpenChange, history, loadFromHistory}: { isDesktop: boolean; open: boolean; onOpenChange: (o: boolean) => void; history: HistorySnapshot[]; loadFromHistory: (s: HistorySnapshot) => void }) {
+function HistoryModal({isDesktop, open, onOpenChange, history, loadFromHistory}: {
+  isDesktop: boolean;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  history: HistorySnapshot[];
+  loadFromHistory: (s: HistorySnapshot) => void
+}) {
   const content = (
     <>
       {history.length === 0 ? (
@@ -267,13 +292,15 @@ function HistoryModal({isDesktop, open, onOpenChange, history, loadFromHistory}:
       ) : (
         <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1 pr-2 scrollbar-hide">
           {history.map((item) => (
-            <div key={item.timestamp} className="flex justify-between items-center p-3 bg-slate-800/40 border border-slate-700/50 rounded-lg hover:border-slate-600 transition-colors group">
+            <div key={item.timestamp}
+                 className="flex justify-between items-center p-3 bg-slate-800/40 border border-slate-700/50 rounded-lg hover:border-slate-600 transition-colors group">
               <div className="overflow-hidden mr-2">
                 <p className="font-medium text-slate-200">{formatCurrency(item.finalFine)} / {item.finalJail} perc</p>
                 <p className="text-xs text-slate-400 truncate" title={item.reasons}>{item.reasons || "(Nincs ok)"}</p>
                 <p className="text-[10px] text-slate-500 mt-1">{getRelativeTime(item.timestamp)}</p>
               </div>
-              <Button onClick={() => loadFromHistory(item)} size="sm" variant="secondary" className="opacity-0 group-hover:opacity-100 transition-opacity">Betöltés</Button>
+              <Button onClick={() => loadFromHistory(item)} size="sm" variant="secondary"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity">Betöltés</Button>
             </div>
           ))}
         </div>
@@ -297,7 +324,14 @@ function HistoryModal({isDesktop, open, onOpenChange, history, loadFromHistory}:
   return null;
 }
 
-function TemplateModal({isDesktop, open, onOpenChange, templates, loadFromTemplate, deleteTemplate}: { isDesktop: boolean; open: boolean; onOpenChange: (o: boolean) => void; templates: Template[]; loadFromTemplate: (t: Template) => void; deleteTemplate: (id: string) => void }) {
+function TemplateModal({isDesktop, open, onOpenChange, templates, loadFromTemplate, deleteTemplate}: {
+  isDesktop: boolean;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  templates: Template[];
+  loadFromTemplate: (t: Template) => void;
+  deleteTemplate: (id: string) => void
+}) {
   const content = (
     <>
       {templates.length === 0 ? (
@@ -305,16 +339,21 @@ function TemplateModal({isDesktop, open, onOpenChange, templates, loadFromTempla
       ) : (
         <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1 pr-2 scrollbar-hide">
           {templates.map((template) => (
-            <div key={template.id} className="flex justify-between items-center p-3 bg-slate-800/40 border border-slate-700/50 rounded-lg hover:border-slate-600 transition-colors group">
+            <div key={template.id}
+                 className="flex justify-between items-center p-3 bg-slate-800/40 border border-slate-700/50 rounded-lg hover:border-slate-600 transition-colors group">
               <div>
                 <p className="font-medium text-slate-200">{template.name}</p>
                 <p className="text-xs text-slate-400">
-                  {template.cart.length} tétel {template.savedFine > 0 && <span className="text-slate-500">| {formatCurrency(template.savedFine)}</span>}
+                  {template.cart.length} tétel {template.savedFine > 0 &&
+                  <span className="text-slate-500">| {formatCurrency(template.savedFine)}</span>}
                 </p>
               </div>
               <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-900/20" onClick={() => deleteTemplate(template.id)}><Trash2 className="w-4 h-4"/></Button>
-                <Button onClick={() => loadFromTemplate(template)} size="sm" variant="secondary" className="h-8">Hozzáadás</Button>
+                <Button variant="ghost" size="icon"
+                        className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                        onClick={() => deleteTemplate(template.id)}><Trash2 className="w-4 h-4"/></Button>
+                <Button onClick={() => loadFromTemplate(template)} size="sm" variant="secondary"
+                        className="h-8">Hozzáadás</Button>
               </div>
             </div>
           ))}
@@ -372,17 +411,16 @@ export function CalculatorPage() {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const MAX_HISTORY_ITEMS = 10;
 
-  const { user, supabase } = useAuth();
+  const {user, supabase} = useAuth();
 
-  // SPAM VÉDELEM: Utolsó logolt akció tárolása
-  const lastLogRef = React.useRef<{type: string, details: string, time: number} | null>(null);
+  // SPAM VÉDELEM
+  const lastLogRef = React.useRef<{ type: string, details: string, time: number } | null>(null);
 
   // --- Logoló Segédfüggvény (60mp Spam védelemmel) ---
   const logActionToDb = async (type: 'ticket' | 'arrest', details: string) => {
     if (!user) return;
 
     const now = Date.now();
-    // 60 másodperces védelem (10000 helyett 60000)
     if (lastLogRef.current &&
       lastLogRef.current.type === type &&
       lastLogRef.current.details === details &&
@@ -391,13 +429,13 @@ export function CalculatorPage() {
       return;
     }
 
-    lastLogRef.current = { type, details, time: now };
+    lastLogRef.current = {type, details, time: now};
 
     supabase.from('action_logs').insert({
       user_id: user.id,
       action_type: type,
       details: details
-    }).then(({ error }) => {
+    }).then(({error}) => {
       if (error) console.error("Log error:", error);
     });
   };
@@ -422,7 +460,10 @@ export function CalculatorPage() {
   };
 
   const clearCart = () => {
-    setCart([]); setSelectedFine(0); setSelectedJail(0); setTargetId("");
+    setCart([]);
+    setSelectedFine(0);
+    setSelectedJail(0);
+    setTargetId("");
   };
 
   const toggleFavorite = (itemId: string) => {
@@ -439,7 +480,11 @@ export function CalculatorPage() {
         const filteredItems = kat.items.map((itemOrGroup) => {
           if ("alpontok" in itemOrGroup) {
             const matchingAlpontok = itemOrGroup.alpontok.filter((item) => favorites.includes(item.id));
-            if (matchingAlpontok.length > 0) return {...itemOrGroup, alpontok: matchingAlpontok, _matchType: "children" as const};
+            if (matchingAlpontok.length > 0) return {
+              ...itemOrGroup,
+              alpontok: matchingAlpontok,
+              _matchType: "children" as const
+            };
             return null;
           } else {
             return favorites.includes(itemOrGroup.id) ? itemOrGroup : null;
@@ -507,7 +552,7 @@ export function CalculatorPage() {
         const headerOffset = 160;
         const elementPosition = element.getBoundingClientRect().top;
         const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-        window.scrollTo({ top: offsetPosition, behavior: "smooth" });
+        window.scrollTo({top: offsetPosition, behavior: "smooth"});
       }
     }, 100);
   };
@@ -527,7 +572,8 @@ export function CalculatorPage() {
         if (!isNaN(amount)) {
           const totalAmount = amount * quantity;
           if (type === "jail") {
-            minJail += totalAmount; maxJail += totalAmount;
+            minJail += totalAmount;
+            maxJail += totalAmount;
             const note = `${item.megnevezes}: ${trimmedValue} (x${quantity})`;
             if (!specialJailNotes.includes(note)) specialJailNotes.push(note);
             return null;
@@ -551,11 +597,12 @@ export function CalculatorPage() {
       if (typeof maxJ === "number") maxJail += maxJ * quantity;
     });
 
-    const newSummary = { minFine, maxFine, minJail, maxJail, specialJailNotes, warningItems };
+    const newSummary = {minFine, maxFine, minJail, maxJail, specialJailNotes, warningItems};
     setSummary(newSummary);
 
     if (cart.length === 0) {
-      setSelectedFine(0); setSelectedJail(0);
+      setSelectedFine(0);
+      setSelectedJail(0);
     } else {
       setSelectedFine((curr) => {
         if (curr === 0) return newSummary.maxFine;
@@ -570,9 +617,16 @@ export function CalculatorPage() {
 
   React.useEffect(() => {
     const idPlaceholder = targetId.trim() === "" ? "[ID]" : targetId.trim();
-    if (cart.length === 0) { setArrestOutput(""); setTicketReasons(""); return; }
+    if (cart.length === 0) {
+      setArrestOutput("");
+      setTicketReasons("");
+      return;
+    }
 
-    const allReasons = cart.map(({item, quantity}) => `${item.rovidites}${quantity > 1 ? `(x${quantity})` : ""}`).join(", ");
+    const allReasons = cart.map(({
+                                   item,
+                                   quantity
+                                 }) => `${item.rovidites}${quantity > 1 ? `(x${quantity})` : ""}`).join(", ");
     setTicketReasons(allReasons);
 
     const arrestCartItems = cart.filter(({item}) =>
@@ -581,7 +635,10 @@ export function CalculatorPage() {
       (typeof item.min_fegyhaz === "string" && item.min_fegyhaz.startsWith("+")) ||
       (typeof item.max_fegyhaz === "string" && item.max_fegyhaz.startsWith("+")));
 
-    const arrestReasons = arrestCartItems.map(({item, quantity}) => `${item.rovidites}${quantity > 1 ? `(x${quantity})` : ""}`).join(", ");
+    const arrestReasons = arrestCartItems.map(({
+                                                 item,
+                                                 quantity
+                                               }) => `${item.rovidites}${quantity > 1 ? `(x${quantity})` : ""}`).join(", ");
 
     let arrestCmd = "";
     const validJail = Math.min(selectedJail, summary.maxJail > 0 ? summary.maxJail : Infinity);
@@ -596,7 +653,11 @@ export function CalculatorPage() {
     const validFine = Math.min(selectedFine, summary.maxFine > 0 ? summary.maxFine : Infinity);
     const validJail = Math.min(selectedJail, summary.maxJail > 0 ? summary.maxJail : Infinity);
     const snapshot: HistorySnapshot = {
-      cart: JSON.parse(JSON.stringify(cart)), finalFine: validFine, finalJail: validJail, reasons: ticketReasons, timestamp: new Date().toISOString(),
+      cart: JSON.parse(JSON.stringify(cart)),
+      finalFine: validFine,
+      finalJail: validJail,
+      reasons: ticketReasons,
+      timestamp: new Date().toISOString(),
     };
     const isDuplicate = history.length > 0 && history[0].reasons === snapshot.reasons && history[0].finalFine === snapshot.finalFine && history[0].finalJail === snapshot.finalJail;
     if (!isDuplicate) {
@@ -605,7 +666,10 @@ export function CalculatorPage() {
   };
 
   const copyArrest = () => {
-    if (!arrestOutput) { toast.error("Nincs mit másolni"); return; }
+    if (!arrestOutput) {
+      toast.error("Nincs mit másolni");
+      return;
+    }
     navigator.clipboard.writeText(arrestOutput);
     toast.success("✅ arrest parancs másolva!");
     saveToHistory();
@@ -616,27 +680,35 @@ export function CalculatorPage() {
   };
 
   const copyReasons = () => {
-    if (!ticketReasons) { toast.error("Nincs mit másolni"); return; }
+    if (!ticketReasons) {
+      toast.error("Nincs mit másolni");
+      return;
+    }
     navigator.clipboard.writeText(ticketReasons);
     toast.success("✅ Indokok másolva!");
 
-    // JAVÍTÁS: Egyesített logolás (Összeg + Indok)
     const validFine = Math.min(selectedFine, summary.maxFine > 0 ? summary.maxFine : Infinity);
     logActionToDb('ticket', `Bírság: ${formatCurrency(validFine)} - Indok: ${ticketReasons}`);
 
-    saveToHistory(); setIsReasonsCopied(true); setTimeout(() => setIsReasonsCopied(false), 2000);
+    saveToHistory();
+    setIsReasonsCopied(true);
+    setTimeout(() => setIsReasonsCopied(false), 2000);
   };
 
   const copyFineAmount = () => {
-    if (cart.length === 0) { toast.error("Nincs összeg."); return; }
+    if (cart.length === 0) {
+      toast.error("Nincs összeg.");
+      return;
+    }
     const validFine = Math.min(selectedFine, summary.maxFine > 0 ? summary.maxFine : Infinity);
     navigator.clipboard.writeText(validFine.toString());
     toast.success("✅ Bírság összege másolva!");
 
-    // JAVÍTÁS: Egyesített logolás (Összeg + Indok)
     logActionToDb('ticket', `Bírság: ${formatCurrency(validFine)} - Indok: ${ticketReasons}`);
 
-    saveToHistory(); setIsFineCopied(true); setTimeout(() => setIsFineCopied(false), 2000);
+    saveToHistory();
+    setIsFineCopied(true);
+    setTimeout(() => setIsFineCopied(false), 2000);
   };
 
   const copyTicketCmd = () => {
@@ -645,13 +717,26 @@ export function CalculatorPage() {
   }
 
   const loadFromHistory = (snapshot: HistorySnapshot) => {
-    setCart(snapshot.cart); setSelectedFine(snapshot.finalFine); setSelectedJail(snapshot.finalJail);
-    setIsHistoryOpen(false); setIsMobileDrawerOpen(false); toast.info("Előzmény betöltve.");
+    setCart(snapshot.cart);
+    setSelectedFine(snapshot.finalFine);
+    setSelectedJail(snapshot.finalJail);
+    setIsHistoryOpen(false);
+    setIsMobileDrawerOpen(false);
+    toast.info("Előzmény betöltve.");
   };
 
   const handleSaveTemplate = (name: string) => {
-    if (cart.length === 0) { toast.error("Üres jegyzőkönyvet nem menthetsz."); return; }
-    setTemplates([...templates, { id: `template-${Date.now()}`, name, cart: JSON.parse(JSON.stringify(cart)), savedFine: selectedFine, savedJail: selectedJail }]);
+    if (cart.length === 0) {
+      toast.error("Üres jegyzőkönyvet nem menthetsz.");
+      return;
+    }
+    setTemplates([...templates, {
+      id: `template-${Date.now()}`,
+      name,
+      cart: JSON.parse(JSON.stringify(cart)),
+      savedFine: selectedFine,
+      savedJail: selectedJail
+    }]);
     toast.success("Sablon mentve!");
   };
 
@@ -660,18 +745,24 @@ export function CalculatorPage() {
       const newCart = [...currentCart];
       template.cart.forEach(templateItem => {
         const existingIndex = newCart.findIndex(cartItem => cartItem.item.id === templateItem.item.id);
-        if (existingIndex !== -1) newCart[existingIndex] = { ...newCart[existingIndex], quantity: newCart[existingIndex].quantity + templateItem.quantity };
+        if (existingIndex !== -1) newCart[existingIndex] = {
+          ...newCart[existingIndex],
+          quantity: newCart[existingIndex].quantity + templateItem.quantity
+        };
         else newCart.push(templateItem);
       });
       return newCart;
     });
     if (template.savedFine > 0) setSelectedFine(template.savedFine);
     if (template.savedJail > 0) setSelectedJail(template.savedJail);
-    toast.info("Sablon hozzáadva."); setIsTemplateModalOpen(false); setIsMobileDrawerOpen(false);
+    toast.info("Sablon hozzáadva.");
+    setIsTemplateModalOpen(false);
+    setIsMobileDrawerOpen(false);
   };
 
   const deleteTemplate = (templateId: string) => {
-    setTemplates(templates.filter(t => t.id !== templateId)); toast.success("Sablon törölve.");
+    setTemplates(templates.filter(t => t.id !== templateId));
+    toast.success("Sablon törölve.");
   };
 
   // --- Renderelő Komponensek ---
@@ -685,33 +776,44 @@ export function CalculatorPage() {
         isInCart ? (item.isWarning ? "bg-amber-950/20 border-amber-900/50" : "bg-blue-950/20 border-blue-900/50")
           : "bg-slate-900/40 border-slate-800/60 hover:border-slate-700 hover:bg-slate-900/60"
       )}>
-        {isInCart && <div className={cn("absolute left-0 top-0 bottom-0 w-1", item.isWarning ? "bg-amber-600" : "bg-blue-600")} />}
+        {isInCart &&
+          <div className={cn("absolute left-0 top-0 bottom-0 w-1", item.isWarning ? "bg-amber-600" : "bg-blue-600")}/>}
 
         <div className="flex justify-between items-start gap-3 pl-2">
           <div className="flex-1 min-w-0">
             <div className="flex flex-col mb-1">
               {item.fo_tetel_nev && (
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-0.5 flex items-center gap-1">
-                  {item.fo_tetel_paragrafus && <span className="text-slate-600"><HighlightText text={item.fo_tetel_paragrafus} highlight={searchTerm}/></span>}
+                <div
+                  className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-0.5 flex items-center gap-1">
+                  {item.fo_tetel_paragrafus &&
+                    <span className="text-slate-600"><HighlightText text={item.fo_tetel_paragrafus}
+                                                                    highlight={searchTerm}/></span>}
                   <HighlightText text={item.fo_tetel_nev} highlight={searchTerm}/>
                 </div>
               )}
               <div className="flex items-start gap-2">
-                <span className="font-mono text-yellow-500 font-bold text-sm shrink-0 mt-0.5"><HighlightText text={item.paragrafus} highlight={searchTerm}/></span>
-                <h3 className="font-bold text-slate-100 text-base leading-tight break-words"><HighlightText text={item.megnevezes} highlight={searchTerm}/></h3>
+                <span className="font-mono text-yellow-500 font-bold text-sm shrink-0 mt-0.5"><HighlightText
+                  text={item.paragrafus} highlight={searchTerm}/></span>
+                <h3 className="font-bold text-slate-100 text-base leading-tight break-words"><HighlightText
+                  text={item.megnevezes} highlight={searchTerm}/></h3>
                 {item.isWarning && <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 animate-pulse mt-0.5"/>}
               </div>
             </div>
 
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate-300 mt-1.5">
               {(item.min_birsag || item.max_birsag) && (
-                <span className="flex items-center gap-1.5 bg-slate-950/50 px-1.5 py-0.5 rounded text-xs border border-slate-800"><DollarSign className="w-3 h-3 text-green-500"/> {formatCurrency(item.min_birsag)} - {formatCurrency(item.max_birsag)}</span>
+                <span
+                  className="flex items-center gap-1.5 bg-slate-950/50 px-1.5 py-0.5 rounded text-xs border border-slate-800"><DollarSign
+                  className="w-3 h-3 text-green-500"/> {formatCurrency(item.min_birsag)} - {formatCurrency(item.max_birsag)}</span>
               )}
               {(item.min_fegyhaz || item.max_fegyhaz) && (
-                <span className="flex items-center gap-1.5 bg-slate-950/50 px-1.5 py-0.5 rounded text-xs border border-slate-800"><Target className="w-3 h-3 text-red-500"/> {formatJailTime(item.min_fegyhaz)} - {formatJailTime(item.max_fegyhaz)}</span>
+                <span
+                  className="flex items-center gap-1.5 bg-slate-950/50 px-1.5 py-0.5 rounded text-xs border border-slate-800"><Target
+                  className="w-3 h-3 text-red-500"/> {formatJailTime(item.min_fegyhaz)} - {formatJailTime(item.max_fegyhaz)}</span>
               )}
             </div>
-            {item.megjegyzes && <p className="text-xs text-slate-500 mt-2 italic truncate max-w-[90%]"><HighlightText text={item.megjegyzes} highlight={searchTerm}/></p>}
+            {item.megjegyzes && <p className="text-xs text-slate-500 mt-2 italic truncate max-w-[90%]"><HighlightText
+              text={item.megjegyzes} highlight={searchTerm}/></p>}
           </div>
 
           <div className="flex flex-col items-center gap-1 shrink-0">
@@ -728,7 +830,9 @@ export function CalculatorPage() {
             >
               {isInCart ? "Hozzáadva" : "Hozzáad"}
             </Button>
-            <Button variant="ghost" size="icon" className={cn("h-7 w-7 rounded-full", isFavorite ? "text-yellow-400" : "text-slate-700 hover:text-yellow-500 hover:bg-slate-800")} onClick={() => toggleFavorite(item.id)}>
+            <Button variant="ghost" size="icon"
+                    className={cn("h-7 w-7 rounded-full", isFavorite ? "text-yellow-400" : "text-slate-700 hover:text-yellow-500 hover:bg-slate-800")}
+                    onClick={() => toggleFavorite(item.id)}>
               <Star className={cn("w-4 h-4", isFavorite && "fill-yellow-400")}/>
             </Button>
           </div>
@@ -739,15 +843,20 @@ export function CalculatorPage() {
 
   const renderItemList = () => {
     if (filteredKategorias.length === 0) {
-      return <div className="text-center text-slate-500 py-12"><Search className="mx-auto h-12 w-12 mb-4 opacity-20"/><p className="text-lg font-medium">Nincs találat a keresésre.</p></div>;
+      return <div className="text-center text-slate-500 py-12"><Search className="mx-auto h-12 w-12 mb-4 opacity-20"/><p
+        className="text-lg font-medium">Nincs találat a keresésre.</p></div>;
     }
 
     return (
       <Accordion type="multiple" value={openCategories} onValueChange={setOpenCategories} className="space-y-4">
         {filteredKategorias.map((kategoria) => (
-          <AccordionItem value={kategoria.kategoria_nev} key={kategoria.kategoria_nev} id={`category-item-${kategoria.kategoria_nev.replace(/\s/g, "-")}`} className="border-none bg-slate-900/20 rounded-xl border border-slate-800/50 overflow-hidden shadow-sm">
-            <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-slate-800/40 transition-colors group text-left">
-              <span className="text-lg font-semibold text-slate-200 group-hover:text-white transition-colors break-words leading-snug">{kategoria.kategoria_nev}</span>
+          <AccordionItem value={kategoria.kategoria_nev} key={kategoria.kategoria_nev}
+                         id={`category-item-${kategoria.kategoria_nev.replace(/\s/g, "-")}`}
+                         className="border-none bg-slate-900/20 rounded-xl border border-slate-800/50 overflow-hidden shadow-sm">
+            <AccordionTrigger
+              className="px-5 py-4 hover:no-underline hover:bg-slate-800/40 transition-colors group text-left">
+              <span
+                className="text-lg font-semibold text-slate-200 group-hover:text-white transition-colors break-words leading-snug">{kategoria.kategoria_nev}</span>
             </AccordionTrigger>
             <AccordionContent className="pt-0 pb-3 px-3 bg-slate-950/30">
               <div className="grid grid-cols-1 gap-2 pt-3">
@@ -762,11 +871,15 @@ export function CalculatorPage() {
                     }}
                     className="w-full"
                   >
-                    <AccordionItem value={itemOrGroup.id} className="border border-slate-800/60 bg-slate-900/40 rounded-lg mb-2 overflow-hidden">
-                      <AccordionTrigger className="px-4 py-3 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 hover:no-underline transition-colors text-left">
+                    <AccordionItem value={itemOrGroup.id}
+                                   className="border border-slate-800/60 bg-slate-900/40 rounded-lg mb-2 overflow-hidden">
+                      <AccordionTrigger
+                        className="px-4 py-3 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 hover:no-underline transition-colors text-left">
                         <div className="flex items-start gap-3">
-                          <Badge variant="outline" className="text-yellow-600 border-yellow-900/20 font-mono bg-yellow-500/5 px-2 py-0.5 mt-0.5">{itemOrGroup.paragrafus}</Badge>
-                          <span className="text-base break-words leading-snug"><HighlightText text={itemOrGroup.megnevezes} highlight={searchTerm}/></span>
+                          <Badge variant="outline"
+                                 className="text-yellow-600 border-yellow-900/20 font-mono bg-yellow-500/5 px-2 py-0.5 mt-0.5">{itemOrGroup.paragrafus}</Badge>
+                          <span className="text-base break-words leading-snug"><HighlightText
+                            text={itemOrGroup.megnevezes} highlight={searchTerm}/></span>
                         </div>
                       </AccordionTrigger>
                       <AccordionContent className="px-3 pb-3 pt-1 space-y-2 bg-black/20 border-t border-slate-800/30">
@@ -791,7 +904,6 @@ export function CalculatorPage() {
 
     return (
       <div className="space-y-6 pr-3">
-        {/* JEGYZŐKÖNYV (Változatlan, csak hivatkozom rá) */}
         <Card className="bg-slate-900/80 border-slate-700/50 shadow-xl backdrop-blur-sm flex flex-col max-h-[45vh]">
           <CardHeader className="pb-3 pt-4 px-4 border-b border-slate-800/60 bg-slate-900/50">
             <div className="flex justify-between items-center">
@@ -799,7 +911,8 @@ export function CalculatorPage() {
                 <ClipboardList className="w-4 h-4 text-blue-400"/>
                 <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-300">Jegyzőkönyv</CardTitle>
               </div>
-              {cart.length > 0 && <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20">{cart.reduce((acc, i) => acc + i.quantity, 0)} tétel</Badge>}
+              {cart.length > 0 && <Badge variant="secondary"
+                                         className="bg-blue-500/10 text-blue-400 border-blue-500/20">{cart.reduce((acc, i) => acc + i.quantity, 0)} tétel</Badge>}
             </div>
           </CardHeader>
           <CardContent className="p-0 overflow-y-auto flex-1 scrollbar-hide min-h-0 bg-slate-950/30">
@@ -812,16 +925,19 @@ export function CalculatorPage() {
             ) : (
               <div className="divide-y divide-slate-800/40">
                 {cart.map(({item, quantity}) => (
-                  <div key={item.id} className="flex justify-between items-center p-3 hover:bg-slate-800/30 transition-colors group">
+                  <div key={item.id}
+                       className="flex justify-between items-center p-3 hover:bg-slate-800/30 transition-colors group">
                     <div className="flex-1 min-w-0 pr-3">
                       <div className="text-[10px] text-slate-500 uppercase font-semibold mb-0.5 tracking-tight">
                         {item.fo_tetel_nev || item.kategoria_nev}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-200 truncate leading-tight">{item.megnevezes}</span>
+                        <span
+                          className="text-sm font-bold text-slate-200 truncate leading-tight">{item.megnevezes}</span>
                         {item.isWarning && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0"/>}
                       </div>
-                      <div className="text-[11px] text-slate-400 font-mono mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
+                      <div
+                        className="text-[11px] text-slate-400 font-mono mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
                         <span>${formatCurrency(item.min_birsag)}</span>
                         <span className="text-slate-600">|</span>
                         <span>{item.min_fegyhaz} p</span>
@@ -829,11 +945,18 @@ export function CalculatorPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex items-center bg-slate-900 rounded border border-slate-700 h-7">
-                        <button className="px-2 hover:bg-slate-800 text-slate-400 h-full transition-colors" onClick={() => updateCartQuantity(item.id, -1)}>-</button>
-                        <span className="text-xs font-mono font-bold w-6 text-center text-white border-x border-slate-800 h-full flex items-center justify-center bg-slate-800/50">{quantity}</span>
-                        <button className="px-2 hover:bg-slate-800 text-slate-400 h-full transition-colors" onClick={() => updateCartQuantity(item.id, 1)}>+</button>
+                        <button className="px-2 hover:bg-slate-800 text-slate-400 h-full transition-colors"
+                                onClick={() => updateCartQuantity(item.id, -1)}>-
+                        </button>
+                        <span
+                          className="text-xs font-mono font-bold w-6 text-center text-white border-x border-slate-800 h-full flex items-center justify-center bg-slate-800/50">{quantity}</span>
+                        <button className="px-2 hover:bg-slate-800 text-slate-400 h-full transition-colors"
+                                onClick={() => updateCartQuantity(item.id, 1)}>+
+                        </button>
                       </div>
-                      <button className="h-7 w-7 flex items-center justify-center text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors" onClick={() => updateCartQuantity(item.id, -quantity)}>
+                      <button
+                        className="h-7 w-7 flex items-center justify-center text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
+                        onClick={() => updateCartQuantity(item.id, -quantity)}>
                         <X className="w-4 h-4"/>
                       </button>
                     </div>
@@ -844,8 +967,10 @@ export function CalculatorPage() {
           </CardContent>
           {cart.length > 0 && (
             <div className="p-2 border-t border-slate-800/60 bg-slate-900/80 flex gap-2 backdrop-blur-md">
-              <Button variant="outline" size="sm" className="flex-1 h-8 text-xs border-slate-700 hover:bg-slate-800" onClick={() => setIsSaveTemplateOpen(true)}><Save className="w-3 h-3 mr-1.5"/> Sablon</Button>
-              <Button variant="ghost" size="sm" className="h-8 px-3 text-red-400 hover:text-red-300 hover:bg-red-950/30" onClick={clearCart}><Trash2 className="w-3 h-3"/></Button>
+              <Button variant="outline" size="sm" className="flex-1 h-8 text-xs border-slate-700 hover:bg-slate-800"
+                      onClick={() => setIsSaveTemplateOpen(true)}><Save className="w-3 h-3 mr-1.5"/> Sablon</Button>
+              <Button variant="ghost" size="sm" className="h-8 px-3 text-red-400 hover:text-red-300 hover:bg-red-950/30"
+                      onClick={clearCart}><Trash2 className="w-3 h-3"/></Button>
             </div>
           )}
         </Card>
@@ -859,10 +984,10 @@ export function CalculatorPage() {
             </div>
           </CardHeader>
           <CardContent className="p-4 space-y-5">
-            {/* Figyelmeztetések (Marad) */}
+            {/* Figyelmeztetések */}
             {summary.warningItems.length > 0 && (
               <div className="bg-amber-950/20 border border-amber-900/30 rounded-lg p-3 relative overflow-hidden">
-                <div className="absolute inset-0 bg-amber-500/5 pointer-events-none" />
+                <div className="absolute inset-0 bg-amber-500/5 pointer-events-none"/>
                 <div className="flex items-center gap-2 text-amber-500 mb-2 relative z-10">
                   <AlertTriangle className="w-4 h-4"/>
                   <span className="text-xs font-bold uppercase tracking-wide">Figyelmeztetések</span>
@@ -872,10 +997,12 @@ export function CalculatorPage() {
                   (licenseWarnings.length > 0 && firearmWarnings.length > 0) ? "grid grid-cols-2 gap-3" : "space-y-2"
                 )}>
                   {licenseWarnings.length > 0 && (
-                    <div className={cn((licenseWarnings.length > 0 && firearmWarnings.length > 0) && "pr-2 border-r border-amber-800/30")}>
+                    <div
+                      className={cn((licenseWarnings.length > 0 && firearmWarnings.length > 0) && "pr-2 border-r border-amber-800/30")}>
                       <strong className="text-amber-100 block mb-1 opacity-90">Közlekedés</strong>
                       <ul className="space-y-0.5">
-                        {licenseWarnings.map(i => <li key={i.id} className="pl-2 border-l-2 border-amber-600/50">{i.megnevezes}</li>)}
+                        {licenseWarnings.map(i => <li key={i.id}
+                                                      className="pl-2 border-l-2 border-amber-600/50">{i.megnevezes}</li>)}
                       </ul>
                     </div>
                   )}
@@ -883,7 +1010,8 @@ export function CalculatorPage() {
                     <div className={cn((licenseWarnings.length > 0 && firearmWarnings.length > 0) && "pl-1")}>
                       <strong className="text-red-100 block mb-1 opacity-90">Fegyverek</strong>
                       <ul className="space-y-0.5">
-                        {firearmWarnings.map(i => <li key={i.id} className="pl-2 border-l-2 border-red-600/50">{i.megnevezes}</li>)}
+                        {firearmWarnings.map(i => <li key={i.id}
+                                                      className="pl-2 border-l-2 border-red-600/50">{i.megnevezes}</li>)}
                       </ul>
                     </div>
                   )}
@@ -896,7 +1024,8 @@ export function CalculatorPage() {
               <div className="space-y-2.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-400 font-medium">Bírság ($)</span>
-                  <span className="font-mono text-green-400 bg-green-950/30 px-1.5 rounded border border-green-900/30">{formatCurrency(summary.minFine)} - {formatCurrency(summary.maxFine)}</span>
+                  <span
+                    className="font-mono text-green-400 bg-green-950/30 px-1.5 rounded border border-green-900/30">{formatCurrency(summary.minFine)} - {formatCurrency(summary.maxFine)}</span>
                 </div>
                 <div className="flex gap-3 items-center">
                   <Slider
@@ -919,7 +1048,8 @@ export function CalculatorPage() {
               <div className="space-y-2.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-400 font-medium">Fegyház (perc)</span>
-                  <span className="font-mono text-red-400 bg-red-950/30 px-1.5 rounded border border-red-900/30">{summary.minJail} - {summary.maxJail} p</span>
+                  <span
+                    className="font-mono text-red-400 bg-red-950/30 px-1.5 rounded border border-red-900/30">{summary.minJail} - {summary.maxJail} p</span>
                 </div>
                 <div className="flex gap-3 items-center">
                   <Slider
@@ -940,24 +1070,32 @@ export function CalculatorPage() {
               </div>
             </div>
 
-            {/* --- PARANCSOK (ÁTALAKÍTVA) --- */}
+            {/* --- PARANCSOK --- */}
             <div className="space-y-4 pt-4 border-t border-slate-800/60">
 
-              {/* TICKET (Bírság) - Nincs ID input, csak másoló gombok */}
+              {/* TICKET */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Ticket (Bírság)</span>
-                  <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] text-slate-500 hover:text-white border border-slate-700" onClick={copyTicketCmd}>
+                  <Button size="sm" variant="ghost"
+                          className="h-6 px-2 text-[10px] text-slate-500 hover:text-white border border-slate-700"
+                          onClick={copyTicketCmd}>
                     /ticket parancs
                   </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" className="bg-slate-950 border-slate-800 hover:bg-slate-900 hover:border-green-900/50 text-xs h-9" onClick={copyFineAmount} disabled={cart.length === 0}>
-                    {isFineCopied ? <Check className="w-3 h-3 mr-1.5 text-green-500"/> : <Copy className="w-3 h-3 mr-1.5"/>}
+                  <Button variant="outline"
+                          className="bg-slate-950 border-slate-800 hover:bg-slate-900 hover:border-green-900/50 text-xs h-9"
+                          onClick={copyFineAmount} disabled={cart.length === 0}>
+                    {isFineCopied ? <Check className="w-3 h-3 mr-1.5 text-green-500"/> :
+                      <Copy className="w-3 h-3 mr-1.5"/>}
                     Összeg másolása
                   </Button>
-                  <Button variant="outline" className="bg-slate-950 border-slate-800 hover:bg-slate-900 hover:border-blue-900/50 text-xs h-9" onClick={copyReasons} disabled={!ticketReasons}>
-                    {isReasonsCopied ? <Check className="w-3 h-3 mr-1.5 text-green-500"/> : <Copy className="w-3 h-3 mr-1.5"/>}
+                  <Button variant="outline"
+                          className="bg-slate-950 border-slate-800 hover:bg-slate-900 hover:border-blue-900/50 text-xs h-9"
+                          onClick={copyReasons} disabled={!ticketReasons}>
+                    {isReasonsCopied ? <Check className="w-3 h-3 mr-1.5 text-green-500"/> :
+                      <Copy className="w-3 h-3 mr-1.5"/>}
                     Indoklás másolása
                   </Button>
                 </div>
@@ -968,11 +1106,14 @@ export function CalculatorPage() {
                 />
               </div>
 
-              {/* ARREST (Letartóztatás) - Ez maradt a régi */}
-              <div className={cn("relative group pt-4 border-t border-slate-800/40 transition-opacity duration-300", (!arrestOutput) ? "opacity-50 grayscale" : "opacity-100")}>
+              {/* ARREST */}
+              <div
+                className={cn("relative group pt-4 border-t border-slate-800/40 transition-opacity duration-300", (!arrestOutput) ? "opacity-50 grayscale" : "opacity-100")}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Arrest (Fegyház)</span>
-                  <Input value={targetId} onChange={(e) => setTargetId(e.target.value)} className="h-7 w-20 px-2 bg-slate-950 border-slate-700 font-mono text-center text-xs" placeholder="ID"/>
+                  <Input value={targetId} onChange={(e) => setTargetId(e.target.value)}
+                         className="h-7 w-20 px-2 bg-slate-950 border-slate-700 font-mono text-center text-xs"
+                         placeholder="ID"/>
                 </div>
                 <div className="relative">
                   <Textarea
@@ -990,7 +1131,8 @@ export function CalculatorPage() {
                       onClick={copyArrest}
                       disabled={!arrestOutput}
                     >
-                      {isArrestCopied ? <><Check className="w-3 h-3 mr-1.5"/> Másolva</> : <><Copy className="w-3 h-3 mr-1.5"/> Másolás</>}
+                      {isArrestCopied ? <><Check className="w-3 h-3 mr-1.5"/> Másolva</> : <><Copy
+                        className="w-3 h-3 mr-1.5"/> Másolás</>}
                     </Button>
                   </div>
                 </div>
@@ -1001,9 +1143,11 @@ export function CalculatorPage() {
 
         {/* FOOTER */}
         <div className="text-center pb-8 lg:pb-0 pt-4 opacity-60 hover:opacity-100 transition-opacity">
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">San Fierro Sheriff's Dept. Intranet v2.0</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">San Fierro Sheriff's Dept.
+            Intranet v2.0</p>
           <p className="text-[10px] text-slate-600 mt-1">
-            Data: <span className="text-slate-500 font-medium">Tetsu</span> • Dev: <span className="text-slate-500 font-medium">Martin Lothbrok</span>
+            Data: <span className="text-slate-500 font-medium">Tetsu</span> • Dev: <span
+            className="text-slate-500 font-medium">Martin Lothbrok</span>
           </p>
         </div>
       </div>
@@ -1014,22 +1158,21 @@ export function CalculatorPage() {
 
   return (
     <>
-      {/* JAVÍTÁS: Nincs Toaster itt, mert az App.tsx-ben már van! */}
-
       <SaveTemplateDialog open={isSaveTemplateOpen} onOpenChange={setIsSaveTemplateOpen} onSave={handleSaveTemplate}/>
 
       {/* FŐ KONTÉNER */}
       <div className="container mx-auto max-w-[1600px] flex flex-col h-full px-4 lg:px-6">
-        {/* ... (A layout többi része változatlan) ... */}
         {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pt-6">
           <div className="flex items-center gap-3">
-            <div className="h-12 w-12 bg-yellow-500/10 rounded-xl flex items-center justify-center border border-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.1)]">
+            <div
+              className="h-12 w-12 bg-yellow-500/10 rounded-xl flex items-center justify-center border border-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.1)]">
               <Gavel className="w-6 h-6 text-yellow-500"/>
             </div>
             <div>
               <h1 className="text-3xl font-bold text-white tracking-tight">Büntetés Kalkulátor</h1>
-              <p className="text-sm text-slate-400 hidden md:block">Válaszd ki a tételeket a listából a kalkulációhoz.</p>
+              <p className="text-sm text-slate-400 hidden md:block">Válaszd ki a tételeket a listából a
+                kalkulációhoz.</p>
             </div>
           </div>
         </div>
@@ -1043,7 +1186,8 @@ export function CalculatorPage() {
 
           {/* 1. BAL OSZLOP (Kategóriák) */}
           {isCategorySidebarVisible && (
-            <div className="hidden xl:flex flex-col sticky top-6 h-fit max-h-[calc(100vh-3rem)] overflow-y-auto scrollbar-hide bg-slate-900/40 rounded-xl border border-slate-800/50 backdrop-blur-sm transition-all duration-300">
+            <div
+              className="hidden xl:flex flex-col sticky top-6 h-fit max-h-[calc(100vh-3rem)] overflow-y-auto scrollbar-hide bg-slate-900/40 rounded-xl border border-slate-800/50 backdrop-blur-sm transition-all duration-300">
               <div className="p-4 border-b border-slate-800/50 sticky top-0 bg-slate-950/80 backdrop-blur-md z-10">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
                   <ClipboardList className="w-3 h-3"/> Kategóriák
@@ -1072,7 +1216,8 @@ export function CalculatorPage() {
           {/* 2. KÖZÉPSŐ OSZLOP (Lista) */}
           <div className="min-w-0 flex flex-col gap-6 pb-20 lg:pb-0 w-full">
             {/* LEBEGŐ KERESŐ (Glassmorphism) */}
-            <div className="sticky top-4 z-30 rounded-xl border border-white/10 bg-slate-950/80 backdrop-blur-md shadow-2xl flex items-center gap-2 p-2 transition-all duration-300 hover:bg-slate-950/90 hover:border-white/20">
+            <div
+              className="sticky top-4 z-30 rounded-xl border border-white/10 bg-slate-950/80 backdrop-blur-md shadow-2xl flex items-center gap-2 p-2 transition-all duration-300 hover:bg-slate-950/90 hover:border-white/20">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500"/>
                 <Input
@@ -1082,21 +1227,39 @@ export function CalculatorPage() {
                   className="h-10 pl-10 bg-transparent border-none focus-visible:ring-0 placeholder:text-slate-500 text-slate-200"
                 />
                 {searchTerm && (
-                  <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-400">
+                  <button onClick={() => setSearchTerm("")}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-400">
                     <X className="w-4 h-4"/>
                   </button>
                 )}
               </div>
               <div className="w-px h-6 bg-white/10 mx-1"/>
               <div className="flex items-center gap-1 pr-2">
-                <Button size="icon" variant={isFavoritesView ? "secondary" : "ghost"} onClick={() => setIsFavoritesView(!isFavoritesView)} className={cn("h-9 w-9 rounded-lg transition-colors", isFavoritesView && "bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20")} title="Kedvencek"><Star className={cn("w-4 h-4", isFavoritesView && "fill-yellow-500")}/></Button>
-                <HistoryModal isDesktop={isDesktop} open={isHistoryOpen} onOpenChange={setIsHistoryOpen} history={history} loadFromHistory={loadFromHistory} />
-                <Button size="icon" variant="ghost" className="h-9 w-9 text-slate-400 hover:text-white rounded-lg hover:bg-white/5" onClick={() => setIsHistoryOpen(true)} title="Előzmények"><History className="w-4 h-4"/></Button>
-                <TemplateModal isDesktop={isDesktop} open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen} templates={templates} loadFromTemplate={loadFromTemplate} deleteTemplate={deleteTemplate} />
-                <Button size="icon" variant="ghost" className="h-9 w-9 text-slate-400 hover:text-white rounded-lg hover:bg-white/5" onClick={() => setIsTemplateModalOpen(true)} title="Sablonok"><ClipboardCheck className="w-4 h-4"/></Button>
+                <Button size="icon" variant={isFavoritesView ? "secondary" : "ghost"}
+                        onClick={() => setIsFavoritesView(!isFavoritesView)}
+                        className={cn("h-9 w-9 rounded-lg transition-colors", isFavoritesView && "bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20")}
+                        title="Kedvencek"><Star
+                  className={cn("w-4 h-4", isFavoritesView && "fill-yellow-500")}/></Button>
+                <HistoryModal isDesktop={isDesktop} open={isHistoryOpen} onOpenChange={setIsHistoryOpen}
+                              history={history} loadFromHistory={loadFromHistory}/>
+                <Button size="icon" variant="ghost"
+                        className="h-9 w-9 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
+                        onClick={() => setIsHistoryOpen(true)} title="Előzmények"><History
+                  className="w-4 h-4"/></Button>
+                <TemplateModal isDesktop={isDesktop} open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}
+                               templates={templates} loadFromTemplate={loadFromTemplate}
+                               deleteTemplate={deleteTemplate}/>
+                <Button size="icon" variant="ghost"
+                        className="h-9 w-9 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
+                        onClick={() => setIsTemplateModalOpen(true)} title="Sablonok"><ClipboardCheck
+                  className="w-4 h-4"/></Button>
                 <div className="hidden xl:block w-px h-6 bg-white/10 mx-1"/>
-                <Button size="icon" variant="ghost" className="hidden xl:flex h-9 w-9 text-slate-400 hover:text-white rounded-lg hover:bg-white/5" onClick={() => setIsCategorySidebarVisible(!isCategorySidebarVisible)} title={isCategorySidebarVisible ? "Kategóriák elrejtése" : "Kategóriák megjelenítése"}>
-                  {isCategorySidebarVisible ? <PanelLeftClose className="w-4 h-4"/> : <PanelLeftOpen className="w-4 h-4"/>}
+                <Button size="icon" variant="ghost"
+                        className="hidden xl:flex h-9 w-9 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
+                        onClick={() => setIsCategorySidebarVisible(!isCategorySidebarVisible)}
+                        title={isCategorySidebarVisible ? "Kategóriák elrejtése" : "Kategóriák megjelenítése"}>
+                  {isCategorySidebarVisible ? <PanelLeftClose className="w-4 h-4"/> :
+                    <PanelLeftOpen className="w-4 h-4"/>}
                 </Button>
               </div>
             </div>
@@ -1121,17 +1284,19 @@ export function CalculatorPage() {
       {!isDesktop && (
         <Drawer open={isMobileDrawerOpen} onOpenChange={setIsMobileDrawerOpen}>
           <DrawerTrigger asChild>
-            <Button size="icon" className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-2xl z-50 bg-yellow-500 text-black hover:bg-yellow-400 border-4 border-slate-950 transition-transform active:scale-95">
+            <Button size="icon"
+                    className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-2xl z-50 bg-yellow-500 text-black hover:bg-yellow-400 border-4 border-slate-950 transition-transform active:scale-95">
               <ClipboardList className="w-6 h-6"/>
               {cart.length > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white border-2 border-slate-950 animate-in zoom-in">
+                <span
+                  className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white border-2 border-slate-950 animate-in zoom-in">
                   {cart.reduce((acc, item) => acc + item.quantity, 0)}
                 </span>
               )}
             </Button>
           </DrawerTrigger>
           <DrawerContent className="bg-slate-950 border-t border-slate-800 max-h-[90vh] flex flex-col rounded-t-2xl">
-            <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-slate-800 mt-3 mb-4 opacity-50" />
+            <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-slate-800 mt-3 mb-4 opacity-50"/>
             <div className="flex-1 overflow-y-auto px-4 pb-8 scrollbar-hide">
               {renderRightSidebar()}
             </div>

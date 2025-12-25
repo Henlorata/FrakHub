@@ -5,8 +5,8 @@ import {useSystemStatus} from "@/context/SystemStatusContext";
 import {LoadingScreen} from "@/components/ui/loading-screen";
 import {PendingApprovalPage} from "@/pages/auth/PendingApprovalPage";
 import {
-  LayoutDashboard, Users, ShieldAlert, Truck, FileText, LogOut, Menu, X,
-  Banknote, Gavel, Bell, User, ChevronRight, ClipboardPen, ClipboardList,
+  LayoutDashboard, Users, ShieldAlert, Truck, LogOut, Menu, X,
+  Banknote, Gavel, Bell, User, ClipboardPen, ClipboardList,
   Settings, Shield
 } from "lucide-react";
 import {Button} from "@/components/ui/button";
@@ -15,23 +15,15 @@ import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 
-// --- ÚJ MODERN HÁTTÉR ---
-// Nem retro, hanem modern, sötét, "High-End" érzet
 const ModernAmbientBackground = () => (
   <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden bg-[#02040a]">
-    {/* 1. Mély sötét alap gradiens */}
     <div className="absolute inset-0 bg-gradient-to-b from-[#050a14] via-[#02040a] to-black"></div>
-
-    {/* 2. Ambient Fények (Tactical Blue & Alert Colors) */}
-    {/* Bal felső kék fény */}
     <div className="ambient-light bg-blue-900/20 w-[500px] h-[500px] -top-20 -left-20 animate-pulse"
          style={{animationDuration: '8s'}}></div>
-    {/* Jobb alsó sárgás fény (Sheriff Gold) */}
     <div className="ambient-light bg-yellow-900/10 w-[600px] h-[600px] -bottom-40 -right-20 animate-pulse"
          style={{animationDuration: '12s'}}></div>
-
-    {/* 3. Nagyon finom zaj (Noise) a textúrához (opcionális, de ad egy kis 'anyagot' a sötétségnek) */}
     <div className="absolute inset-0 opacity-[0.03]"
          style={{backgroundImage: 'url("https://www.transparenttextures.com/patterns/stardust.png")'}}></div>
   </div>
@@ -45,10 +37,8 @@ export function AppLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // --- LOGIC ---
   const showSidebar = location.pathname !== '/onboarding';
 
-  // Státusz színek definiálása a JS oldalon is a dinamikus stílushoz
   const getStatusColor = () => {
     switch (alertLevel) {
       case 'traffic':
@@ -64,7 +54,6 @@ export function AppLayout() {
   const statusColor = getStatusColor();
 
   useEffect(() => {
-    // CSS változó frissítése a status colorhoz
     document.documentElement.style.setProperty('--status-color', statusColor);
     document.documentElement.style.setProperty('--status-glow', `${statusColor}80`); // 50% opacity
   }, [alertLevel, statusColor]);
@@ -223,7 +212,7 @@ export function AppLayout() {
                 <button
                   className="flex items-center w-full gap-3 group outline-none hover:bg-white/5 p-2 rounded-lg transition-colors">
                   <Avatar className="h-9 w-9 border border-slate-700 transition-colors duration-500">
-                    <AvatarImage src={profile.avatar_url}/>
+                    <AvatarImage src={getOptimizedAvatarUrl(profile.avatar_url, 100) || ""}/>
                     <AvatarFallback
                       className="bg-slate-800 text-slate-200 font-bold">{profile.badge_number}</AvatarFallback>
                   </Avatar>

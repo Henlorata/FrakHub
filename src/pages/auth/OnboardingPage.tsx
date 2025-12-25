@@ -19,7 +19,6 @@ export function OnboardingPage() {
   const [hasWatchedVideo, setHasWatchedVideo] = useState(false); // Checkbox state
   const [isLoading, setIsLoading] = useState(false);
 
-  // Ellenőrizzük, van-e már vizsga a userhez csatolva
   const checkExamStatus = async () => {
     if (!user) return;
     const {data} = await supabase.from('exam_submissions').select('id').eq('user_id', user.id).limit(1);
@@ -30,7 +29,6 @@ export function OnboardingPage() {
 
   useEffect(() => {
     checkExamStatus();
-    // Védelmi vonal: Ha valaki nem Trainee vagy már kész van, ne legyen itt
     if (profile && profile.faction_rank !== 'Deputy Sheriff Trainee' && profile.onboarding_completed) {
       navigate('/');
     }
@@ -66,7 +64,6 @@ export function OnboardingPage() {
       if (error) throw error;
 
       toast.success("Kiképzés sikeres! Üdv a csapatban!");
-      // Frissíteni kellene a profilt a contextben, de egy reload megoldja, vagy navigálás
       window.location.href = '/';
     } catch (e: any) {
       toast.error("Hiba: " + e.message);
@@ -100,10 +97,10 @@ export function OnboardingPage() {
                 {/* VIDEÓ HELYE */}
                 <div
                   className="aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 relative group cursor-pointer">
-                  {/* Ide jön az iframe, most placeholder */}
+                  {/* PLACEHOLDER */}
                   <iframe
                     width="100%" height="100%"
-                    src="https://www.youtube.com/embed/dQw4w9WgXcQ" // Cseréld le a valódi ID-re
+                    src="https://www.youtube.com/embed/dQw4w9WgXcQ" // IDE MAJD A VALÓDI ID-T, HA KÉSZ LESZ A VIDEÓM
                     title="SFSD Tutorial" frameBorder="0"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
@@ -127,7 +124,7 @@ export function OnboardingPage() {
           </Card>
         </div>
 
-        {/* JOBB OLDAL: VIZSGA CSATOLÁS (1 col) */}
+        {/* JOBB OLDAL */}
         <div className="space-y-6">
           <Card
             className={`border-2 transition-all shadow-xl ${isExamLinked ? 'bg-green-950/20 border-green-500/50' : 'bg-slate-900 border-yellow-600'}`}>

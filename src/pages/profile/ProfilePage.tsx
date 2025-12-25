@@ -11,9 +11,9 @@ import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {toast} from "sonner";
 import {
-  Key, Save, Loader2, Star, Briefcase, Calendar, Crown, Award,
+  Key, Save, Loader2, Briefcase, Calendar,
   Shield, UserCog, Medal, PlusCircle, Sparkles, Fingerprint,
-  Activity, ScanLine, QrCode, Bell, Check, Radio, AlertTriangle, Siren, FileText, Zap
+  Activity, ScanLine, QrCode, Bell, Check, Radio, AlertTriangle, Siren, FileText, Zap, Camera, UploadCloud
 } from "lucide-react";
 import {getDepartmentLabel, isExecutive} from "@/lib/utils";
 import {GiveAwardDialog} from "./components/GiveAwardDialog";
@@ -21,6 +21,7 @@ import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
 import {SheriffBackground} from "@/components/SheriffBackground";
 import {cn} from "@/lib/utils";
+import {uploadToCloudinary, getOptimizedAvatarUrl, getPublicIdFromUrl} from "@/lib/cloudinary";
 
 // --- TURBO COUNTER ---
 const TurboCounter = ({value}: { value: number }) => {
@@ -80,39 +81,43 @@ const TiltCard = ({children, className}: { children: React.ReactNode, className?
 };
 
 // --- FINGERPRINT SCANNER ---
-const FingerprintScanner = ({colorClass, profile}: { colorClass: string, profile: any }) => (
-  <div
-    className="w-full h-full bg-black/80 flex flex-col items-center justify-center relative overflow-hidden border border-white/10 rounded-md group cursor-pointer shadow-inner">
-    <div
-      className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:10px_10px]"></div>
+const FingerprintScanner = ({colorClass, profile}: { colorClass: string, profile: any }) => {
+  const avatarSrc = getOptimizedAvatarUrl(profile.avatar_url, 400) || profile.avatar_url;
 
-    {/* Default: Ujjlenyomat */}
+  return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center transition-opacity duration-300 group-hover:opacity-0">
-      <Fingerprint className={`w-24 h-24 ${colorClass} opacity-80 z-10 animate-pulse`}/>
+      className="w-full h-full bg-black/80 flex flex-col items-center justify-center relative overflow-hidden border border-white/10 rounded-md group cursor-pointer shadow-inner">
       <div
-        className="absolute inset-x-0 h-0.5 bg-white/50 shadow-[0_0_15px_rgba(255,255,255,0.8)] z-20 animate-[scan-vertical_2.5s_ease-in-out_infinite]"></div>
+        className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:10px_10px]"></div>
+
+      {/* Default: Ujjlenyomat */}
       <div
-        className="absolute bottom-3 text-[8px] uppercase tracking-widest text-slate-400 font-mono z-10 bg-black/90 px-2 py-0.5 rounded border border-white/10">
-        BIOMETRIC ID
+        className="absolute inset-0 flex flex-col items-center justify-center transition-opacity duration-300 group-hover:opacity-0">
+        <Fingerprint className={`w-24 h-24 ${colorClass} opacity-80 z-10 animate-pulse`}/>
+        <div
+          className="absolute inset-x-0 h-0.5 bg-white/50 shadow-[0_0_15px_rgba(255,255,255,0.8)] z-20 animate-[scan-vertical_2.5s_ease-in-out_infinite]"></div>
+        <div
+          className="absolute bottom-3 text-[8px] uppercase tracking-widest text-slate-400 font-mono z-10 bg-black/90 px-2 py-0.5 rounded border border-white/10">
+          BIOMETRIC ID
+        </div>
+      </div>
+
+      {/* Hover: Profilkép */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-slate-900">
+        <Avatar className="w-full h-full rounded-none">
+          <AvatarImage src={avatarSrc || ""} className="object-cover"/>
+          <AvatarFallback
+            className="bg-slate-800 text-slate-500 font-bold text-4xl">{profile.full_name.charAt(0)}</AvatarFallback>
+        </Avatar>
+        <div className="absolute inset-0 bg-green-500/10 mix-blend-overlay pointer-events-none"></div>
+        <div className="absolute bottom-0 w-full bg-black/80 text-center py-1 border-t border-green-500/30">
+          <span
+            className="text-[9px] text-green-400 font-mono font-bold tracking-widest animate-pulse">ACCESS GRANTED</span>
+        </div>
       </div>
     </div>
-
-    {/* Hover: Profilkép */}
-    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-slate-900">
-      <Avatar className="w-full h-full rounded-none">
-        <AvatarImage src={profile.avatar_url} className="object-cover"/>
-        <AvatarFallback
-          className="bg-slate-800 text-slate-500 font-bold text-4xl">{profile.full_name.charAt(0)}</AvatarFallback>
-      </Avatar>
-      <div className="absolute inset-0 bg-green-500/10 mix-blend-overlay pointer-events-none"></div>
-      <div className="absolute bottom-0 w-full bg-black/80 text-center py-1 border-t border-green-500/30">
-        <span
-          className="text-[9px] text-green-400 font-mono font-bold tracking-widest animate-pulse">ACCESS GRANTED</span>
-      </div>
-    </div>
-  </div>
-);
+  );
+};
 
 // --- SYSTEM MONITOR ---
 const SystemMonitor = ({alertLevel}: { alertLevel: string }) => {
@@ -238,6 +243,7 @@ export function ProfilePage() {
   const {alertLevel} = useSystemStatus();
 
   const [isUpdating, setIsUpdating] = React.useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
   const [stats, setStats] = React.useState({serviceDays: 0, closedCases: 0});
   const [ribbons, setRibbons] = React.useState<any[]>([]);
   const [notifications, setNotifications] = React.useState<any[]>([]);
@@ -277,10 +283,12 @@ export function ProfilePage() {
   React.useEffect(() => {
     loadData();
   }, [loadData]);
+
   const markRead = async (id: string) => {
     await supabase.from('notifications').update({is_read: true}).eq('id', id);
     setNotifications(prev => prev.map(n => n.id === id ? {...n, is_read: true} : n));
   };
+
   const handleNameChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return toast.error("A név nem lehet üres.");
@@ -289,13 +297,13 @@ export function ProfilePage() {
       const {error} = await supabase.rpc('change_user_name', {_new_name: newName});
       if (error) throw error;
       toast.success("Név frissítve!");
-      window.location.reload();
     } catch (e: any) {
       toast.error("Hiba: " + e.message);
     } finally {
       setIsUpdating(false);
     }
   };
+
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) return toast.error("A jelszavak nem egyeznek!");
@@ -309,8 +317,50 @@ export function ProfilePage() {
     }
   };
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !profile) return;
+
+    if (file.size > 5 * 1024 * 1024) return toast.error("A kép max. 5MB lehet!");
+
+    setIsUploadingAvatar(true);
+    const toastId = toast.loading("Profilkép cseréje...");
+
+    try {
+      // 1. RÉGI KÉP TÖRLÉSE (Garbage Collection)
+      const currentAvatarUrl = profile.avatar_url;
+      const oldPublicId = getPublicIdFromUrl(currentAvatarUrl);
+
+      if (oldPublicId) {
+        await fetch('/api/delete-image', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({publicId: oldPublicId})
+        }).catch(err => console.error("Nem sikerült törölni a régi képet:", err));
+      }
+
+      // 2. ÚJ KÉP FELTÖLTÉSE
+      const secureUrl = await uploadToCloudinary(file, 'avatar');
+
+      // 3. SUPABASE FRISSÍTÉS
+      const {error} = await supabase
+        .from('profiles')
+        .update({avatar_url: secureUrl})
+        .eq('id', profile.id);
+
+      if (error) throw error;
+
+      toast.success("Profilkép sikeresen cserélve!", {id: toastId});
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Hiba történt", {id: toastId, description: error.message});
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = "";
+    }
+  };
+
   if (!profile) return null;
-  const isCommandStaff = ['Captain', 'Lieutenant', 'Commander', 'Deputy'].some(r => profile.faction_rank.includes(r));
   const showAwardButton = isExecutive(profile);
   const isVeteran = stats.serviceDays > 365;
 
@@ -348,7 +398,7 @@ export function ProfilePage() {
   };
   const theme = getTheme();
 
-  // --- ID KÁRTYA (Nagyított) ---
+  // --- ID KÁRTYA ---
   const IDCard = () => (
     <TiltCard
       className={`relative overflow-hidden rounded-xl border-2 ${theme.border} ${theme.shadow} shadow-2xl ${theme.bg} p-8 w-full min-h-[400px] flex flex-col justify-between group select-none`}>
@@ -437,8 +487,6 @@ export function ProfilePage() {
     </TiltCard>
   );
 
-  // ... (Rest of the component remains the same: render method, grids, tabs, etc.)
-  // A teljesség kedvéért a render blokk eleje:
   return (
     <div className="min-h-screen bg-[#050a14] relative overflow-hidden pb-20">
       {/* Dialogs & Background */}
@@ -447,13 +495,6 @@ export function ProfilePage() {
       <SheriffBackground/>
 
       <div className="max-w-7xl mx-auto px-6 py-10 relative z-10">
-        {/* HEADER... */}
-        {/* GRID... (BAL OLDAL IDCard, JOBB OLDAL TABS) */}
-        {/* (A kód többi része változatlan, csak az IDCard lett felülírva) */}
-        {/* ... */}
-
-        {/* --- TELJES RETURN BLOKK AZ ISMÉTLÉS KEDVÉÉRT --- */}
-
         {/* HEADER */}
         <div
           className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6 animate-in fade-in slide-in-from-top-4 duration-700">
@@ -480,7 +521,7 @@ export function ProfilePage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
-          {/* BAL OLDAL (6 col - MEGNÖVELVE) */}
+          {/* BAL OLDAL */}
           <div className="lg:col-span-6 space-y-8 animate-in slide-in-from-left-8 duration-700 delay-100">
             <IDCard/>
 
@@ -504,7 +545,7 @@ export function ProfilePage() {
             <SystemMonitor alertLevel={alertLevel}/>
           </div>
 
-          {/* JOBB OLDAL (6 col) */}
+          {/* JOBB OLDAL */}
           <div className="lg:col-span-6 space-y-6 animate-in slide-in-from-right-8 duration-700 delay-200">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <NotificationFeed notifications={notifications} markRead={markRead}/>
@@ -599,11 +640,57 @@ export function ProfilePage() {
                   )}
                 </div>
               </TabsContent>
+
+              {/* SETTINGS TAB */}
               <TabsContent value="settings" className="mt-0">
-                <Card className="bg-slate-900/60 border-slate-800 backdrop-blur-md shadow-xl"><CardHeader><CardTitle
-                  className="text-lg font-bold text-white">Fiók Biztonság</CardTitle><CardDescription
-                  className="text-xs">Személyes adatok és biztonság.</CardDescription></CardHeader>
+                <Card className="bg-slate-900/60 border-slate-800 backdrop-blur-md shadow-xl">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-bold text-white">Fiók Biztonság</CardTitle>
+                    <CardDescription className="text-xs">Személyes adatok és biztonság.</CardDescription>
+                  </CardHeader>
                   <CardContent className="space-y-8">
+
+                    {/* PROFILKÉP CSERE */}
+                    <div
+                      className="space-y-3 p-5 rounded-xl bg-slate-950/50 border border-slate-800/50 relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 p-4 opacity-50"><Camera
+                        className="w-12 h-12 text-slate-800"/></div>
+                      <Label className="text-xs uppercase text-slate-500 font-bold tracking-wider relative z-10">Profilkép
+                        Kezelés</Label>
+                      <div className="flex items-center gap-4 relative z-10">
+                        <Avatar className="w-16 h-16 border-2 border-slate-700">
+                          <AvatarImage src={getOptimizedAvatarUrl(profile.avatar_url, 150) || ""}
+                                       className="object-cover"/>
+                          <AvatarFallback
+                            className="bg-slate-900 text-slate-500 font-bold">{profile.full_name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+
+                        <div className="flex-1">
+                          <div className="flex gap-2 items-center">
+                            <label className="cursor-pointer">
+                              <div
+                                className={`h-10 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-md flex items-center gap-2 text-xs font-bold uppercase tracking-wide border border-slate-700 transition-all ${isUploadingAvatar ? 'opacity-50 pointer-events-none' : ''}`}>
+                                {isUploadingAvatar ? <Loader2 className="w-4 h-4 animate-spin"/> :
+                                  <UploadCloud className="w-4 h-4 text-sky-500"/>}
+                                {isUploadingAvatar ? 'Feltöltés...' : 'Új kép feltöltése'}
+                              </div>
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept="image/*"
+                                onChange={handleAvatarUpload}
+                                disabled={isUploadingAvatar}
+                              />
+                            </label>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-2 font-mono">
+                            Támogatott formátumok: JPG, PNG, WEBP. Max 5MB.
+                            <br/>A rendszer automatikusan optimalizálja a képet.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="space-y-3 p-5 rounded-xl bg-slate-950/50 border border-slate-800/50"><Label
                       className="text-xs uppercase text-slate-500 font-bold tracking-wider">Megjelenített Név
                       (IC)</Label>
