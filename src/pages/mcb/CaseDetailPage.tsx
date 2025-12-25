@@ -82,7 +82,6 @@ export function CaseDetailPage() {
       e.preventDefault();
 
       const now = Date.now();
-      // Ha 1 másodpercen belül jön új kérés, eldobjuk
       if (now - globalLastEventTime < 1000) return;
 
       const customEvent = e as CustomEvent;
@@ -137,9 +136,8 @@ export function CaseDetailPage() {
   const isMcbCommander = profile?.division === 'MCB' && profile?.is_bureau_commander;
 
   const canManageStatus = isOwner || isBureauManager || isMcbCommander;
-  const canArchive = isBureauManager || isMcbCommander; // Csak vezetők archiválhatnak elvileg
+  const canArchive = isBureauManager || isMcbCommander;
 
-  // Ha nem OPEN, vagy nincs jogod szerkeszteni -> Read Only
   const isCaseClosed = caseData?.status !== 'open';
   const isReadOnly = isCaseClosed || !canEdit;
 
@@ -509,10 +507,10 @@ export function CaseDetailPage() {
       </div>
 
       {/* --- WORKSPACE GRID --- */}
-      <div className="flex-1 min-h-0 flex gap-6 px-6 pb-6 relative">
+      <div className="flex-1 min-h-0 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-6 px-6 pb-6 relative">
 
         {/* LEFT COLUMN */}
-        {showLeftSidebar && (
+        {showLeftSidebar ? (
           <div
             className="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar shrink-0 animate-in slide-in-from-left-4 duration-300">
             <CaseInfoCard caseData={caseData}/>
@@ -528,11 +526,11 @@ export function CaseDetailPage() {
               onDelete={!isReadOnly ? handleDeleteCollaborator : undefined}
             />
           </div>
-        )}
+        ) : <div/>}
 
         {/* CENTER COLUMN (Editor) */}
         <div
-          className={cn("flex-1 flex flex-col border rounded-lg overflow-hidden relative shadow-2xl transition-all duration-300",
+          className={cn("flex flex-col border rounded-lg overflow-hidden relative shadow-2xl transition-all duration-300 w-full min-w-0",
             caseData.theme === 'paper' ? 'border-[#d4c5a8]' :
               caseData.theme === 'classic' ? 'border-slate-200' :
                 caseData.theme === 'amber' ? 'border-amber-900/30' :
@@ -563,7 +561,7 @@ export function CaseDetailPage() {
         </div>
 
         {/* RIGHT COLUMN */}
-        {showRightSidebar && (
+        {showRightSidebar ? (
           <div
             className="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar shrink-0 animate-in slide-in-from-right-4 duration-300">
             <div className="flex-1 min-h-[250px] max-h-[400px]">
@@ -579,7 +577,7 @@ export function CaseDetailPage() {
               <CaseChat caseId={caseId!} readOnly={isReadOnly}/>
             </div>
           </div>
-        )}
+        ) : <div/>}
       </div>
     </div>
   );
