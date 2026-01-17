@@ -7,7 +7,7 @@ import {createReactInlineContentSpec} from "@blocknote/react";
 import "@blocknote/mantine/style.css";
 import {useAuth} from "@/context/AuthContext";
 import {toast} from "sonner";
-import {Save, Loader2, ImagePlus, ShieldAlert, Badge as BadgeIcon} from "lucide-react";
+import {Save, Loader2, ImagePlus, ShieldAlert, Badge as BadgeIcon, FolderOpen} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import type {CaseEvidence} from "@/types/supabase";
 import {CaseEditorProvider} from "./CaseEditorContext";
@@ -23,7 +23,6 @@ interface CaseEditorProps {
   theme?: string;
 }
 
-// --- MENTION CHIP ---
 const Mention = createReactInlineContentSpec({
   type: "mention",
   propSchema: {
@@ -34,23 +33,35 @@ const Mention = createReactInlineContentSpec({
   content: "none",
 }, {
   render: (props) => {
-    const isOfficer = props.inlineContent.props.role === 'officer';
+    const role = props.inlineContent.props.role;
+    let icon = <BadgeIcon className="w-3 h-3"/>;
+    let style = "bg-[#1e3a8a] text-blue-200 border-blue-500/50 hover:bg-blue-600 hover:text-white";
+
+    if (role === 'suspect') {
+      icon = <ShieldAlert className="w-3 h-3"/>;
+      style = "bg-[#7c2d12] text-orange-200 border-orange-500/50 hover:bg-orange-600 hover:text-white";
+    } else if (role === 'case') {
+      icon = <FolderOpen className="w-3 h-3"/>;
+      style = "bg-emerald-950 text-emerald-300 border-emerald-500/40 hover:bg-emerald-600 hover:text-white";
+    }
+
     return (
       <span
         className={cn(
           "inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide select-none mx-0.5 align-middle border transition-all cursor-pointer shadow-sm relative top-[-1px]",
-          isOfficer
-            ? "bg-[#1e3a8a] text-blue-200 border-blue-500/50 hover:bg-blue-600 hover:text-white"
-            : "bg-[#7c2d12] text-orange-200 border-orange-500/50 hover:bg-orange-600 hover:text-white"
+          style
         )}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          const eventName = isOfficer ? 'FRAKHUB_V2_OPEN_OFFICER' : 'FRAKHUB_V2_OPEN_SUSPECT';
+          let eventName = 'FRAKHUB_V2_OPEN_OFFICER';
+          if (role === 'suspect') eventName = 'FRAKHUB_V2_OPEN_SUSPECT';
+          if (role === 'case') eventName = 'FRAKHUB_V2_OPEN_CASE';
+
           window.dispatchEvent(new CustomEvent(eventName, {detail: {id: props.inlineContent.props.id}}));
         }}
       >
-        {isOfficer ? <BadgeIcon className="w-3 h-3"/> : <ShieldAlert className="w-3 h-3"/>}
+        {icon}
         {props.inlineContent.props.user}
       </span>
     );
@@ -72,17 +83,24 @@ export function CaseEditor({
   const {supabase} = useAuth();
   const {suspects} = useSuspects();
   const [officers, setOfficers] = useState<any[]>([]);
+  const [availableCases, setAvailableCases] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const hasChangesRef = useRef(false);
 
   useEffect(() => {
-    const fetchOfficers = async () => {
-      const {data} = await supabase.from('profiles').select('id, full_name, badge_number, faction_rank');
-      if (data) setOfficers(data);
+    const fetchRefData = async () => {
+      const {data: offData} = await supabase.from('profiles').select('id, full_name, badge_number, faction_rank');
+      if (offData) setOfficers(offData);
+
+      const {data: caseData} = await supabase.from('cases')
+        .select('id, case_number, title')
+        .neq('id', caseId)
+        .limit(50);
+      if (caseData) setAvailableCases(caseData);
     };
-    fetchOfficers();
-  }, []);
+    fetchRefData();
+  }, [caseId]);
 
   const safeContent = useMemo(() => {
     if (Array.isArray(initialContent) && initialContent.length > 0) return initialContent;
@@ -112,7 +130,6 @@ export function CaseEditor({
     const items: any[] = [];
     const usedIds = new Set();
 
-    // Tisztek
     officers.forEach(officer => {
       if (usedIds.has(officer.id)) return;
       usedIds.add(officer.id);
@@ -140,7 +157,6 @@ export function CaseEditor({
       });
     });
 
-    // Gyanúsítottak
     suspects.forEach(suspect => {
       if (usedIds.has(suspect.id)) return;
       usedIds.add(suspect.id);
@@ -168,8 +184,35 @@ export function CaseEditor({
       });
     });
 
+    availableCases.forEach(c => {
+      if (usedIds.has(c.id)) return;
+      usedIds.add(c.id);
+
+      items.push({
+        title: `Akta #${c.case_number}: ${c.title}`,
+        onItemClick: () => {
+          editor.focus();
+          editor.insertInlineContent([
+            {
+              type: "mention",
+              props: {
+                user: `CASE #${c.case_number}`,
+                id: c.id,
+                role: "case"
+              }
+            },
+            " "
+          ]);
+        },
+        aliases: [c.case_number.toString(), c.title],
+        group: "Kapcsolódó Akták",
+        icon: <FolderOpen size={18} className="text-emerald-400"/>,
+        subtext: "Kattints a hivatkozáshoz"
+      });
+    });
+
     return items;
-  }, [officers, suspects]);
+  }, [officers, suspects, availableCases]);
 
   useEffect(() => {
     const unsubscribe = editor.onChange(() => {

@@ -18,6 +18,7 @@ interface UploadEvidenceDialogProps {
   onOpenChange: (open: boolean) => void;
   caseId: string;
   onUploadComplete: () => void;
+  initialFile?: File | null;
 }
 
 export function UploadEvidenceDialog({
@@ -25,6 +26,7 @@ export function UploadEvidenceDialog({
                                        onOpenChange,
                                        caseId,
                                        onUploadComplete,
+                                       initialFile
                                      }: UploadEvidenceDialogProps) {
   const {supabase, user} = useAuth();
 
@@ -37,12 +39,21 @@ export function UploadEvidenceDialog({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
+    if (open && initialFile) {
+      handleFileSelect(initialFile);
+    }
+  }, [open, initialFile]);
+
+  React.useEffect(() => {
     if (!open) {
-      setFile(null);
-      setPreviewUrl(null);
-      setTitle("");
-      setIsDragOver(false);
-      setIsUploading(false);
+      const timer = setTimeout(() => {
+        setFile(null);
+        setPreviewUrl(null);
+        setTitle("");
+        setIsDragOver(false);
+        setIsUploading(false);
+      }, 300);
+      return () => clearTimeout(timer);
     }
   }, [open]);
 
@@ -107,26 +118,20 @@ export function UploadEvidenceDialog({
     setIsUploading(true);
 
     try {
-      // 1. Feltöltés Cloudinary-ra
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", uploadPreset);
 
       const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
-
       const response = await fetch(uploadUrl, {method: "POST", body: formData});
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || "Cloudinary feltöltési hiba");
+        throw new Error("Cloudinary feltöltési hiba");
       }
 
       const data = await response.json();
       const secureUrl = data.secure_url;
 
-      if (!secureUrl) throw new Error("Sikeres feltöltés, de nincs URL.");
-
-      // 2. Mentés Supabase-be
       const {error: dbError} = await supabase
         .from('case_evidence')
         .insert({
@@ -154,7 +159,14 @@ export function UploadEvidenceDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#0b1120] border-2 border-slate-800 text-white sm:max-w-[500px] p-0 gap-0 overflow-hidden shadow-2xl rounded-xl transition-all duration-300">
+        className="bg-[#0b1120] border-2 border-slate-800 text-white sm:max-w-[500px] p-0 gap-0 overflow-hidden shadow-2xl rounded-xl transition-all duration-300 [&>button:not(.my-custom-close)]:hidden">
+
+        <button
+          onClick={() => onOpenChange(false)}
+          className="my-custom-close absolute right-4 top-4 p-2 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors z-50"
+        >
+          <X className="w-4 h-4 pointer-events-none"/>
+        </button>
 
         <div
           className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-sky-500 to-transparent opacity-50"></div>
@@ -176,7 +188,6 @@ export function UploadEvidenceDialog({
         </div>
 
         <div className="p-6 space-y-5 relative z-10">
-
           <div className="relative group">
             {!file ? (
               <div
@@ -193,7 +204,6 @@ export function UploadEvidenceDialog({
               >
                 <div
                   className={cn("absolute inset-0 bg-sky-500/5 transition-opacity duration-500", isDragOver ? "opacity-100" : "opacity-0")}></div>
-
                 <div
                   className={cn("p-4 rounded-full bg-slate-800 mb-4 transition-all duration-500 shadow-xl z-10", isDragOver ? "bg-sky-500 text-white scale-110 rotate-12" : "text-slate-400")}>
                   <UploadCloud className="w-8 h-8"/>
@@ -205,14 +215,8 @@ export function UploadEvidenceDialog({
                   </p>
                   <p className="text-xs text-slate-500 mt-1">vagy húzd ide a fájlt</p>
                 </div>
-
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  onChange={onInputChange}
-                  accept="image/*,.pdf,.doc,.docx,.txt"
-                />
+                <input type="file" ref={fileInputRef} className="hidden" onChange={onInputChange}
+                       accept="image/*,.pdf,.doc,.docx,.txt"/>
               </div>
             ) : (
               <div
@@ -223,7 +227,6 @@ export function UploadEvidenceDialog({
                 >
                   <X className="w-4 h-4"/>
                 </button>
-
                 <div className="h-40 w-full flex items-center justify-center bg-black/40 relative overflow-hidden">
                   {previewUrl ? (
                     <>
@@ -240,7 +243,6 @@ export function UploadEvidenceDialog({
                     </div>
                   )}
                 </div>
-
                 <div
                   className="px-4 py-3 bg-slate-950/50 border-t border-slate-800 flex items-center gap-3 backdrop-blur-md">
                   <div className="p-2 bg-sky-500/10 border border-sky-500/20 rounded-lg text-sky-400">
@@ -253,14 +255,11 @@ export function UploadEvidenceDialog({
                       {Math.round(file.size / 1024)} KB • {file.type.split('/')[1] || 'FILE'}
                     </p>
                   </div>
-                  <div className="text-green-500">
-                    <CheckCircle2 className="w-5 h-5"/>
-                  </div>
+                  <div className="text-green-500"><CheckCircle2 className="w-5 h-5"/></div>
                 </div>
               </div>
             )}
           </div>
-
           <div className="space-y-2">
             <Label htmlFor="title" className="text-[10px] uppercase font-bold text-slate-500 tracking-wider ml-1">
               Megnevezés / Cím (Opcionális)
@@ -280,27 +279,15 @@ export function UploadEvidenceDialog({
         </div>
 
         <div className="p-6 pt-2 bg-slate-950/50 flex justify-end gap-3 border-t border-slate-800/50">
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            disabled={isUploading}
-            className="text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-          >
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isUploading}
+                  className="text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
             Mégse
           </Button>
-
-          <Button
-            onClick={handleUpload}
-            disabled={!file || isUploading}
-            className={cn(
-              "relative overflow-hidden bg-sky-600 hover:bg-sky-500 text-white font-bold min-w-[140px] shadow-lg shadow-sky-900/20 transition-all duration-300",
-              isUploading && "pl-10"
-            )}
-          >
+          <Button onClick={handleUpload} disabled={!file || isUploading}
+                  className={cn("relative overflow-hidden bg-sky-600 hover:bg-sky-500 text-white font-bold min-w-[140px] shadow-lg shadow-sky-900/20 transition-all duration-300", isUploading && "pl-10")}>
             {isUploading && (
-              <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                <Loader2 className="w-4 h-4 animate-spin text-white/80"/>
-              </div>
+              <div className="absolute left-3 top-1/2 -translate-y-1/2"><Loader2
+                className="w-4 h-4 animate-spin text-white/80"/></div>
             )}
             <span className={cn("transition-all", isUploading && "opacity-90")}>
               {isUploading ? "Feltöltés..." : "Feltöltés"}
