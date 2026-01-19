@@ -2,9 +2,11 @@ import * as React from "react";
 import {useParams, useNavigate} from "react-router-dom";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
 import {
   Loader2, ArrowLeft, Lock, Unlock, Archive, Laptop2, Terminal,
-  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Palette, Trash2, AlertTriangle, ShieldAlert
+  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Palette, Trash2, AlertTriangle, ShieldAlert,
+  Pencil, Check, X, FileText, ExternalLink, UserCircle2, CalendarDays
 } from "lucide-react";
 import {toast} from "sonner";
 import {CaseEditor} from "./components/CaseEditor";
@@ -27,6 +29,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogTitle, DialogFooter
+} from "@/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -53,6 +58,8 @@ export function CaseDetailPage() {
   // UI STATE
   const [showLeftSidebar, setShowLeftSidebar] = React.useState(true);
   const [showRightSidebar, setShowRightSidebar] = React.useState(true);
+  const [isEditingTitle, setIsEditingTitle] = React.useState(false);
+  const [tempTitle, setTempTitle] = React.useState("");
 
   // ALERT STATE
   const [alertConfig, setAlertConfig] = React.useState<{
@@ -75,77 +82,160 @@ export function CaseDetailPage() {
   const [viewEvidence, setViewEvidence] = React.useState<any>(null);
   const [viewOfficerId, setViewOfficerId] = React.useState<string | null>(null);
 
+  // Case Link Preview State
+  const [previewCaseId, setPreviewCaseId] = React.useState<string | null>(null);
+  const [previewCaseData, setPreviewCaseData] = React.useState<any>(null);
+  const [previewIsCollaborator, setPreviewIsCollaborator] = React.useState(false);
+  const [previewError, setPreviewError] = React.useState<string | null>(null);
+
+  // Global Drag & Drop File
+  const [draggedFile, setDraggedFile] = React.useState<File | null>(null);
+
   // --- ESEMÉNYFIGYELŐK ---
   React.useEffect(() => {
     const handleOpenOfficer = (e: Event) => {
       e.stopImmediatePropagation();
       e.preventDefault();
-
       const now = Date.now();
       if (now - globalLastEventTime < 1000) return;
-
       const customEvent = e as CustomEvent;
-      const id = customEvent.detail?.id;
-
-      if (id) {
+      if (customEvent.detail?.id) {
         globalLastEventTime = now;
-        setTimeout(() => setViewOfficerId(id), 0);
+        setTimeout(() => setViewOfficerId(customEvent.detail.id), 0);
       }
     };
 
     const handleOpenSuspect = (e: Event) => {
       e.stopImmediatePropagation();
       e.preventDefault();
-
       const now = Date.now();
       if (now - globalLastEventTime < 1000) return;
-
       const customEvent = e as CustomEvent;
-      const id = customEvent.detail?.id;
-
-      if (id) {
+      if (customEvent.detail?.id) {
         globalLastEventTime = now;
-        const found = caseSuspects.find(s => s.suspect_id === id);
+        const found = caseSuspects.find(s => s.suspect_id === customEvent.detail.id);
         if (found?.suspect) {
           setViewSuspect(found.suspect);
         } else {
-          supabase.from('suspects').select('*').eq('id', id).single().then(({data}) => {
+          supabase.from('suspects').select('*').eq('id', customEvent.detail.id).single().then(({data}) => {
             if (data) setViewSuspect(data);
           });
         }
       }
     };
 
+    const handleOpenCase = async (e: Event) => {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      const customEvent = e as CustomEvent;
+      const id = customEvent.detail?.id;
+
+      if (id && profile) {
+        setPreviewCaseId(id);
+        setPreviewCaseData(null);
+        setPreviewError(null);
+        setPreviewIsCollaborator(false);
+
+        try {
+          const {data, error} = await supabase
+            .from('cases')
+            .select('*, owner:owner_id(full_name, badge_number)')
+            .eq('id', id)
+            .single();
+
+          if (error) throw error;
+
+          const {data: collabData} = await supabase
+            .from('case_collaborators')
+            .select('id')
+            .eq('case_id', id)
+            .eq('user_id', profile.id)
+            .maybeSingle();
+
+          setPreviewIsCollaborator(!!collabData);
+
+          setPreviewCaseData({
+            caseDetails: {
+              case: data,
+              owner: data.owner
+            }
+          });
+        } catch (err: any) {
+          console.error("Linkelt akta hiba:", err);
+          setPreviewError("Az akta nem található, vagy rendszerhiba történt.");
+        }
+      }
+    }
+
+    const handleWindowDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleWindowDrop = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
+        setDraggedFile(e.dataTransfer.files[0]);
+        setIsUploadOpen(true);
+      }
+    };
+
+    // Listeners csatolása
     window.addEventListener('FRAKHUB_V2_OPEN_OFFICER', handleOpenOfficer);
     window.addEventListener('FRAKHUB_V2_OPEN_SUSPECT', handleOpenSuspect);
+    window.addEventListener('FRAKHUB_V2_OPEN_CASE', handleOpenCase);
+
+    window.addEventListener('dragover', handleWindowDragOver);
+    window.addEventListener('drop', handleWindowDrop);
 
     return () => {
       window.removeEventListener('FRAKHUB_V2_OPEN_OFFICER', handleOpenOfficer);
       window.removeEventListener('FRAKHUB_V2_OPEN_SUSPECT', handleOpenSuspect);
+      window.removeEventListener('FRAKHUB_V2_OPEN_CASE', handleOpenCase);
+
+      window.removeEventListener('dragover', handleWindowDragOver);
+      window.removeEventListener('drop', handleWindowDrop);
     };
-  }, [caseSuspects, supabase]);
+  }, [caseSuspects, supabase, profile]);
 
   const canEdit = React.useMemo(() => {
     const isCollabEditor = collaborators.some(c => c.user_id === profile?.id && c.role === 'editor');
     return canEditCase(profile, caseData, isCollabEditor);
   }, [profile, caseData, collaborators]);
 
-  // JOGOSULTSÁGOK ÉS STÁTUSZ
+  // JOGOSULTSÁGOK
   const isOwner = caseData?.owner_id === profile?.id;
   const isBureauManager = profile?.is_bureau_manager;
   const isMcbCommander = profile?.division === 'MCB' && profile?.is_bureau_commander;
 
   const canManageStatus = isOwner || isBureauManager || isMcbCommander;
   const canArchive = isBureauManager || isMcbCommander;
+  const canRename = canManageStatus;
+
+  const canManageCollaborators = isOwner || isBureauManager || isMcbCommander;
 
   const isCaseClosed = caseData?.status !== 'open';
   const isReadOnly = isCaseClosed || !canEdit;
+
+  // Átnevezés
+  const handleRenameSave = async () => {
+    if (!tempTitle.trim() || !caseId) return;
+    const {error} = await supabase.from('cases').update({title: tempTitle}).eq('id', caseId);
+    if (error) {
+      toast.error("Hiba az átnevezés során.");
+    } else {
+      toast.success("Akta átnevezve.");
+      setCaseData(prev => prev ? ({...prev, title: tempTitle} as Case) : null);
+      setIsEditingTitle(false);
+    }
+  };
 
   const handleDeleteCase = async () => {
     if (!caseId) return;
     setIsDeleting(true);
     const toastId = toast.loading("Akta és csatolt fájlok törlése...");
-
     try {
       const response = await fetch('/api/case/delete', {
         method: 'POST',
@@ -155,13 +245,8 @@ export function CaseDetailPage() {
         },
         body: JSON.stringify({caseId})
       });
-
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Hiba történt a törlés során.");
-      }
-
+      if (!response.ok) throw new Error(result.error || "Hiba történt a törlés során.");
       toast.success("Akta és minden adat véglegesen törölve.", {id: toastId});
       navigate('/mcb');
     } catch (e: any) {
@@ -216,6 +301,7 @@ export function CaseDetailPage() {
       } = await supabase.from('cases').select('*, owner:owner_id(full_name, badge_number)').eq('id', caseId).single();
       if (cError) throw cError;
       setCaseData(cData as unknown as Case);
+      setTempTitle(cData.title);
 
       const {data: colData} = await supabase.from('case_collaborators').select('*, profile:user_id(full_name, badge_number, faction_rank)').eq('case_id', caseId);
       setCollaborators(colData as unknown as CaseCollaborator[] || []);
@@ -317,6 +403,13 @@ export function CaseDetailPage() {
     } else toast.info("Ez a fájltípus nem támogatott.");
   };
 
+  // Helper a jogosultsághoz a PREVIEW-ban
+  const canAccessPreview = React.useMemo(() => {
+    if (!previewCaseData || !profile) return false;
+    // Itt használjuk a meglévő logikát, de átadjuk a preview specifikus collaborator státuszt
+    return canViewCaseDetails(profile, previewCaseData.caseDetails.case, previewIsCollaborator);
+  }, [previewCaseData, profile, previewIsCollaborator]);
+
   if (loading) return <div className="flex h-[80vh] items-center justify-center"><Loader2
     className="w-12 h-12 animate-spin text-sky-500 opacity-50"/></div>;
   if (error || !caseData) return <div className="flex flex-col items-center justify-center h-[80vh] text-slate-400">
@@ -353,7 +446,6 @@ export function CaseDetailPage() {
                              setViewSuspect(null);
                            }}/>
 
-      {/* OFFICER PROFILE DIALOG */}
       <OfficerProfileDialog
         open={!!viewOfficerId}
         onOpenChange={(open) => {
@@ -363,14 +455,167 @@ export function CaseDetailPage() {
         caseId={caseId}
       />
 
-      <UploadEvidenceDialog open={isUploadOpen} onOpenChange={setIsUploadOpen} caseId={caseId!}
-                            onUploadComplete={fetchData}/>
+      <UploadEvidenceDialog
+        open={isUploadOpen}
+        onOpenChange={(open) => {
+          setIsUploadOpen(open);
+          if (!open) {
+            setDraggedFile(null);
+          }
+        }}
+        caseId={caseId!}
+        onUploadComplete={fetchData}
+        initialFile={draggedFile}
+      />
+
       <AddCollaboratorDialog open={isAddCollabOpen} onOpenChange={setIsAddCollabOpen} caseId={caseId!}
                              onCollaboratorAdded={fetchData} existingUserIds={collaborators.map(c => c.user_id)}/>
       <ImageViewerDialog open={!!viewEvidence} onOpenChange={(o) => !o && setViewEvidence(null)}
                          imageUrl={viewEvidence?.url} fileName={viewEvidence?.file_name}/>
 
-      {/* --- HEADER BAR --- */}
+      {/* --- PREVIEW MODAL --- */}
+      <Dialog open={!!previewCaseId} onOpenChange={(open) => !open && setPreviewCaseId(null)}>
+        <DialogContent
+          className="bg-[#0b1120] border-2 border-slate-800 text-white sm:max-w-[600px] p-0 overflow-hidden shadow-2xl rounded-xl">
+          {/* Header Gradient */}
+          <div
+            className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-600 via-blue-500 to-sky-600 opacity-50"></div>
+
+          {previewError ? (
+            <div className="p-8 flex flex-col items-center text-center">
+              <div
+                className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4 border border-red-500/20">
+                <ShieldAlert className="w-8 h-8 text-red-500"/>
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Hozzáférés Megtagadva</h3>
+              <p className="text-slate-400 text-sm">{previewError}</p>
+              <Button variant="ghost" onClick={() => setPreviewCaseId(null)} className="mt-6">Bezárás</Button>
+            </div>
+          ) : previewCaseData ? (
+            <>
+              {/* HEADER */}
+              <div
+                className="px-6 py-5 bg-slate-900/50 border-b border-slate-800 flex justify-between items-start relative">
+                <div>
+                  <div className="flex items-center gap-3 mb-1.5">
+                    <Badge className={cn("px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border",
+                      previewCaseData.caseDetails.case.status === 'open'
+                        ? "bg-green-500/10 text-green-400 border-green-500/30"
+                        : "bg-red-500/10 text-red-400 border-red-500/30"
+                    )}>
+                      {previewCaseData.caseDetails.case.status === 'open' ? 'NYOMOZÁS ALATT' : 'LEZÁRT AKTA'}
+                    </Badge>
+                    {!canAccessPreview && (
+                      <Badge variant="outline"
+                             className="text-[10px] border-red-500 text-red-500 bg-red-500/10 uppercase gap-1">
+                        <Lock className="w-3 h-3"/> RESTRICTED
+                      </Badge>
+                    )}
+                  </div>
+                  <DialogTitle className="text-xl font-black text-white tracking-tight font-mono uppercase">
+                    {previewCaseData.caseDetails.case.title}
+                  </DialogTitle>
+                  <p className="text-sky-500 font-mono text-xs font-bold mt-1">
+                    CASE FILE #{previewCaseData.caseDetails.case.case_number}
+                  </p>
+                </div>
+                <div
+                  className="w-12 h-12 rounded bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
+                  <FileText className="w-6 h-6 text-slate-500"/>
+                </div>
+              </div>
+
+              {/* METADATA GRID */}
+              <div className="grid grid-cols-2 gap-px bg-slate-800 border-b border-slate-800">
+                <div className="bg-[#0b1120] p-4 flex items-center gap-3">
+                  <UserCircle2 className="w-5 h-5 text-slate-500"/>
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase font-bold">Felelős Tiszt</p>
+                    <p className="text-sm font-medium text-slate-200">{previewCaseData.caseDetails.owner.full_name}</p>
+                  </div>
+                </div>
+                <div className="bg-[#0b1120] p-4 flex items-center gap-3">
+                  <CalendarDays className="w-5 h-5 text-slate-500"/>
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase font-bold">Létrehozva</p>
+                    <p className="text-sm font-medium text-slate-200 font-mono">
+                      {new Date(previewCaseData.caseDetails.case.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* CONTENT */}
+              <div className="p-6 bg-[#0b1120] relative min-h-[160px]">
+                {canAccessPreview ? (
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <p className="text-slate-300 leading-relaxed text-sm">
+                      {previewCaseData.caseDetails.case.description ||
+                        <span className="italic text-slate-500">Nincs rövid leírás megadva az aktához.</span>}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="relative h-full w-full">
+                    {/* Blurred content effect */}
+                    <div className="space-y-3 opacity-20 blur-[6px] select-none pointer-events-none" aria-hidden="true">
+                      <div className="h-4 bg-slate-500 rounded w-3/4"></div>
+                      <div className="h-4 bg-slate-500 rounded w-full"></div>
+                      <div className="h-4 bg-slate-500 rounded w-5/6"></div>
+                      <div className="h-4 bg-slate-500 rounded w-4/5"></div>
+                    </div>
+
+                    {/* Overlay Warning */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                      <div
+                        className="border border-red-900/50 bg-red-950/80 backdrop-blur-sm p-4 rounded-lg flex flex-col items-center text-center max-w-[80%] shadow-2xl">
+                        <Lock className="w-8 h-8 text-red-500 mb-2"/>
+                        <h4 className="text-red-400 font-black uppercase tracking-widest text-sm mb-1">Classified
+                          Information</h4>
+                        <p className="text-red-300/70 text-xs">
+                          Ön nem rendelkezik a szükséges jogosultsággal az akta tartalmának megtekintéséhez.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter
+                className="p-4 bg-slate-900 border-t border-slate-800 flex justify-between sm:justify-between items-center">
+                <Button variant="ghost" onClick={() => setPreviewCaseId(null)}
+                        className="text-slate-400 hover:text-white">
+                  Bezárás
+                </Button>
+
+                {canAccessPreview ? (
+                  <Button
+                    className="bg-sky-600 hover:bg-sky-500 text-white font-bold shadow-lg shadow-sky-900/20"
+                    onClick={() => {
+                      navigate(`/mcb/case/${previewCaseId}`);
+                      setPreviewCaseId(null);
+                    }}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2"/>
+                    AKTA MEGNYITÁSA
+                  </Button>
+                ) : (
+                  <Button disabled
+                          className="bg-slate-800 text-slate-500 border border-slate-700 opacity-50 cursor-not-allowed">
+                    <Lock className="w-3 h-3 mr-2"/>
+                    HOZZÁFÉRÉS MEGTAGADVA
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-sky-500"/>
+              <p className="text-xs text-slate-500 font-mono animate-pulse">ADATOK BETÖLTÉSE...</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <div
         className="shrink-0 bg-slate-950/80 border-y border-sky-900/30 backdrop-blur-md px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -380,7 +625,43 @@ export function CaseDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <Terminal className="w-5 h-5 text-sky-500"/>
-              <h1 className="text-xl font-bold text-white tracking-tight uppercase font-mono">{caseData.title}</h1>
+
+              {isEditingTitle ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={tempTitle}
+                    onChange={(e) => setTempTitle(e.target.value)}
+                    className="h-8 w-64 bg-slate-900 border-slate-700 text-white font-mono font-bold"
+                    autoFocus
+                  />
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500 hover:bg-green-500/10"
+                          onClick={handleRenameSave}>
+                    <Check className="w-4 h-4"/>
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-red-400 hover:bg-red-500/10"
+                          onClick={() => {
+                            setTempTitle(caseData.title);
+                            setIsEditingTitle(false);
+                          }}>
+                    <X className="w-4 h-4"/>
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group">
+                  <h1 className="text-xl font-bold text-white tracking-tight uppercase font-mono">{caseData.title}</h1>
+                  {canRename && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-white"
+                      onClick={() => setIsEditingTitle(true)}
+                    >
+                      <Pencil className="w-3 h-3"/>
+                    </Button>
+                  )}
+                </div>
+              )}
+
               <Badge className="font-mono bg-sky-900/50 text-sky-400 border-sky-500/30">{caseData.case_number}</Badge>
               {isCaseClosed && <Badge variant="outline"
                                       className="text-[10px] border-red-500 text-red-500 bg-red-500/10 uppercase">Lezárt</Badge>}
@@ -389,7 +670,6 @@ export function CaseDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* LAYOUT TOGGLES */}
           <div className="flex bg-slate-900/50 rounded-md border border-slate-800 mr-2">
             <Button variant="ghost" size="icon" onClick={() => setShowLeftSidebar(!showLeftSidebar)}
                     className={cn("h-8 w-8", !showLeftSidebar && "text-slate-600")}>
@@ -476,7 +756,6 @@ export function CaseDetailPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle className="flex items-center gap-2 text-2xl font-black uppercase"><AlertTriangle
                     className="w-8 h-8 text-white"/> Végleges Törlés</AlertDialogTitle>
-
                   <AlertDialogDescription asChild>
                     <div className="text-red-100/80 font-bold text-sm">
                       FIGYELEM! Ez a művelet visszavonhatatlan.
@@ -490,7 +769,6 @@ export function CaseDetailPage() {
                       </ul>
                     </div>
                   </AlertDialogDescription>
-
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel
@@ -506,10 +784,7 @@ export function CaseDetailPage() {
         </div>
       </div>
 
-      {/* --- WORKSPACE GRID --- */}
       <div className="flex-1 min-h-0 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-6 px-6 pb-6 relative">
-
-        {/* LEFT COLUMN */}
         {showLeftSidebar ? (
           <div
             className="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar shrink-0 animate-in slide-in-from-left-4 duration-300">
@@ -522,13 +797,12 @@ export function CaseDetailPage() {
             />
             <CollaboratorsCard
               collaborators={collaborators}
-              onAdd={!isReadOnly ? () => setIsAddCollabOpen(true) : undefined}
-              onDelete={!isReadOnly ? handleDeleteCollaborator : undefined}
+              onAdd={canManageCollaborators && !isCaseClosed ? () => setIsAddCollabOpen(true) : undefined}
+              onDelete={canManageCollaborators && !isCaseClosed ? handleDeleteCollaborator : undefined}
             />
           </div>
         ) : <div/>}
 
-        {/* CENTER COLUMN (Editor) */}
         <div
           className={cn("flex flex-col border rounded-lg overflow-hidden relative shadow-2xl transition-all duration-300 w-full min-w-0",
             caseData.theme === 'paper' ? 'border-[#d4c5a8]' :
@@ -560,7 +834,6 @@ export function CaseDetailPage() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN */}
         {showRightSidebar ? (
           <div
             className="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar shrink-0 animate-in slide-in-from-right-4 duration-300">
