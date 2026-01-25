@@ -287,7 +287,7 @@ export function SuspectsPage() {
           </div>
           <Button className="bg-sky-600 hover:bg-sky-500 text-white font-bold h-10"
                   onClick={() => setIsDialogOpen(true)}>
-            <UserPlus className="w-4 h-4 mr-2"/> ÚJ AKTA
+            <UserPlus className="w-4 h-4 mr-2"/> ÚJ SZEMÉLY
           </Button>
         </div>
       </div>

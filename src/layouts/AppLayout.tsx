@@ -7,7 +7,7 @@ import {PendingApprovalPage} from "@/pages/auth/PendingApprovalPage";
 import {
   LayoutDashboard, Users, ShieldAlert, Truck, LogOut, Menu, X,
   Banknote, Gavel, Bell, User, ClipboardPen, ClipboardList,
-  Settings, Shield
+  Settings, Shield, GraduationCap, School, ChevronDown // ÚJ IMPORT
 } from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {canViewCaseList, cn} from "@/lib/utils";
@@ -37,28 +37,30 @@ export function AppLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Csoportok nyitott állapota (alapból nyitva az oktatás)
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({'education': true});
+
   const showSidebar = location.pathname !== '/onboarding';
 
   const getStatusColor = () => {
     switch (alertLevel) {
       case 'traffic':
-        return '#f97316'; // Narancs
+        return '#f97316';
       case 'border':
-        return '#ef4444'; // Piros
+        return '#ef4444';
       case 'tactical':
-        return '#dc2626'; // Sötétvörös
+        return '#dc2626';
       default:
-        return '#eab308'; // Sárga (Normál)
+        return '#eab308';
     }
   };
   const statusColor = getStatusColor();
 
   useEffect(() => {
     document.documentElement.style.setProperty('--status-color', statusColor);
-    document.documentElement.style.setProperty('--status-glow', `${statusColor}80`); // 50% opacity
+    document.documentElement.style.setProperty('--status-glow', `${statusColor}80`);
   }, [alertLevel, statusColor]);
 
-  // Auth & Routing védelem
   useEffect(() => {
     if (loading || !profile) return;
     if (profile.faction_rank === 'Deputy Sheriff Trainee' && !profile.onboarding_completed) {
@@ -68,7 +70,6 @@ export function AppLayout() {
     }
   }, [profile, loading, navigate, location.pathname]);
 
-  // Értesítések lekérése
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
     const {count, error} = await supabase
@@ -83,7 +84,6 @@ export function AppLayout() {
     fetchUnreadCount();
   }, [fetchUnreadCount, location.pathname]);
 
-  // Realtime notification listener
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel(`user-notifications-${user.id}`)
@@ -100,32 +100,44 @@ export function AppLayout() {
   if (!profile) return <Navigate to="/login" replace/>;
   if (profile.system_role === 'pending') return <PendingApprovalPage/>;
 
-  // --- MENU ---
   const menuItems = [
     {icon: LayoutDashboard, label: "Irányítópult", path: "/dashboard", show: true},
     {type: 'divider', label: 'Operatív'},
     {icon: ShieldAlert, label: "Nyomozó Iroda (MCB)", path: "/mcb", show: canViewCaseList(profile)},
     {icon: Truck, label: "Logisztika & Készlet", path: "/logistics", show: true},
     {icon: Banknote, label: "Pénzügy", path: "/finance", show: true},
-    {type: 'divider', label: 'Adminisztráció'},
-    {icon: ClipboardList, label: "Vizsgaközpont", path: "/exams", show: true},
+    {type: 'divider', label: 'Oktatás & Adminisztráció'},
+
+    // --- ÚJ CSOPORT: OKTATÁS ---
+    {
+      type: 'group',
+      id: 'education',
+      label: 'Oktatás',
+      icon: GraduationCap,
+      show: true,
+      children: [
+        {icon: School, label: "Akadémia", path: "/academy", show: true},
+        {icon: ClipboardList, label: "Vizsgaközpont", path: "/exams", show: true},
+      ]
+    },
+
     {icon: Gavel, label: "Büntetés Kalkulátor", path: "/calculator", show: true},
     {icon: ClipboardPen, label: "Jelentés Generátor", path: "/reports", show: true},
     {icon: Users, label: "HR / Személyügy", path: "/hr", show: true},
   ];
 
+  const toggleGroup = (id: string) => {
+    setOpenGroups(prev => ({...prev, [id]: !prev[id]}));
+  };
+
   return (
     <div className="min-h-screen text-slate-100 flex font-sans selection:bg-yellow-500/30 relative">
       <ModernAmbientBackground/>
 
-      {/* --- STATUS LINE (Felső vékony csík) --- */}
       <div className="status-line-top"></div>
 
-      {/* --- SIDEBAR (DESKTOP) --- */}
       {showSidebar && (
         <aside className="hidden lg:flex w-72 flex-col fixed inset-y-0 left-0 z-40 glass-panel shadow-2xl">
-
-          {/* Logo Area */}
           <div className="relative h-20 flex items-center px-6 border-b border-white/5 shrink-0">
             <div
               className="w-10 h-10 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center mr-4 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
@@ -141,9 +153,8 @@ export function AppLayout() {
             </div>
           </div>
 
-          {/* Navigation Items */}
           <nav className="relative flex-1 py-6 px-4 space-y-1 overflow-y-auto scrollbar-hide">
-            {menuItems.map((item, idx) => {
+            {menuItems.map((item: any, idx) => {
               if (!item.show) return null;
 
               if (item.type === 'divider') {
@@ -151,6 +162,55 @@ export function AppLayout() {
                   <div key={idx} className="mt-6 mb-2 px-2 flex items-center gap-2">
                     <div className="h-px bg-white/10 flex-1"></div>
                     <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">{item.label}</span>
+                  </div>
+                );
+              }
+
+              if (item.type === 'group') {
+                const isOpen = openGroups[item.id];
+                const isGroupActive = item.children.some((child: any) => location.pathname.startsWith(child.path));
+
+                return (
+                  <div key={idx} className="space-y-1">
+                    <button
+                      onClick={() => toggleGroup(item.id)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-300 group relative",
+                        isGroupActive ? "text-white" : "text-slate-400 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      <div className="flex items-center">
+                        <item.icon
+                          className={cn("h-5 w-5 mr-3 transition-colors duration-300", isGroupActive ? "text-white" : "text-slate-500 group-hover:text-slate-300")}
+                          style={isGroupActive ? {color: statusColor} : {}}/>
+                        <span className="tracking-wide">{item.label}</span>
+                      </div>
+                      <ChevronDown
+                        className={cn("h-4 w-4 transition-transform text-slate-500", isOpen && "rotate-180")}/>
+                    </button>
+
+                    {isOpen && (
+                      <div className="pl-4 space-y-1 animate-in slide-in-from-top-2 duration-200">
+                        {item.children.map((child: any) => {
+                          const isChildActive = location.pathname.startsWith(child.path);
+                          return (
+                            <Link
+                              key={child.path}
+                              to={child.path}
+                              className={cn(
+                                "flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 relative",
+                                isChildActive ? "nav-item-active text-white bg-white/5" : "text-slate-400 hover:text-white hover:bg-white/5"
+                              )}
+                            >
+                              <child.icon
+                                className={cn("h-4 w-4 mr-3 transition-colors", isChildActive ? "text-sky-500" : "text-slate-600")}/>
+                              <span>{child.label}</span>
+                              {isChildActive && <div className="absolute left-0 w-1 h-4 rounded-r bg-sky-500"/>}
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -172,7 +232,6 @@ export function AppLayout() {
                     />
                     <span className="tracking-wide">{item.label}</span>
                   </div>
-
                   {isActive && <div className="w-1.5 h-1.5 rounded-full shadow-[0_0_5px_currentColor]"
                                     style={{backgroundColor: statusColor}}/>}
                 </Link>
@@ -180,10 +239,7 @@ export function AppLayout() {
             })}
           </nav>
 
-          {/* User Profile Section (Bottom) */}
           <div className="relative p-4 border-t border-white/5 bg-black/20">
-
-            {/* Notification Button */}
             <Link to="/notifications" className="block mb-4">
               <div className={cn(
                 "flex items-center p-3 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 transition-all cursor-pointer group",
@@ -205,8 +261,6 @@ export function AppLayout() {
                 {unreadCount > 0 && <span className="ml-auto text-xs font-bold text-red-400">{unreadCount} DB</span>}
               </div>
             </Link>
-
-            {/* Profile Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -250,13 +304,9 @@ export function AppLayout() {
         </aside>
       )}
 
-      {/* --- MAIN CONTENT AREA --- */}
-      <main className={cn(
-        "flex-1 flex flex-col min-h-screen relative z-10 transition-all duration-300",
-        showSidebar ? "lg:ml-72" : ""
-      )}>
+      <main
+        className={cn("flex-1 flex flex-col min-h-screen relative z-10 transition-all duration-300", showSidebar ? "lg:ml-72" : "")}>
 
-        {/* MOBILE HEADER */}
         {showSidebar && (
           <header
             className="lg:hidden h-16 border-b border-white/10 bg-[#02040a]/90 backdrop-blur-md flex items-center justify-between px-4 sticky top-0 z-30">
@@ -271,7 +321,6 @@ export function AppLayout() {
           </header>
         )}
 
-        {/* MOBILE MENU */}
         {showSidebar && isMobileMenuOpen && (
           <div className="lg:hidden fixed inset-0 z-50 bg-[#02040a] p-4 animate-in slide-in-from-top-5 duration-200">
             <div className="flex justify-between items-center mb-8">
@@ -281,10 +330,26 @@ export function AppLayout() {
               </Button>
             </div>
             <div className="space-y-2">
-              {menuItems.map((item, idx) => {
+              {menuItems.map((item: any, idx) => {
                 if (!item.show) return null;
                 if (item.type === 'divider') return <div key={idx}
                                                          className="text-xs font-bold text-slate-600 uppercase tracking-widest mt-4 mb-2 border-b border-white/5 pb-1">{item.label}</div>;
+
+                if (item.type === 'group') {
+                  return (
+                    <div key={idx} className="space-y-2 mt-2">
+                      <div className="text-xs font-bold text-slate-500 px-4 uppercase">{item.label}</div>
+                      {item.children.map((child: any) => (
+                        <Link key={child.path} to={child.path} onClick={() => setIsMobileMenuOpen(false)}
+                              className="flex items-center px-4 py-4 rounded-lg bg-white/5 text-slate-200 font-medium pl-8">
+                          <child.icon className="h-5 w-5 mr-3"/>
+                          {child.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )
+                }
+
                 return (
                   <Link key={item.path} to={item.path} onClick={() => setIsMobileMenuOpen(false)}
                         className="flex items-center px-4 py-4 rounded-lg bg-white/5 text-slate-200 font-medium active:bg-yellow-500/20 active:text-yellow-500 transition-all border border-transparent active:border-yellow-500/30">
@@ -301,12 +366,10 @@ export function AppLayout() {
           </div>
         )}
 
-        {/* PAGE CONTENT CONTAINER */}
         <div
           className="flex-1 p-4 md:p-6 lg:p-8 animate-in fade-in slide-in-from-bottom-2 duration-500 relative overflow-hidden">
           <Outlet/>
         </div>
-
       </main>
     </div>
   );
