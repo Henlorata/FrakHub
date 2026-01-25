@@ -8,10 +8,11 @@ import {Textarea} from "@/components/ui/textarea";
 import {Card, CardContent, CardHeader} from "@/components/ui/card";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Tabs, TabsList, TabsTrigger, TabsContent} from "@/components/ui/tabs";
+import {Switch} from "@/components/ui/switch";
 import {
   Trash2, Plus, Save, ArrowLeft, GripVertical, CheckCircle2, AlertCircle, Type,
   List, CheckSquare, FilePlus, FileX, ChevronLeft, ChevronRight, Share2, Globe,
-  AlertTriangle, Percent, Settings, Layers, Check, X
+  AlertTriangle, Percent, Settings, Layers, Check, X, Lock
 } from "lucide-react";
 import {toast} from "sonner";
 import {FACTION_RANKS} from "@/types/supabase";
@@ -29,21 +30,17 @@ const tempId = () => `temp-${Math.random().toString(36).substr(2, 9)}`;
 const EDITOR_INPUT = "bg-[#0f172a] border-slate-800 focus-visible:ring-yellow-500/30 focus-visible:border-yellow-500/50 font-mono text-sm text-white";
 const QUESTION_CARD = "bg-[#0b1221] border border-slate-800 relative group transition-all hover:border-slate-600 shadow-lg overflow-hidden";
 
-// --- SEGÉDFÜGGVÉNY: SZÁM BEVITEL SZŰRÉS ---
 const preventInvalidNumberInput = (e: React.KeyboardEvent) => {
   if (['e', 'E', '+', '-'].includes(e.key)) {
     e.preventDefault();
   }
 };
 
-// --- OPTION ITEM COMPONENT ---
 const OptionItem = memo(({opt, index, qId, qType, onUpdate, onRemove}: any) => {
   const [localText, setLocalText] = useState(opt.option_text);
-
   useEffect(() => {
     setLocalText(opt.option_text);
   }, [opt.option_text]);
-
   const handleBlur = () => {
     if (localText !== opt.option_text) onUpdate(qId, index, 'option_text', localText);
   };
@@ -78,9 +75,8 @@ const OptionItem = memo(({opt, index, qId, qType, onUpdate, onRemove}: any) => {
       </Button>
     </div>
   );
-});
+}, (prev, next) => prev.opt === next.opt && prev.index === next.index);
 
-// --- QUESTION CARD COMPONENT ---
 const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveOption, onUpdateOption}: any) => {
   const [localText, setLocalText] = useState(q.question_text);
   const [localPoints, setLocalPoints] = useState(q.points);
@@ -95,18 +91,13 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
   const handleTextBlur = () => {
     if (localText !== q.question_text) onUpdate(q.id, 'question_text', localText);
   };
-
-  // Pontszám validáció (csak pozitív egész)
   const handlePointsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    if (val === '' || /^[0-9]+$/.test(val)) {
-      setLocalPoints(val);
-    }
+    if (val === '' || /^[0-9]+$/.test(val)) setLocalPoints(val);
   };
-
   const handlePointsBlur = () => {
     let p = parseInt(String(localPoints)) || 0;
-    if (p < 1) p = 1; // Minimum 1 pont
+    if (p < 1) p = 1;
     onUpdate(q.id, 'points', p);
     setLocalPoints(p);
   };
@@ -125,14 +116,12 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
   return (
     <Card className={QUESTION_CARD}>
       <div className="absolute top-0 left-0 w-1 h-full bg-slate-800 group-hover:bg-blue-500 transition-colors"/>
-
       <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
         <Button variant="ghost" size="icon" className="text-slate-500 hover:text-red-500 hover:bg-red-950/20 h-8 w-8"
                 onClick={() => onRemove(q.id)}>
           <Trash2 className="w-4 h-4"/>
         </Button>
       </div>
-
       <CardHeader
         className="pb-3 border-b border-slate-800/50 bg-slate-950/50 px-5 pt-4 flex flex-row items-center gap-3">
         <div
@@ -140,23 +129,20 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
           <GripVertical className="w-4 h-4"/></div>
         <div className="flex items-center gap-2">
           <Badge variant="outline"
-                 className="bg-slate-900 text-slate-400 border-slate-700 flex items-center h-6 text-[10px] uppercase tracking-wider">{getTypeIcon()} {q.question_type === 'text' ? 'KIFEJTŐS' : q.question_type === 'single_choice' ? 'EGY VÁLASZ' : 'TÖBB VÁLASZ'}</Badge>
+                 className="bg-slate-900 text-slate-400 border-slate-700 flex items-center h-6 text-[10px] uppercase tracking-wider">
+            {getTypeIcon()} {q.question_type === 'text' ? 'KIFEJTŐS' : q.question_type === 'single_choice' ? 'EGY VÁLASZ' : 'TÖBB VÁLASZ'}
+          </Badge>
           {q.is_required && <Badge
             className="bg-red-900/20 text-red-400 border-red-900/50 border hover:bg-red-900/30 text-[10px]">KÖTELEZŐ</Badge>}
         </div>
       </CardHeader>
-
       <CardContent className="p-5 space-y-6">
         <div className="flex flex-col md:flex-row gap-6">
           <div className="flex-1 space-y-2">
             <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Kérdés Szövege</Label>
-            <Textarea
-              value={localText}
-              onChange={e => setLocalText(e.target.value)}
-              onBlur={handleTextBlur}
-              className={cn(EDITOR_INPUT, "min-h-[80px] resize-none text-base", !localText && "border-red-900/40")}
-              placeholder="Írd be a kérdést..."
-            />
+            <Textarea value={localText} onChange={e => setLocalText(e.target.value)} onBlur={handleTextBlur}
+                      className={cn(EDITOR_INPUT, "min-h-[80px] resize-none text-base", !localText && "border-red-900/40")}
+                      placeholder="Írd be a kérdést..."/>
           </div>
           <div className="flex flex-col gap-4 min-w-[220px]">
             <div className="space-y-2">
@@ -173,33 +159,17 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
             <div className="flex gap-3">
               <div className="space-y-2 flex-1">
                 <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Pont</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={localPoints}
-                  onChange={handlePointsChange}
-                  onBlur={handlePointsBlur}
-                  onKeyDown={preventInvalidNumberInput}
-                  className={EDITOR_INPUT}
-                />
+                <Input type="number" min={1} value={localPoints} onChange={handlePointsChange} onBlur={handlePointsBlur}
+                       onKeyDown={preventInvalidNumberInput} className={EDITOR_INPUT}/>
               </div>
               <div className="space-y-2 flex flex-col justify-end pb-1">
-                <div
-                  onClick={() => onUpdate(q.id, 'is_required', !q.is_required)}
-                  className={cn(
-                    "h-10 px-3 rounded-md border flex items-center justify-center cursor-pointer select-none transition-all font-bold text-xs",
-                    q.is_required
-                      ? "bg-red-900/20 border-red-500 text-red-500 hover:bg-red-900/30"
-                      : "bg-slate-900 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500"
-                  )}
-                >
-                  REQ
+                <div onClick={() => onUpdate(q.id, 'is_required', !q.is_required)}
+                     className={cn("h-10 px-3 rounded-md border flex items-center justify-center cursor-pointer select-none transition-all font-bold text-xs", q.is_required ? "bg-red-900/20 border-red-500 text-red-500 hover:bg-red-900/30" : "bg-slate-900 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500")}>REQ
                 </div>
               </div>
             </div>
           </div>
         </div>
-
         {q.question_type !== 'text' && (
           <div className="pl-0 md:pl-4 md:border-l-2 md:border-slate-800/50 space-y-4">
             <div className="flex justify-between items-center">
@@ -218,9 +188,7 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
             <div className="flex justify-between items-center pt-2 border-t border-slate-800/50 mt-2">
               <Button size="sm" variant="ghost"
                       className="text-slate-400 hover:text-white hover:bg-slate-800 h-8 text-xs font-bold uppercase tracking-wider"
-                      onClick={() => onAddOption(q.id)}>
-                <Plus className="w-3 h-3 mr-2"/> Opció Hozzáadása
-              </Button>
+                      onClick={() => onAddOption(q.id)}><Plus className="w-3 h-3 mr-2"/> Opció Hozzáadása</Button>
               {q.exam_options.length >= 2 && !q.exam_options.some((o: any) => o.is_correct) &&
                 <p className="text-yellow-500 text-[10px] font-bold animate-pulse flex items-center"><AlertTriangle
                   className="w-3 h-3 mr-1"/> Jelöld ki a helyes választ!</p>}
@@ -232,37 +200,23 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
   );
 }, (prev, next) => prev.q === next.q);
 
-// --- SEGÉD: Toggle Card a beállításokhoz ---
 const SettingToggle = ({title, description, active, onChange, icon: Icon, activeColorClass}: any) => (
-  <div
-    onClick={() => onChange(!active)}
-    className={cn(
-      "flex items-center justify-between p-4 rounded-lg border transition-all cursor-pointer select-none group hover:border-slate-600",
-      active
-        ? cn("bg-slate-900/80", activeColorClass || "border-blue-500/50")
-        : "bg-slate-950 border-slate-800"
-    )}
-  >
+  <div onClick={() => onChange(!active)}
+       className={cn("flex items-center justify-between p-4 rounded-lg border transition-all cursor-pointer select-none group hover:border-slate-600", active ? cn("bg-slate-900/80", activeColorClass || "border-blue-500/50") : "bg-slate-950 border-slate-800")}>
     <div className="flex items-center gap-3">
       <div
         className={cn("p-2 rounded-md transition-colors", active ? "bg-white/10 text-white" : "bg-slate-900 text-slate-500")}>
-        <Icon className="w-5 h-5"/>
-      </div>
+        <Icon className="w-5 h-5"/></div>
       <div>
         <div
           className={cn("text-sm font-bold uppercase tracking-wide transition-colors", active ? "text-white" : "text-slate-400")}>{title}</div>
         <div className="text-[10px] text-slate-500">{description}</div>
       </div>
     </div>
-    <div
-      className={cn("px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all",
-        active ? "bg-white text-black" : "bg-slate-800 text-slate-600")}>
-      {active ? <><Check className="w-3 h-3"/> BE</> : <><X className="w-3 h-3"/> KI</>}
-    </div>
+    <Switch checked={active} onCheckedChange={onChange}/>
   </div>
 );
 
-// --- MAIN EXAM EDITOR ---
 export function ExamEditor() {
   const {supabase, profile} = useAuth();
   const navigate = useNavigate();
@@ -288,6 +242,7 @@ export function ExamEditor() {
     is_public: false,
     is_active: true,
     allow_sharing: false,
+    is_invitation_only: false
   });
   const [questions, setQuestions] = useState<any[]>([]);
 
@@ -389,9 +344,7 @@ export function ExamEditor() {
     }]);
   }, []);
 
-  const removeQuestion = useCallback((id: string) => {
-    setQuestions(prev => prev.filter(q => q.id !== id));
-  }, []);
+  const removeQuestion = useCallback((id: string) => setQuestions(prev => prev.filter(q => q.id !== id)), []);
 
   const confirmDeletePage = () => {
     if (pageToDelete === null) return;
@@ -407,54 +360,36 @@ export function ExamEditor() {
     toast.success("Oldal törölve.");
   };
 
-  const updateQuestion = useCallback((id: string, field: string, value: any) => {
-    setQuestions(prev => prev.map(q => q.id === id ? {...q, [field]: value} : q));
-  }, []);
+  const updateQuestion = useCallback((id: string, field: string, value: any) => setQuestions(prev => prev.map(q => q.id === id ? {
+    ...q,
+    [field]: value
+  } : q)), []);
+  const addOption = useCallback((questionId: string) => setQuestions(prev => prev.map(q => {
+    if (q.id !== questionId) return q;
+    return {...q, exam_options: [...q.exam_options, {id: tempId(), option_text: "", is_correct: false}]};
+  })), []);
+  const removeOption = useCallback((questionId: string, oIndex: number) => setQuestions(prev => prev.map(q => {
+    if (q.id !== questionId) return q;
+    const newOpts = [...q.exam_options];
+    newOpts.splice(oIndex, 1);
+    return {...q, exam_options: newOpts};
+  })), []);
+  const updateOption = useCallback((questionId: string, oIndex: number, field: string, value: any) => setQuestions(prev => prev.map(q => {
+    if (q.id !== questionId) return q;
+    const newOpts = q.exam_options.map((opt: any) => ({...opt}));
+    if (field === 'set_correct_unique') newOpts.forEach((opt: any, idx: number) => opt.is_correct = (idx === oIndex)); else newOpts[oIndex] = {
+      ...newOpts[oIndex],
+      [field]: value
+    };
+    return {...q, exam_options: newOpts};
+  })), []);
 
-  const addOption = useCallback((questionId: string) => {
-    setQuestions(prev => prev.map(q => {
-      if (q.id !== questionId) return q;
-      return {...q, exam_options: [...q.exam_options, {id: tempId(), option_text: "", is_correct: false}]};
-    }));
-  }, []);
-
-  const removeOption = useCallback((questionId: string, oIndex: number) => {
-    setQuestions(prev => prev.map(q => {
-      if (q.id !== questionId) return q;
-      const newOpts = [...q.exam_options];
-      newOpts.splice(oIndex, 1);
-      return {...q, exam_options: newOpts};
-    }));
-  }, []);
-
-  const updateOption = useCallback((questionId: string, oIndex: number, field: string, value: any) => {
-    setQuestions(prev => prev.map(q => {
-      if (q.id !== questionId) return q;
-      const newOpts = q.exam_options.map((opt: any) => ({...opt}));
-      if (field === 'set_correct_unique') newOpts.forEach((opt: any, idx: number) => opt.is_correct = (idx === oIndex));
-      else newOpts[oIndex] = {...newOpts[oIndex], [field]: value};
-      return {...q, exam_options: newOpts};
-    }));
-  }, []);
-
-  // --- PONT ÉS SZÁZALÉK INPUT KEZELÉS ---
-  const handleNumberInput = (
-    value: string,
-    field: 'time_limit_minutes' | 'passing_percentage',
-    min: number,
-    max: number
-  ) => {
+  const handleNumberInput = (value: string, field: 'time_limit_minutes' | 'passing_percentage', min: number, max: number) => {
     let num = parseInt(value);
     if (isNaN(num)) return;
-
     setExamData(prev => ({...prev, [field]: num}));
   };
-
-  const handleNumberBlur = (
-    field: 'time_limit_minutes' | 'passing_percentage',
-    min: number,
-    max: number
-  ) => {
+  const handleNumberBlur = (field: 'time_limit_minutes' | 'passing_percentage', min: number, max: number) => {
     let num = examData[field] || min;
     if (num < min) num = min;
     if (num > max) num = max;
@@ -521,7 +456,6 @@ export function ExamEditor() {
           page_number: q.page_number || 1
         };
         let qId = q.id;
-
         if (q.id.startsWith('temp-')) {
           const {data: newQ, error} = await supabase.from('exam_questions').insert(qPayload).select().single();
           if (error) throw error;
@@ -539,7 +473,6 @@ export function ExamEditor() {
       toast.success("Vizsga mentve!");
       navigate('/exams');
     } catch (error: any) {
-      console.error(error);
       toast.error("Hiba: " + error.message);
     } finally {
       setIsLoading(false);
@@ -596,11 +529,9 @@ export function ExamEditor() {
                   className="border-slate-700 text-slate-400 hover:text-white bg-slate-900"><ArrowLeft
             className="w-5 h-5"/></Button>
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Badge
-                className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20 text-[10px] uppercase tracking-wider">CONFIGURATION</Badge>
-              <span className="text-[10px] text-slate-500 font-mono uppercase">MODE: EDITOR</span>
-            </div>
+            <div className="flex items-center gap-2 mb-1"><Badge
+              className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20 text-[10px] uppercase tracking-wider">CONFIGURATION</Badge><span
+              className="text-[10px] text-slate-500 font-mono uppercase">MODE: EDITOR</span></div>
             <h1
               className="text-2xl font-black text-white tracking-tight uppercase">{examId ? "VIZSGA SZERKESZTÉSE" : "ÚJ VIZSGA LÉTREHOZÁSA"}</h1>
           </div>
@@ -667,66 +598,46 @@ export function ExamEditor() {
               </SelectContent></Select></div>
 
               <div className="col-span-2 border-t border-slate-800 pt-4 grid grid-cols-2 gap-4 mt-2">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Időkorlát (Perc)</Label>
-                  <Input
-                    type="number" min={1} max={60}
-                    value={examData.time_limit_minutes}
-                    onChange={e => handleNumberInput(e.target.value, 'time_limit_minutes', 1, 60)}
-                    onBlur={() => handleNumberBlur('time_limit_minutes', 1, 60)}
-                    onKeyDown={preventInvalidNumberInput}
-                    className={EDITOR_INPUT}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label
-                    className="text-xs text-slate-500 uppercase font-bold tracking-wider flex items-center gap-2"><Percent
-                    className="w-3 h-3"/> Sikeres határ (%)</Label>
-                  <Input
-                    type="number" min={1} max={100}
-                    value={examData.passing_percentage}
-                    onChange={e => handleNumberInput(e.target.value, 'passing_percentage', 1, 100)}
-                    onBlur={() => handleNumberBlur('passing_percentage', 1, 100)}
-                    onKeyDown={preventInvalidNumberInput}
-                    className={EDITOR_INPUT}
-                  />
-                </div>
+                <div className="space-y-1.5"><Label
+                  className="text-xs text-slate-500 uppercase font-bold tracking-wider">Időkorlát (Perc)</Label><Input
+                  type="number" min={1} max={60} value={examData.time_limit_minutes}
+                  onChange={e => handleNumberInput(e.target.value, 'time_limit_minutes', 1, 60)}
+                  onBlur={() => handleNumberBlur('time_limit_minutes', 1, 60)} onKeyDown={preventInvalidNumberInput}
+                  className={EDITOR_INPUT}/></div>
+                <div className="space-y-1.5"><Label
+                  className="text-xs text-slate-500 uppercase font-bold tracking-wider flex items-center gap-2"><Percent
+                  className="w-3 h-3"/> Sikeres határ (%)</Label><Input type="number" min={1} max={100}
+                                                                        value={examData.passing_percentage}
+                                                                        onChange={e => handleNumberInput(e.target.value, 'passing_percentage', 1, 100)}
+                                                                        onBlur={() => handleNumberBlur('passing_percentage', 1, 100)}
+                                                                        onKeyDown={preventInvalidNumberInput}
+                                                                        className={EDITOR_INPUT}/></div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t border-slate-800">
-              <SettingToggle
-                title="Publikus"
-                description="Vendég hozzáférés engedélyezése"
-                active={examData.is_public}
-                onChange={(v: boolean) => setExamData({...examData, is_public: v})}
-                icon={Globe}
-                activeColorClass="border-green-500/50 text-green-200"
-              />
-              <SettingToggle
-                title="Megosztás"
-                description="Link másolásának engedélyezése"
-                active={examData.allow_sharing}
-                onChange={(v: boolean) => setExamData({...examData, allow_sharing: v})}
-                icon={Share2}
-                activeColorClass="border-blue-500/50 text-blue-200"
-              />
-              <SettingToggle
-                title="Aktív"
-                description="A vizsga kitölthető"
-                active={examData.is_active}
-                onChange={(v: boolean) => setExamData({...examData, is_active: v})}
-                icon={CheckCircle2}
-                activeColorClass="border-yellow-500/50 text-yellow-200"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-6 border-t border-slate-800">
+              <SettingToggle title="Publikus" description="Vendég hozzáférés engedélyezése" active={examData.is_public}
+                             onChange={(v: boolean) => setExamData({...examData, is_public: v})} icon={Globe}
+                             activeColorClass="border-green-500/50 text-green-200"/>
+              <SettingToggle title="Megosztás" description="Link másolásának engedélyezése"
+                             active={examData.allow_sharing}
+                             onChange={(v: boolean) => setExamData({...examData, allow_sharing: v})} icon={Share2}
+                             activeColorClass="border-blue-500/50 text-blue-200"/>
+              <SettingToggle title="Aktív" description="A vizsga kitölthető" active={examData.is_active}
+                             onChange={(v: boolean) => setExamData({...examData, is_active: v})} icon={CheckCircle2}
+                             activeColorClass="border-yellow-500/50 text-yellow-200"/>
+              {/* ÚJ MEZŐ: MEGHÍVÁSOS */}
+              <SettingToggle title="Meghívásos" description="Csak meghívóval tölthető ki"
+                             active={examData.is_invitation_only}
+                             onChange={(v: boolean) => setExamData({...examData, is_invitation_only: v})} icon={Lock}
+                             activeColorClass="border-purple-500/50 text-purple-200"/>
             </div>
 
             {examId && canDeleteExam(profile, examData as any) && (
               <div className="pt-6 border-t border-red-900/30 mt-6 flex justify-end">
                 <Button variant="destructive" onClick={() => setIsDeleteAlertOpen(true)}
-                        className="bg-red-950/30 hover:bg-red-900/50 text-red-500 border border-red-900/50 uppercase font-bold text-xs tracking-wider">
-                  <Trash2 className="w-4 h-4 mr-2"/> Vizsga Törlése
-                </Button>
+                        className="bg-red-950/30 hover:bg-red-900/50 text-red-500 border border-red-900/50 uppercase font-bold text-xs tracking-wider"><Trash2
+                  className="w-4 h-4 mr-2"/> Vizsga Törlése</Button>
               </div>
             )}
           </CardContent></Card>
@@ -746,7 +657,6 @@ export function ExamEditor() {
             </div>
           )}
 
-          {/* Pagination Bar */}
           <div
             className="flex items-center justify-between bg-[#0b1221] p-2 rounded-xl border border-slate-800 shadow-lg sticky top-4 z-20">
             <Button variant="ghost" disabled={currentEditorPage === 1} onClick={() => setCurrentEditorPage(p => p - 1)}
@@ -755,9 +665,7 @@ export function ExamEditor() {
             <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4">
               {pageNumbers.map(pageNum => (
                 <button key={pageNum} onClick={() => setCurrentEditorPage(pageNum)}
-                        className={cn("w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold transition-all border", currentEditorPage === pageNum ? "bg-yellow-500 text-black border-yellow-600 shadow-lg shadow-yellow-500/20" : "bg-slate-900 text-slate-500 border-slate-800 hover:border-slate-600 hover:text-slate-300")}>
-                  {pageNum}
-                </button>
+                        className={cn("w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold transition-all border", currentEditorPage === pageNum ? "bg-yellow-500 text-black border-yellow-600 shadow-lg shadow-yellow-500/20" : "bg-slate-900 text-slate-500 border-slate-800 hover:border-slate-600 hover:text-slate-300")}>{pageNum}</button>
               ))}
             </div>
             <div className="flex gap-2">

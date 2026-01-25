@@ -19,7 +19,8 @@ import {
   canGradeExam,
   isSupervisory,
   isCommand,
-  isExecutive
+  isExecutive,
+  getRankPriority
 } from "@/lib/utils";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
@@ -29,26 +30,21 @@ import {AdminExamAssignDialog} from "./components/AdminExamAssignDialog";
 import {cn} from "@/lib/utils";
 
 const MAIN_DIVISIONS = ['TSB', 'SEB', 'MCB'];
-
-// --- STÍLUS KONSTANSOK ---
 const TERMINAL_CARD = "bg-[#0b1221] border border-slate-800 shadow-xl overflow-hidden relative group transition-all hover:border-yellow-500/30 flex flex-col h-full";
 
 export function ExamHub() {
   const {supabase, profile} = useAuth();
   const navigate = useNavigate();
 
-  // --- STATEK ---
   const [availableExams, setAvailableExams] = useState<Exam[]>([]);
   const [mySubmissions, setMySubmissions] = useState<ExamSubmission[]>([]);
   const [pendingGrading, setPendingGrading] = useState<ExamSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Dialog state-ek
   const [accessExam, setAccessExam] = useState<Exam | null>(null);
   const [isAdminAssignOpen, setIsAdminAssignOpen] = useState(false);
 
-  // Admin History State
   const [historyUsers, setHistoryUsers] = useState<any[]>([]);
   const [selectedHistoryUser, setSelectedHistoryUser] = useState<string>("all");
   const [historyPage, setHistoryPage] = useState(0);
@@ -60,7 +56,8 @@ export function ExamHub() {
   const [userSearch, setUserSearch] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Jogosultságok
+  const [myOverrides, setMyOverrides] = useState<Record<string, string>>({});
+
   const hasGradingRights = (profile && (pendingGrading.length > 0 || canCreateAnyExam(profile) || profile.qualifications?.includes('TB') || ['Sergeant I.', 'Sergeant II.'].includes(profile.faction_rank)));
   const canAssignExams = profile && (isSupervisory(profile) || isCommand(profile) || isExecutive(profile) || profile.is_bureau_manager);
 
@@ -71,44 +68,66 @@ export function ExamHub() {
       .order('created_at', {ascending: false})
       .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
 
-    if (userIdFilter !== "all") {
-      query = query.eq('user_id', userIdFilter);
-    }
+    if (userIdFilter !== "all") query = query.eq('user_id', userIdFilter);
 
     const {data, count, error} = await query;
     if (!error) {
       setHistoryItems(data as any || []);
       setHistoryTotal(count || 0);
       setHistoryPage(page);
-    } else {
-      console.error("History fetch error", error);
     }
   }, [supabase]);
 
-  // --- ADATLEKÉRÉS ---
   const fetchData = useCallback(async () => {
     if (!profile) return;
     setLoading(true);
     try {
-      // 1. Vizsgák + Override
       const {data: exams} = await supabase.from('exams').select('*').order('created_at', {ascending: false});
-      const {data: myOverrides} = await supabase.from('exam_overrides').select('exam_id, access_type').eq('user_id', profile.id);
+
+      const {data: overridesData} = await supabase.from('exam_overrides').select('exam_id, access_type').eq('user_id', profile.id);
+      const overridesMap: Record<string, string> = {};
+      if (overridesData) {
+        overridesData.forEach((o: any) => overridesMap[o.exam_id] = o.access_type);
+      }
+      setMyOverrides(overridesMap);
 
       const filteredExams = (exams as unknown as Exam[] || []).filter(exam => {
-        const override = myOverrides?.find(o => o.exam_id === exam.id);
-        if (override) return override.access_type === 'allow';
+        const overrideType = overridesMap[exam.id];
+
+        // 1. Ha van explicit engedélye vagy tiltása
+        if (overrideType === 'allow') return true;
+        if (overrideType === 'deny') return false;
+
+        // 2. Admin jog (Mindig mindent lát)
         if (canManageExamAccess(profile, exam)) return true;
+
+        // 3. Aktivitás ellenőrzés
         if (!exam.is_active) return false;
-        if (profile.is_bureau_manager) return true;
+
+        // 4. KIZÁRÓ OKOK (Ezeknek meg kell előzniük a publikus checket!)
+
+        // A) Trainee (Felvételi) vizsga
+        // A rendszerben lévő tagok (akik látják ezt a felületet) már nem civilek.
+        // Tehát hacsak nem adminok (fentebb kezelve), NEM láthatják.
+        if (exam.type === 'trainee') return false;
+
+        // B) Deputy I. vizsga
+        // Ha a rangja jobb vagy egyenlő (kisebb szám), mint a Deputy I, akkor már megvan neki -> elrejtjük.
+        if (exam.type === 'deputy_i') {
+          const depIPrio = getRankPriority('Deputy Sheriff I.');
+          const userPrio = getRankPriority(profile.faction_rank);
+          if (userPrio <= depIPrio) return false;
+        }
+
+        // 5. Publikus check (Csak ha nem esett ki a fenti szűrőkön)
         if (exam.is_public) return true;
 
-        if (exam.type === 'trainee') return false;
-        if (exam.type === 'deputy_i') return profile.faction_rank === 'Deputy Sheriff Trainee';
-
+        // 6. Osztály és Rang ellenőrzés (Ha nem publikus)
         if (exam.division) {
           const isMainDivisionExam = MAIN_DIVISIONS.includes(exam.division);
           if (isMainDivisionExam) {
             if (profile.division === 'TSB') {
+              // TSB láthatja a specifikusakat? Általában nem, hacsak nem publikus.
             } else if (profile.division !== exam.division) return false;
           }
         }
@@ -122,11 +141,9 @@ export function ExamHub() {
       });
       setAvailableExams(filteredExams);
 
-      // 2. Saját kitöltések
       const {data: subs} = await supabase.from('exam_submissions').select('*, exams(title)').eq('user_id', profile.id).order('start_time', {ascending: false});
       setMySubmissions(subs as any || []);
 
-      // 3. Javításra váró
       if (hasGradingRights) {
         const {
           data: pendingRaw,
@@ -178,7 +195,6 @@ export function ExamHub() {
   const filteredAvailable = availableExams.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredHistoryUsers = historyUsers.filter(u => u.full_name.toLowerCase().includes(userSearch.toLowerCase()));
 
-  // --- KÁRTYA KOMPONENS ---
   const ExamCard = ({exam}: { exam: Exam }) => {
     const lastSubmission = mySubmissions.find(s => s.exam_id === exam.id);
     const isBlocked = lastSubmission?.status === 'failed' && lastSubmission.retry_allowed_at && new Date(lastSubmission.retry_allowed_at) > new Date();
@@ -187,18 +203,17 @@ export function ExamHub() {
     const canAccessManage = profile && canManageExamAccess(profile, exam);
     const canShare = profile && canGradeExam(profile, exam) && exam.allow_sharing;
 
-    const canTake = (() => {
-      if (exam.type === 'trainee') return false;
-      if (exam.type === 'deputy_i') return profile?.faction_rank === 'Deputy Sheriff Trainee';
-      return !canEditContent;
-    })();
+    const overrideType = myOverrides[exam.id];
+    const isInvitationRequired = !!exam.is_invitation_only;
+
+    // Jogosult-e? (Override Allow) VAGY (Nem meghívásos ÉS Nincs tiltva)
+    const hasPermission = overrideType === 'allow' || (!isInvitationRequired && overrideType !== 'deny');
+    const canTake = !canEditContent && hasPermission;
 
     return (
       <div className={TERMINAL_CARD}>
         <div
           className={cn("absolute top-0 left-0 w-1 h-full transition-colors", !exam.is_active ? "bg-red-900" : "bg-yellow-500 group-hover:bg-yellow-400")}/>
-
-        {/* Header Section */}
         <div className="p-5 pb-0 flex-none">
           <div className="flex justify-between items-start mb-3">
             <div className="flex items-center gap-2">
@@ -206,12 +221,13 @@ export function ExamHub() {
                      className="bg-slate-900/50 border-slate-700 text-slate-400 font-mono text-[9px] uppercase tracking-wider">{exam.division || 'CORE'}</Badge>
               {exam.is_public &&
                 <Badge className="bg-blue-900/20 text-blue-400 border-blue-900/50 text-[9px]">PUBLIC</Badge>}
+              {isInvitationRequired && <Badge
+                className="bg-purple-900/20 text-purple-400 border-purple-900/50 text-[9px] flex items-center gap-1"><Lock
+                className="w-3 h-3"/> MEGHÍVÁSOS</Badge>}
             </div>
             {!exam.is_active && <div
               className="px-2 py-0.5 bg-red-950/50 text-red-500 text-[10px] font-bold border border-red-900 rounded uppercase">INAKTÍV</div>}
           </div>
-
-          {/* FIX MAGASSÁGÚ CÍM */}
           <div className="h-[4.5rem] flex items-center">
             <h3
               className="text-lg font-black text-white group-hover:text-yellow-500 transition-colors uppercase leading-tight line-clamp-3 w-full"
@@ -219,7 +235,6 @@ export function ExamHub() {
           </div>
         </div>
 
-        {/* Info Grid */}
         <div className="p-5 pt-2 flex-none">
           <div className="grid grid-cols-2 gap-px bg-slate-800 border border-slate-800 rounded overflow-hidden">
             <div className="bg-[#0f172a] p-3 text-center group-hover:bg-[#131b2e] transition-colors">
@@ -241,7 +256,6 @@ export function ExamHub() {
 
         <div className="flex-1"></div>
 
-        {/* Actions Footer */}
         <div className="mt-auto border-t border-slate-800/50 bg-slate-950/30 p-3 flex-none">
           <div className="flex gap-2">
             {canEditContent && (
@@ -264,13 +278,12 @@ export function ExamHub() {
             )}
           </div>
 
-          {canTake && (
-            <div className="mt-2">
-              {isBlocked ? (
+          <div className="mt-2">
+            {canTake ? (
+              isBlocked ? (
                 <Button disabled
-                        className="w-full h-9 bg-red-950/10 text-red-500 border border-red-900/50 text-xs uppercase font-bold">
-                  <Clock
-                    className="w-3 h-3 mr-2"/> {formatDistanceToNow(new Date(lastSubmission!.retry_allowed_at!), {locale: hu})}
+                        className="w-full h-9 bg-red-950/10 text-red-500 border border-red-900/50 text-xs uppercase font-bold"><Clock
+                  className="w-3 h-3 mr-2"/> {formatDistanceToNow(new Date(lastSubmission!.retry_allowed_at!), {locale: hu})}
                 </Button>
               ) : isPending ? (
                 <Button disabled
@@ -278,12 +291,19 @@ export function ExamHub() {
               ) : (
                 <Button
                   className="w-full h-9 bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase tracking-wider text-xs shadow-[0_0_15px_rgba(234,179,8,0.2)]"
-                  onClick={() => navigate(`/exam/public/${exam.id}`)}>
-                  VIZSGA INDÍTÁSA <ChevronRight className="w-3 h-3 ml-1"/>
+                  onClick={() => navigate(`/exam/public/${exam.id}`)}>VIZSGA INDÍTÁSA <ChevronRight
+                  className="w-3 h-3 ml-1"/></Button>
+              )
+            ) : (
+              !canEditContent && (
+                <Button disabled
+                        className="w-full h-9 bg-slate-800 text-slate-500 border border-slate-700 text-xs uppercase font-bold cursor-not-allowed">
+                  <Lock className="w-3 h-3 mr-2"/>
+                  {isInvitationRequired ? "MEGHÍVÁS SZÜKSÉGES" : "JOGOSULTSÁG HIÁNYZIK"}
                 </Button>
-              )}
-            </div>
-          )}
+              )
+            )}
+          </div>
         </div>
       </div>
     );
@@ -294,93 +314,63 @@ export function ExamHub() {
 
   return (
     <div className="min-h-screen bg-[#050a14] pb-20 flex flex-col font-sans">
-      {/* Dialogs */}
       {accessExam &&
         <ExamAccessDialog open={!!accessExam} onOpenChange={(o) => !o && setAccessExam(null)} exam={accessExam}
                           onUpdate={fetchData}/>}
       <AdminExamAssignDialog open={isAdminAssignOpen} onOpenChange={setIsAdminAssignOpen}/>
 
-      {/* --- HEADER --- */}
       <div className="border-b-2 border-yellow-600/20 bg-[#0a0f1c] relative overflow-hidden shadow-2xl shrink-0">
-        <div className="absolute inset-0 bg-yellow-500/5 pointer-events-none"
-             style={{clipPath: 'polygon(0 0, 100% 0, 80% 100%, 0% 100%)'}}></div>
         <div
           className="max-w-[1800px] mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-center gap-6 relative z-10">
           <div className="flex items-center gap-4">
             <div
               className="w-16 h-16 bg-yellow-500/10 border border-yellow-500/30 rounded-xl flex items-center justify-center text-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.1)]">
-              <GraduationCap className="w-8 h-8"/>
-            </div>
-            <div>
-              <h1 className="text-3xl font-black text-white tracking-tighter uppercase font-mono">VIZSGAKÖZPONT</h1>
-              <p className="text-xs text-yellow-500/60 font-bold uppercase tracking-[0.3em]">Training Bureau & Education
-                System</p>
+              <GraduationCap className="w-8 h-8"/></div>
+            <div><h1 className="text-3xl font-black text-white tracking-tighter uppercase font-mono">VIZSGAKÖZPONT</h1>
             </div>
           </div>
-
           <div className="flex flex-wrap items-center gap-3">
-            {canAssignExams && (
+            {canAssignExams &&
               <Button variant="outline" className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
-                      onClick={() => setIsAdminAssignOpen(true)}>
-                <UserPlus className="w-4 h-4 mr-2"/> KÉZI KIOSZTÁS
-              </Button>
-            )}
-            {profile && canCreateAnyExam(profile) && (
-              <Button
-                className="bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase tracking-wider px-6 shadow-lg shadow-yellow-900/20"
-                onClick={() => navigate('/exams/editor')}>
-                <Plus className="w-4 h-4 mr-2"/> ÚJ KURZUS
-              </Button>
-            )}
+                      onClick={() => setIsAdminAssignOpen(true)}><UserPlus className="w-4 h-4 mr-2"/> KÉZI
+                KIOSZTÁS</Button>}
+            {profile && canCreateAnyExam(profile) && <Button
+              className="bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase tracking-wider px-6 shadow-lg shadow-yellow-900/20"
+              onClick={() => navigate('/exams/editor')}><Plus className="w-4 h-4 mr-2"/> ÚJ KURZUS</Button>}
           </div>
         </div>
       </div>
 
-      {/* --- TABS & CONTENT --- */}
       <div className="max-w-[1800px] mx-auto px-6 py-8 flex-1 flex flex-col w-full min-h-0">
         <Tabs defaultValue="available" className="flex-1 flex flex-col min-h-0">
+          <TabsList className="bg-[#0b1221] border border-slate-800 p-1 h-auto flex-wrap gap-1 shadow-lg">
+            <TabsTrigger value="available"
+                         className="data-[state=active]:bg-yellow-600 data-[state=active]:text-black text-slate-400 uppercase font-bold tracking-wider text-xs px-6 py-2.5 h-10 transition-all clip-path-slant"><LayoutGrid
+              className="w-4 h-4 mr-2"/> KURZUSOK</TabsTrigger>
+            <TabsTrigger value="history"
+                         className="data-[state=active]:bg-slate-700 data-[state=active]:text-white text-slate-400 uppercase font-bold tracking-wider text-xs px-6 py-2.5 h-10 transition-all"><History
+              className="w-4 h-4 mr-2"/> ELŐZMÉNYEK</TabsTrigger>
+            {hasGradingRights && (
+              <>
+                <div className="w-px h-6 bg-slate-800 mx-2 self-center"></div>
+                <TabsTrigger value="grading"
+                             className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-slate-400 uppercase font-bold tracking-wider text-xs px-6 py-2.5 h-10 transition-all border border-transparent data-[state=active]:border-red-500">
+                  JAVÍTÁS {pendingGrading.length > 0 && <span
+                  className="ml-2 bg-white text-red-600 px-1.5 rounded text-[10px] font-black">{pendingGrading.length}</span>}
+                </TabsTrigger>
+                <TabsTrigger value="all_history"
+                             className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-slate-400 uppercase font-bold tracking-wider text-xs px-6 py-2.5 h-10 transition-all"><Users
+                  className="w-4 h-4 mr-2"/> ADATBÁZIS</TabsTrigger>
+              </>
+            )}
+          </TabsList>
 
-          {/* Filter Bar */}
-          <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-6 shrink-0">
-            <TabsList className="bg-[#0b1221] border border-slate-800 p-1 h-auto flex-wrap gap-1 shadow-lg">
-              <TabsTrigger value="available"
-                           className="data-[state=active]:bg-yellow-600 data-[state=active]:text-black text-slate-400 uppercase font-bold tracking-wider text-xs px-6 py-2.5 h-10 transition-all clip-path-slant"><LayoutGrid
-                className="w-4 h-4 mr-2"/> KURZUSOK</TabsTrigger>
-              <TabsTrigger value="history"
-                           className="data-[state=active]:bg-slate-700 data-[state=active]:text-white text-slate-400 uppercase font-bold tracking-wider text-xs px-6 py-2.5 h-10 transition-all"><History
-                className="w-4 h-4 mr-2"/> ELŐZMÉNYEK</TabsTrigger>
-              {hasGradingRights && (
-                <>
-                  <div className="w-px h-6 bg-slate-800 mx-2 self-center"></div>
-                  <TabsTrigger value="grading"
-                               className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-slate-400 uppercase font-bold tracking-wider text-xs px-6 py-2.5 h-10 transition-all border border-transparent data-[state=active]:border-red-500">
-                    JAVÍTÁS {pendingGrading.length > 0 && <span
-                    className="ml-2 bg-white text-red-600 px-1.5 rounded text-[10px] font-black">{pendingGrading.length}</span>}
-                  </TabsTrigger>
-                  <TabsTrigger value="all_history"
-                               className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-slate-400 uppercase font-bold tracking-wider text-xs px-6 py-2.5 h-10 transition-all">
-                    <Users className="w-4 h-4 mr-2"/> ADATBÁZIS
-                  </TabsTrigger>
-                </>
-              )}
-            </TabsList>
-
-            <div className="relative w-full xl:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"/>
-              <Input placeholder="KERESÉS..."
-                     className="pl-10 bg-[#0b1221] border-slate-800 focus-visible:ring-yellow-500/50 h-11 font-mono text-sm shadow-inner"
-                     value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
-            </div>
-          </div>
-
-          {/* 1. KURZUSOK (Catalog) */}
           <TabsContent value="available" className="flex-1 min-h-0 mt-0">
             {availableExams.length === 0 ? (
               <div
                 className="flex flex-col items-center justify-center py-32 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-slate-500">
-                <FileText className="w-16 h-16 mb-4 opacity-20"/>
-                <p className="font-mono text-sm uppercase tracking-widest">NINCS ELÉRHETŐ KÉPZÉS</p>
-              </div>
+                <FileText className="w-16 h-16 mb-4 opacity-20"/><p
+                className="font-mono text-sm uppercase tracking-widest">NINCS ELÉRHETŐ KÉPZÉS</p></div>
             ) : (
               <ScrollArea className="h-full pr-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 pb-10">
@@ -390,33 +380,27 @@ export function ExamHub() {
             )}
           </TabsContent>
 
-          {/* 2. JAVÍTÁS (Instructor) */}
           {hasGradingRights && (
             <TabsContent value="grading" className="flex-1 min-h-0 mt-0">
               <ScrollArea className="h-full pr-4">
                 <div className="space-y-4 pb-10 max-w-4xl mx-auto">
                   {pendingGrading.length === 0 ? (
                     <div
-                      className="text-center py-20 text-slate-500 font-mono text-sm uppercase tracking-widest bg-slate-900/30 rounded-xl border border-slate-800">
-                      NINCS JAVÍTÁSRA VÁRÓ VIZSGA
-                    </div>
+                      className="text-center py-20 text-slate-500 font-mono text-sm uppercase tracking-widest bg-slate-900/30 rounded-xl border border-slate-800">NINCS
+                      JAVÍTÁSRA VÁRÓ VIZSGA</div>
                   ) : pendingGrading.map(sub => (
                     <div key={sub.id}
                          className="flex items-center justify-between p-6 rounded-lg bg-[#0b1221] border border-slate-800 hover:border-red-500/30 transition-all shadow-lg group">
                       <div className="flex items-center gap-5">
                         <div
-                          className="w-12 h-12 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-slate-300 font-mono font-bold text-lg shadow-inner">
-                          {(sub as any).user_badge_number}
-                        </div>
+                          className="w-12 h-12 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-slate-300 font-mono font-bold text-lg shadow-inner">{(sub as any).user_badge_number}</div>
                         <div>
                           <div className="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-1">JAVÍTÁSRA
                             VÁR
                           </div>
-                          <h4 className="font-bold text-white text-lg">{(sub as any).exam_title}</h4>
-                          <p className="text-xs text-slate-400 font-mono uppercase mt-1">
-                            JELÖLT: <span className="text-white">{(sub as any).user_full_name}</span>
-                          </p>
-                        </div>
+                          <h4 className="font-bold text-white text-lg">{(sub as any).exam_title}</h4><p
+                          className="text-xs text-slate-400 font-mono uppercase mt-1">JELÖLT: <span
+                          className="text-white">{(sub as any).user_full_name}</span></p></div>
                       </div>
                       <div className="text-right">
                         <div className="text-[10px] text-slate-500 font-mono uppercase mb-2">BENYÚJTVA</div>
@@ -426,10 +410,8 @@ export function ExamHub() {
                           addSuffix: true
                         })}</div>
                         <Button onClick={() => navigate(`/exams/grading/${sub.id}`)}
-                                className="bg-red-600 hover:bg-red-500 text-white font-bold uppercase tracking-wider h-8 text-xs shadow-[0_0_10px_rgba(220,38,38,0.3)]">
-                          MEGNYITÁS <ChevronRight className="w-3 h-3 ml-1"/>
-                        </Button>
-                      </div>
+                                className="bg-red-600 hover:bg-red-500 text-white font-bold uppercase tracking-wider h-8 text-xs shadow-[0_0_10px_rgba(220,38,38,0.3)]">MEGNYITÁS <ChevronRight
+                          className="w-3 h-3 ml-1"/></Button></div>
                     </div>
                   ))}
                 </div>
@@ -437,7 +419,6 @@ export function ExamHub() {
             </TabsContent>
           )}
 
-          {/* 3. MINDEN ELŐZMÉNY */}
           {hasGradingRights && (
             <TabsContent value="all_history" className="flex-1 min-h-0 mt-0 flex flex-col">
               <div className="flex items-center gap-4 bg-[#0b1221] p-4 rounded-t-xl border border-slate-800 shrink-0">
@@ -532,7 +513,6 @@ export function ExamHub() {
             </TabsContent>
           )}
 
-          {/* 4. SAJÁT ELŐZMÉNYEK */}
           <TabsContent value="history" className="flex-1 min-h-0 mt-0">
             <ScrollArea className="h-full pr-4">
               <div className="space-y-3 pb-10">
@@ -544,9 +524,8 @@ export function ExamHub() {
                       <div
                         className={cn("p-2 rounded border", sub.status === 'passed' ? 'bg-green-900/20 border-green-900 text-green-500' : sub.status === 'failed' ? 'bg-red-900/20 border-red-900 text-red-500' : 'bg-yellow-900/20 border-yellow-900 text-yellow-500')}>
                         <FileText className="w-5 h-5"/></div>
-                      <div>
-                        <h4
-                          className="font-bold text-white text-sm uppercase tracking-wide">{(sub as any).exams?.title}</h4>
+                      <div><h4
+                        className="font-bold text-white text-sm uppercase tracking-wide">{(sub as any).exams?.title}</h4>
                         <div
                           className="text-[10px] text-slate-500 font-mono mt-1">{new Date(sub.start_time).toLocaleDateString('hu-HU')}</div>
                       </div>
@@ -557,8 +536,7 @@ export function ExamHub() {
                         <div
                           className={cn("text-sm font-mono font-bold", sub.status === 'passed' ? 'text-green-500' : sub.status === 'failed' ? 'text-red-500' : 'text-yellow-500')}>{sub.status === 'passed' ? 'SIKERES' : sub.status === 'failed' ? 'SIKERTELEN' : 'FOLYAMATBAN'}</div>
                       </div>
-                      {sub.feedback_visible &&
-                        <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-white transition-colors"/>}
+                      <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-white transition-colors"/>
                     </div>
                   </div>
                 ))}

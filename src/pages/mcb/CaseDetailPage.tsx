@@ -6,7 +6,7 @@ import {Input} from "@/components/ui/input";
 import {
   Loader2, ArrowLeft, Lock, Unlock, Archive, Laptop2, Terminal,
   PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Palette, Trash2, AlertTriangle, ShieldAlert,
-  Pencil, Check, X, FileText, ExternalLink, UserCircle2, CalendarDays
+  Pencil, Check, X, FileText, ExternalLink
 } from "lucide-react";
 import {toast} from "sonner";
 import {CaseEditor} from "./components/CaseEditor";
@@ -30,7 +30,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  Dialog, DialogContent, DialogTitle, DialogFooter
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import {
   Tooltip,
@@ -40,6 +40,26 @@ import {
 } from "@/components/ui/tooltip";
 
 let globalLastEventTime = 0;
+
+// JAVÍTÁS 1: Segédfüggvény a Public ID kinyeréséhez (ugyanaz, mint a tananyagnál)
+const getPublicIdFromUrl = (url: string) => {
+  try {
+    if (!url.includes('/upload/')) return null;
+    const splitUrl = url.split('/upload/');
+    let path = splitUrl[1];
+
+    // Verziószám eltávolítása (v123456/)
+    path = path.replace(/^v\d+\//, '');
+
+    // Kiterjesztés eltávolítása
+    const lastDotIndex = path.lastIndexOf('.');
+    if (lastDotIndex !== -1) path = path.substring(0, lastDotIndex);
+
+    return path;
+  } catch (e) {
+    return null;
+  }
+};
 
 export function CaseDetailPage() {
   const {caseId} = useParams<{ caseId: string }>();
@@ -85,7 +105,6 @@ export function CaseDetailPage() {
   // Case Link Preview State
   const [previewCaseId, setPreviewCaseId] = React.useState<string | null>(null);
   const [previewCaseData, setPreviewCaseData] = React.useState<any>(null);
-  const [previewIsCollaborator, setPreviewIsCollaborator] = React.useState(false);
   const [previewError, setPreviewError] = React.useState<string | null>(null);
 
   // Global Drag & Drop File
@@ -93,6 +112,7 @@ export function CaseDetailPage() {
 
   // --- ESEMÉNYFIGYELŐK ---
   React.useEffect(() => {
+    // 1. OFFICER
     const handleOpenOfficer = (e: Event) => {
       e.stopImmediatePropagation();
       e.preventDefault();
@@ -105,6 +125,7 @@ export function CaseDetailPage() {
       }
     };
 
+    // 2. SUSPECT
     const handleOpenSuspect = (e: Event) => {
       e.stopImmediatePropagation();
       e.preventDefault();
@@ -124,19 +145,19 @@ export function CaseDetailPage() {
       }
     };
 
+    // 3. CASE
     const handleOpenCase = async (e: Event) => {
       e.stopImmediatePropagation();
       e.preventDefault();
       const customEvent = e as CustomEvent;
       const id = customEvent.detail?.id;
 
-      if (id && profile) {
+      if (id) {
         setPreviewCaseId(id);
         setPreviewCaseData(null);
         setPreviewError(null);
-        setPreviewIsCollaborator(false);
-
         try {
+          // RLS alapú lekérdezés a kompatibilitás miatt
           const {data, error} = await supabase
             .from('cases')
             .select('*, owner:owner_id(full_name, badge_number)')
@@ -144,15 +165,6 @@ export function CaseDetailPage() {
             .single();
 
           if (error) throw error;
-
-          const {data: collabData} = await supabase
-            .from('case_collaborators')
-            .select('id')
-            .eq('case_id', id)
-            .eq('user_id', profile.id)
-            .maybeSingle();
-
-          setPreviewIsCollaborator(!!collabData);
 
           setPreviewCaseData({
             caseDetails: {
@@ -162,11 +174,12 @@ export function CaseDetailPage() {
           });
         } catch (err: any) {
           console.error("Linkelt akta hiba:", err);
-          setPreviewError("Az akta nem található, vagy rendszerhiba történt.");
+          setPreviewError("Hozzáférés megtagadva. Nincs jogosultságod megtekinteni ezt az aktát.");
         }
       }
     }
 
+    // 4. DRAG & DROP
     const handleWindowDragOver = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -182,11 +195,9 @@ export function CaseDetailPage() {
       }
     };
 
-    // Listeners csatolása
     window.addEventListener('FRAKHUB_V2_OPEN_OFFICER', handleOpenOfficer);
     window.addEventListener('FRAKHUB_V2_OPEN_SUSPECT', handleOpenSuspect);
     window.addEventListener('FRAKHUB_V2_OPEN_CASE', handleOpenCase);
-
     window.addEventListener('dragover', handleWindowDragOver);
     window.addEventListener('drop', handleWindowDrop);
 
@@ -194,11 +205,10 @@ export function CaseDetailPage() {
       window.removeEventListener('FRAKHUB_V2_OPEN_OFFICER', handleOpenOfficer);
       window.removeEventListener('FRAKHUB_V2_OPEN_SUSPECT', handleOpenSuspect);
       window.removeEventListener('FRAKHUB_V2_OPEN_CASE', handleOpenCase);
-
       window.removeEventListener('dragover', handleWindowDragOver);
       window.removeEventListener('drop', handleWindowDrop);
     };
-  }, [caseSuspects, supabase, profile]);
+  }, [caseSuspects, supabase]);
 
   const canEdit = React.useMemo(() => {
     const isCollabEditor = collaborators.some(c => c.user_id === profile?.id && c.role === 'editor');
@@ -213,13 +223,11 @@ export function CaseDetailPage() {
   const canManageStatus = isOwner || isBureauManager || isMcbCommander;
   const canArchive = isBureauManager || isMcbCommander;
   const canRename = canManageStatus;
-
   const canManageCollaborators = isOwner || isBureauManager || isMcbCommander;
 
   const isCaseClosed = caseData?.status !== 'open';
   const isReadOnly = isCaseClosed || !canEdit;
 
-  // Átnevezés
   const handleRenameSave = async () => {
     if (!tempTitle.trim() || !caseId) return;
     const {error} = await supabase.from('cases').update({title: tempTitle}).eq('id', caseId);
@@ -356,8 +364,28 @@ export function CaseDetailPage() {
     }, "Visszavonás", "destructive");
   };
 
+  // JAVÍTÁS 2: Cloudinary törlés beépítése az MCB bizonyíték törlésbe
   const handleDeleteEvidence = (id: string) => {
+    // Megkeressük a bizonyíték objektumot a listából, hogy megkapjuk a file_path-ot
+    const targetEv = evidence.find(e => e.id === id);
+
     showAlert("Bizonyíték törlése", "Ez a művelet nem vonható vissza. Biztosan törlöd a fájlt?", async () => {
+
+      // 1. Törlés Cloudinary-ról (ha van file_path)
+      if (targetEv?.file_path) {
+        const publicId = getPublicIdFromUrl(targetEv.file_path);
+        if (publicId) {
+          console.log("Deleting evidence from cloud:", publicId);
+          // Nem várjuk meg a választ (fire and forget), hogy a UI gyors maradjon
+          fetch('/api/delete-image', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({publicId}) // Legacy hívás
+          }).catch(err => console.error("Cloudinary delete error:", err));
+        }
+      }
+
+      // 2. Törlés DB-ből
       await supabase.from('case_evidence').delete().eq('id', id);
       fetchData();
       toast.success("Bizonyíték törölve.");
@@ -402,13 +430,6 @@ export function CaseDetailPage() {
       }
     } else toast.info("Ez a fájltípus nem támogatott.");
   };
-
-  // Helper a jogosultsághoz a PREVIEW-ban
-  const canAccessPreview = React.useMemo(() => {
-    if (!previewCaseData || !profile) return false;
-    // Itt használjuk a meglévő logikát, de átadjuk a preview specifikus collaborator státuszt
-    return canViewCaseDetails(profile, previewCaseData.caseDetails.case, previewIsCollaborator);
-  }, [previewCaseData, profile, previewIsCollaborator]);
 
   if (loading) return <div className="flex h-[80vh] items-center justify-center"><Loader2
     className="w-12 h-12 animate-spin text-sky-500 opacity-50"/></div>;
@@ -473,146 +494,62 @@ export function CaseDetailPage() {
       <ImageViewerDialog open={!!viewEvidence} onOpenChange={(o) => !o && setViewEvidence(null)}
                          imageUrl={viewEvidence?.url} fileName={viewEvidence?.file_name}/>
 
-      {/* --- PREVIEW MODAL --- */}
       <Dialog open={!!previewCaseId} onOpenChange={(open) => !open && setPreviewCaseId(null)}>
-        <DialogContent
-          className="bg-[#0b1120] border-2 border-slate-800 text-white sm:max-w-[600px] p-0 overflow-hidden shadow-2xl rounded-xl">
-          {/* Header Gradient */}
-          <div
-            className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-600 via-blue-500 to-sky-600 opacity-50"></div>
+        <DialogContent className="bg-slate-950 border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-sky-500"/>
+              Csatolt Akta Megtekintése
+            </DialogTitle>
+          </DialogHeader>
 
           {previewError ? (
-            <div className="p-8 flex flex-col items-center text-center">
-              <div
-                className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4 border border-red-500/20">
-                <ShieldAlert className="w-8 h-8 text-red-500"/>
+            <div className="p-4 bg-red-950/20 border border-red-900/50 rounded-lg text-red-400 flex items-start gap-3">
+              <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5"/>
+              <div>
+                <p className="font-bold">Hozzáférés megtagadva</p>
+                <p className="text-sm opacity-80">{previewError}</p>
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">Hozzáférés Megtagadva</h3>
-              <p className="text-slate-400 text-sm">{previewError}</p>
-              <Button variant="ghost" onClick={() => setPreviewCaseId(null)} className="mt-6">Bezárás</Button>
             </div>
           ) : previewCaseData ? (
-            <>
-              {/* HEADER */}
-              <div
-                className="px-6 py-5 bg-slate-900/50 border-b border-slate-800 flex justify-between items-start relative">
-                <div>
-                  <div className="flex items-center gap-3 mb-1.5">
-                    <Badge className={cn("px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border",
-                      previewCaseData.caseDetails.case.status === 'open'
-                        ? "bg-green-500/10 text-green-400 border-green-500/30"
-                        : "bg-red-500/10 text-red-400 border-red-500/30"
-                    )}>
-                      {previewCaseData.caseDetails.case.status === 'open' ? 'NYOMOZÁS ALATT' : 'LEZÁRT AKTA'}
-                    </Badge>
-                    {!canAccessPreview && (
-                      <Badge variant="outline"
-                             className="text-[10px] border-red-500 text-red-500 bg-red-500/10 uppercase gap-1">
-                        <Lock className="w-3 h-3"/> RESTRICTED
-                      </Badge>
-                    )}
-                  </div>
-                  <DialogTitle className="text-xl font-black text-white tracking-tight font-mono uppercase">
-                    {previewCaseData.caseDetails.case.title}
-                  </DialogTitle>
-                  <p className="text-sky-500 font-mono text-xs font-bold mt-1">
-                    CASE FILE #{previewCaseData.caseDetails.case.case_number}
-                  </p>
+            <div className="space-y-4">
+              <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-800">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-bold text-lg text-white">{previewCaseData.caseDetails.case.title}</h3>
+                  <Badge variant="outline" className="font-mono">{previewCaseData.caseDetails.case.case_number}</Badge>
                 </div>
-                <div
-                  className="w-12 h-12 rounded bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
-                  <FileText className="w-6 h-6 text-slate-500"/>
+                <p
+                  className="text-sm text-slate-400 line-clamp-3 mb-3">{previewCaseData.caseDetails.case.description || "Nincs leírás."}</p>
+
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <span className={cn("px-2 py-0.5 rounded font-bold uppercase",
+                              previewCaseData.caseDetails.case.status === 'open' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                            )}>
+                                {previewCaseData.caseDetails.case.status}
+                            </span>
+                  <span>•</span>
+                  <span>Tulajdonos: {previewCaseData.caseDetails.owner.full_name}</span>
                 </div>
               </div>
-
-              {/* METADATA GRID */}
-              <div className="grid grid-cols-2 gap-px bg-slate-800 border-b border-slate-800">
-                <div className="bg-[#0b1120] p-4 flex items-center gap-3">
-                  <UserCircle2 className="w-5 h-5 text-slate-500"/>
-                  <div>
-                    <p className="text-[10px] text-slate-500 uppercase font-bold">Felelős Tiszt</p>
-                    <p className="text-sm font-medium text-slate-200">{previewCaseData.caseDetails.owner.full_name}</p>
-                  </div>
-                </div>
-                <div className="bg-[#0b1120] p-4 flex items-center gap-3">
-                  <CalendarDays className="w-5 h-5 text-slate-500"/>
-                  <div>
-                    <p className="text-[10px] text-slate-500 uppercase font-bold">Létrehozva</p>
-                    <p className="text-sm font-medium text-slate-200 font-mono">
-                      {new Date(previewCaseData.caseDetails.case.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* CONTENT */}
-              <div className="p-6 bg-[#0b1120] relative min-h-[160px]">
-                {canAccessPreview ? (
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <p className="text-slate-300 leading-relaxed text-sm">
-                      {previewCaseData.caseDetails.case.description ||
-                        <span className="italic text-slate-500">Nincs rövid leírás megadva az aktához.</span>}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="relative h-full w-full">
-                    {/* Blurred content effect */}
-                    <div className="space-y-3 opacity-20 blur-[6px] select-none pointer-events-none" aria-hidden="true">
-                      <div className="h-4 bg-slate-500 rounded w-3/4"></div>
-                      <div className="h-4 bg-slate-500 rounded w-full"></div>
-                      <div className="h-4 bg-slate-500 rounded w-5/6"></div>
-                      <div className="h-4 bg-slate-500 rounded w-4/5"></div>
-                    </div>
-
-                    {/* Overlay Warning */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-                      <div
-                        className="border border-red-900/50 bg-red-950/80 backdrop-blur-sm p-4 rounded-lg flex flex-col items-center text-center max-w-[80%] shadow-2xl">
-                        <Lock className="w-8 h-8 text-red-500 mb-2"/>
-                        <h4 className="text-red-400 font-black uppercase tracking-widest text-sm mb-1">Classified
-                          Information</h4>
-                        <p className="text-red-300/70 text-xs">
-                          Ön nem rendelkezik a szükséges jogosultsággal az akta tartalmának megtekintéséhez.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <DialogFooter
-                className="p-4 bg-slate-900 border-t border-slate-800 flex justify-between sm:justify-between items-center">
-                <Button variant="ghost" onClick={() => setPreviewCaseId(null)}
-                        className="text-slate-400 hover:text-white">
-                  Bezárás
-                </Button>
-
-                {canAccessPreview ? (
-                  <Button
-                    className="bg-sky-600 hover:bg-sky-500 text-white font-bold shadow-lg shadow-sky-900/20"
-                    onClick={() => {
-                      navigate(`/mcb/case/${previewCaseId}`);
-                      setPreviewCaseId(null);
-                    }}
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2"/>
-                    AKTA MEGNYITÁSA
-                  </Button>
-                ) : (
-                  <Button disabled
-                          className="bg-slate-800 text-slate-500 border border-slate-700 opacity-50 cursor-not-allowed">
-                    <Lock className="w-3 h-3 mr-2"/>
-                    HOZZÁFÉRÉS MEGTAGADVA
-                  </Button>
-                )}
-              </DialogFooter>
-            </>
+            </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="flex justify-center py-8">
               <Loader2 className="w-8 h-8 animate-spin text-sky-500"/>
-              <p className="text-xs text-slate-500 font-mono animate-pulse">ADATOK BETÖLTÉSE...</p>
             </div>
           )}
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPreviewCaseId(null)}>Bezárás</Button>
+            {!previewError && previewCaseData && (
+              <Button className="bg-sky-600 hover:bg-sky-500" onClick={() => {
+                navigate(`/mcb/case/${previewCaseId}`);
+                setPreviewCaseId(null);
+              }}>
+                <ExternalLink className="w-4 h-4 mr-2"/>
+                Akta Megnyitása
+              </Button>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

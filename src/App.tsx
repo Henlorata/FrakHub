@@ -25,6 +25,7 @@ import {ExamGradingPage} from "@/pages/exams/grading/ExamGradingPage.tsx";
 import {ActiveExamAlert} from "@/components/ActiveExamAlert.tsx";
 import {OnboardingPage} from "@/pages/auth/OnboardingPage.tsx";
 import {SuspectCacheProvider} from "@/context/SuspectCacheContext.tsx";
+import AcademyPage from "@/pages/academy/AcademyPage.tsx";
 
 function App() {
   return (
@@ -62,6 +63,8 @@ function App() {
                   <Route path="/finance" element={<FinancePage/>}/>
                   <Route path="/profile" element={<ProfilePage/>}/>
                   <Route path="/calculator" element={<CalculatorPage/>}/>
+
+                  <Route path="/academy" element={<AcademyPage/>}/>
                 </Route>
 
                 <Route path="/" element={<Navigate to="/dashboard" replace/>}/>

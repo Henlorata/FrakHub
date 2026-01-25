@@ -31,6 +31,7 @@ export interface Exam {
   passing_percentage: number;
   is_public: boolean;
   is_active: boolean;
+  is_invitation_only: boolean;
   allow_sharing: boolean;
   created_by?: string;
   created_at?: string;
@@ -58,4 +59,17 @@ export interface ExamSubmission {
     full_name: string;
     badge_number: string;
   };
+}
+
+export interface ExamOverride {
+  id: string;
+  exam_id: string;
+  user_id: string;
+  access_type: 'allow' | 'deny';
+  profile?: {
+    full_name: string;
+    badge_number: string;
+    faction_rank: string;
+    avatar_url?: string;
+  }
 }
