@@ -6,7 +6,7 @@ import {Badge} from "@/components/ui/badge";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {
   FileText, History, Plus, AlertCircle, Search, ChevronRight, GraduationCap, PenTool,
-  Link as LinkIcon, Lock, X, UserPlus, Clock, Users, Trophy, LayoutGrid, Timer, Loader2
+  Link as LinkIcon, Lock, X, UserPlus, Clock, Users, Trophy, LayoutGrid, Timer, Loader2, Filter
 } from "lucide-react";
 import {useNavigate} from "react-router-dom";
 import {FACTION_RANKS} from "@/types/supabase";
@@ -37,6 +37,9 @@ export function ExamHub() {
   const navigate = useNavigate();
 
   const [availableExams, setAvailableExams] = useState<Exam[]>([]);
+  // ÚJ STATE: Minden vizsga tárolása a szűrőhöz (szűrés nélkül)
+  const [allExamsList, setAllExamsList] = useState<Exam[]>([]);
+
   const [mySubmissions, setMySubmissions] = useState<ExamSubmission[]>([]);
   const [pendingGrading, setPendingGrading] = useState<ExamSubmission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,23 +48,34 @@ export function ExamHub() {
   const [accessExam, setAccessExam] = useState<Exam | null>(null);
   const [isAdminAssignOpen, setIsAdminAssignOpen] = useState(false);
 
+  // Admin History State
   const [historyUsers, setHistoryUsers] = useState<any[]>([]);
+
+  // Szűrő State-ek
   const [selectedHistoryUser, setSelectedHistoryUser] = useState<string>("all");
+  const [selectedHistoryExam, setSelectedHistoryExam] = useState<string>("all"); // ÚJ
+
   const [historyPage, setHistoryPage] = useState(0);
   const [historyItems, setHistoryItems] = useState<ExamSubmission[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const ITEMS_PER_PAGE = 10;
 
+  // Dropdown UI State
   const [isUserListOpen, setIsUserListOpen] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const [isExamListOpen, setIsExamListOpen] = useState(false); // ÚJ
+  const [examSearch, setExamSearch] = useState(""); // ÚJ
+  const examDropdownRef = useRef<HTMLDivElement>(null); // ÚJ
 
   const [myOverrides, setMyOverrides] = useState<Record<string, string>>({});
 
   const hasGradingRights = (profile && (pendingGrading.length > 0 || canCreateAnyExam(profile) || profile.qualifications?.includes('TB') || ['Sergeant I.', 'Sergeant II.'].includes(profile.faction_rank)));
   const canAssignExams = profile && (isSupervisory(profile) || isCommand(profile) || isExecutive(profile) || profile.is_bureau_manager);
 
-  const fetchHistory = useCallback(async (page: number, userIdFilter: string) => {
+  // JAVÍTVA: examIdFilter hozzáadva
+  const fetchHistory = useCallback(async (page: number, userIdFilter: string, examIdFilter: string) => {
     let query = supabase.from('exam_submissions_view')
       .select('*', {count: 'exact'})
       .neq('status', 'pending')
@@ -69,6 +83,7 @@ export function ExamHub() {
       .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
 
     if (userIdFilter !== "all") query = query.eq('user_id', userIdFilter);
+    if (examIdFilter !== "all") query = query.eq('exam_id', examIdFilter); // ÚJ SZŰRÉS
 
     const {data, count, error} = await query;
     if (!error) {
@@ -84,6 +99,9 @@ export function ExamHub() {
     try {
       const {data: exams} = await supabase.from('exams').select('*').order('created_at', {ascending: false});
 
+      // Mentsük el a nyers listát a szűrőhöz
+      if (exams) setAllExamsList(exams as unknown as Exam[]);
+
       const {data: overridesData} = await supabase.from('exam_overrides').select('exam_id, access_type').eq('user_id', profile.id);
       const overridesMap: Record<string, string> = {};
       if (overridesData) {
@@ -94,40 +112,27 @@ export function ExamHub() {
       const filteredExams = (exams as unknown as Exam[] || []).filter(exam => {
         const overrideType = overridesMap[exam.id];
 
-        // 1. Ha van explicit engedélye vagy tiltása
         if (overrideType === 'allow') return true;
         if (overrideType === 'deny') return false;
 
-        // 2. Admin jog (Mindig mindent lát)
         if (canManageExamAccess(profile, exam)) return true;
 
-        // 3. Aktivitás ellenőrzés
         if (!exam.is_active) return false;
 
-        // 4. KIZÁRÓ OKOK (Ezeknek meg kell előzniük a publikus checket!)
-
-        // A) Trainee (Felvételi) vizsga
-        // A rendszerben lévő tagok (akik látják ezt a felületet) már nem civilek.
-        // Tehát hacsak nem adminok (fentebb kezelve), NEM láthatják.
         if (exam.type === 'trainee') return false;
 
-        // B) Deputy I. vizsga
-        // Ha a rangja jobb vagy egyenlő (kisebb szám), mint a Deputy I, akkor már megvan neki -> elrejtjük.
         if (exam.type === 'deputy_i') {
           const depIPrio = getRankPriority('Deputy Sheriff I.');
           const userPrio = getRankPriority(profile.faction_rank);
           if (userPrio <= depIPrio) return false;
         }
 
-        // 5. Publikus check (Csak ha nem esett ki a fenti szűrőkön)
         if (exam.is_public) return true;
 
-        // 6. Osztály és Rang ellenőrzés (Ha nem publikus)
         if (exam.division) {
           const isMainDivisionExam = MAIN_DIVISIONS.includes(exam.division);
           if (isMainDivisionExam) {
             if (profile.division === 'TSB') {
-              // TSB láthatja a specifikusakat? Általában nem, hacsak nem publikus.
             } else if (profile.division !== exam.division) return false;
           }
         }
@@ -165,7 +170,7 @@ export function ExamHub() {
         }
         const {data: users} = await supabase.from('profiles').select('id, full_name').order('full_name');
         setHistoryUsers(users || []);
-        fetchHistory(0, "all");
+        fetchHistory(0, "all", "all");
       }
     } catch (err: any) {
       toast.error("Adatlekérési hiba");
@@ -178,9 +183,11 @@ export function ExamHub() {
     fetchData();
   }, [fetchData]);
 
+  // Click outside handlers
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsUserListOpen(false);
+      if (examDropdownRef.current && !examDropdownRef.current.contains(event.target as Node)) setIsExamListOpen(false);
     }
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -194,6 +201,7 @@ export function ExamHub() {
 
   const filteredAvailable = availableExams.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredHistoryUsers = historyUsers.filter(u => u.full_name.toLowerCase().includes(userSearch.toLowerCase()));
+  const filteredHistoryExams = allExamsList.filter(e => e.title.toLowerCase().includes(examSearch.toLowerCase()));
 
   const ExamCard = ({exam}: { exam: Exam }) => {
     const lastSubmission = mySubmissions.find(s => s.exam_id === exam.id);
@@ -206,7 +214,6 @@ export function ExamHub() {
     const overrideType = myOverrides[exam.id];
     const isInvitationRequired = !!exam.is_invitation_only;
 
-    // Jogosult-e? (Override Allow) VAGY (Nem meghívásos ÉS Nincs tiltva)
     const hasPermission = overrideType === 'allow' || (!isInvitationRequired && overrideType !== 'deny');
     const canTake = !canEditContent && hasPermission;
 
@@ -421,9 +428,12 @@ export function ExamHub() {
 
           {hasGradingRights && (
             <TabsContent value="all_history" className="flex-1 min-h-0 mt-0 flex flex-col">
-              <div className="flex items-center gap-4 bg-[#0b1221] p-4 rounded-t-xl border border-slate-800 shrink-0">
-                <Users className="w-5 h-5 text-slate-400 shrink-0"/>
-                <div className="relative w-[300px]" ref={dropdownRef}>
+              <div
+                className="flex flex-col lg:flex-row items-center gap-4 bg-[#0b1221] p-4 rounded-t-xl border border-slate-800 shrink-0">
+                <Users className="w-5 h-5 text-slate-400 shrink-0 hidden lg:block"/>
+
+                {/* USER FILTER DROPDOWN */}
+                <div className="relative w-full lg:w-[300px]" ref={dropdownRef}>
                   <div className="relative">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/>
                     <Input placeholder="FELHASZNÁLÓ SZŰRÉS..." value={userSearch} onChange={(e) => {
@@ -434,7 +444,7 @@ export function ExamHub() {
                     {selectedHistoryUser !== 'all' && (<button onClick={() => {
                       setSelectedHistoryUser('all');
                       setUserSearch("");
-                      fetchHistory(0, 'all');
+                      fetchHistory(0, 'all', selectedHistoryExam);
                     }} className="absolute right-3 top-2.5 text-slate-500 hover:text-white"><X className="w-4 h-4"/>
                     </button>)}
                   </div>
@@ -447,7 +457,7 @@ export function ExamHub() {
                           setSelectedHistoryUser('all');
                           setUserSearch("");
                           setIsUserListOpen(false);
-                          fetchHistory(0, 'all');
+                          fetchHistory(0, 'all', selectedHistoryExam);
                         }}>-- MINDENKI --
                       </div>
                       {filteredHistoryUsers.map(u => (
@@ -457,13 +467,56 @@ export function ExamHub() {
                                setSelectedHistoryUser(u.id);
                                setUserSearch(u.full_name);
                                setIsUserListOpen(false);
-                               fetchHistory(0, u.id);
+                               fetchHistory(0, u.id, selectedHistoryExam);
                              }}>{u.full_name}</div>
                       ))}
                     </div>
                   )}
                 </div>
-                <span className="text-xs font-mono text-slate-500">REKORDOK: <span
+
+                {/* EXAM FILTER DROPDOWN */}
+                <div className="relative w-full lg:w-[300px]" ref={examDropdownRef}>
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/>
+                    <Input placeholder="VIZSGA SZŰRÉS..." value={examSearch} onChange={(e) => {
+                      setExamSearch(e.target.value);
+                      setIsExamListOpen(true);
+                    }} onFocus={() => setIsExamListOpen(true)}
+                           className="pl-9 bg-slate-900 border-slate-700 h-9 text-xs font-mono"/>
+                    {selectedHistoryExam !== 'all' && (<button onClick={() => {
+                      setSelectedHistoryExam('all');
+                      setExamSearch("");
+                      fetchHistory(0, selectedHistoryUser, 'all');
+                    }} className="absolute right-3 top-2.5 text-slate-500 hover:text-white"><X className="w-4 h-4"/>
+                    </button>)}
+                  </div>
+                  {isExamListOpen && (
+                    <div
+                      className="absolute top-full left-0 w-full mt-1 bg-slate-900 border border-slate-700 rounded-md shadow-2xl z-50 max-h-[300px] overflow-y-auto">
+                      <div
+                        className="p-2 hover:bg-slate-800 cursor-pointer text-slate-300 hover:text-white border-b border-slate-800 text-xs font-mono"
+                        onClick={() => {
+                          setSelectedHistoryExam('all');
+                          setExamSearch("");
+                          setIsExamListOpen(false);
+                          fetchHistory(0, selectedHistoryUser, 'all');
+                        }}>-- MINDEN VIZSGA --
+                      </div>
+                      {filteredHistoryExams.map(e => (
+                        <div key={e.id}
+                             className="p-2 hover:bg-slate-800 cursor-pointer text-slate-300 hover:text-white text-xs font-mono"
+                             onClick={() => {
+                               setSelectedHistoryExam(e.id);
+                               setExamSearch(e.title);
+                               setIsExamListOpen(false);
+                               fetchHistory(0, selectedHistoryUser, e.id);
+                             }}>{e.title}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <span className="text-xs font-mono text-slate-500 ml-auto hidden lg:inline">REKORDOK: <span
                   className="text-white">{historyTotal}</span></span>
               </div>
 
@@ -489,8 +542,11 @@ export function ExamHub() {
                           </div>
                         </div>
                         <div className="text-right">
+                          {/* JAVÍTÁS: Százalék kijelzése */}
                           <div
-                            className={cn("text-lg font-mono font-bold", item.status === 'passed' ? 'text-green-500' : 'text-red-500')}>{item.total_score} PONT
+                            className={cn("text-lg font-mono font-bold", item.status === 'passed' ? 'text-green-500' : 'text-red-500')}>
+                            {item.total_score} PONT <span
+                            className="text-sm opacity-70 ml-1">({item.percentage || 0}%)</span>
                           </div>
                           {item.tab_switch_count > 0 &&
                             <div className="text-[9px] text-red-400 font-bold flex items-center justify-end gap-1">
@@ -502,11 +558,11 @@ export function ExamHub() {
                 </ScrollArea>
                 <div className="p-3 border-t border-slate-800 bg-slate-900 flex justify-center gap-4">
                   <Button variant="ghost" size="sm" disabled={historyPage === 0}
-                          onClick={() => fetchHistory(historyPage - 1, selectedHistoryUser)}
+                          onClick={() => fetchHistory(historyPage - 1, selectedHistoryUser, selectedHistoryExam)}
                           className="text-xs">ELŐZŐ</Button>
                   <span className="text-xs font-mono text-slate-500 self-center">{historyPage + 1}. OLDAL</span>
                   <Button variant="ghost" size="sm" disabled={(historyPage + 1) * ITEMS_PER_PAGE >= historyTotal}
-                          onClick={() => fetchHistory(historyPage + 1, selectedHistoryUser)}
+                          onClick={() => fetchHistory(historyPage + 1, selectedHistoryUser, selectedHistoryExam)}
                           className="text-xs">KÖVETKEZŐ</Button>
                 </div>
               </div>

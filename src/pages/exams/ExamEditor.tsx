@@ -141,7 +141,7 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
           <div className="flex-1 space-y-2">
             <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Kérdés Szövege</Label>
             <Textarea value={localText} onChange={e => setLocalText(e.target.value)} onBlur={handleTextBlur}
-                      className={cn(EDITOR_INPUT, "min-h-[80px] resize-none text-base", !localText && "border-red-900/40")}
+                      className={cn(EDITOR_INPUT, "min-h-[80px] resize-none text-base break-all", !localText && "border-red-900/40")}
                       placeholder="Írd be a kérdést..."/>
           </div>
           <div className="flex flex-col gap-4 min-w-[220px]">
@@ -598,7 +598,7 @@ export function ExamEditor() {
                                                                         ...examData,
                                                                         description: e.target.value
                                                                       })}
-                                                                      className={cn(EDITOR_INPUT, "min-h-[150px] resize-none")}
+                                                                      className={cn(EDITOR_INPUT, "min-h-[150px] resize-none break-all")}
                                                                       placeholder="Rövid leírás a vizsgázók számára..."/>
             </div>
 
