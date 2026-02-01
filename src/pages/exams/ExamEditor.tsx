@@ -12,7 +12,7 @@ import {Switch} from "@/components/ui/switch";
 import {
   Trash2, Plus, Save, ArrowLeft, GripVertical, CheckCircle2, AlertCircle, Type,
   List, CheckSquare, FilePlus, FileX, ChevronLeft, ChevronRight, Share2, Globe,
-  AlertTriangle, Percent, Settings, Layers, Check, X, Lock
+  AlertTriangle, Percent, Settings, Layers, Lock
 } from "lucide-react";
 import {toast} from "sonner";
 import {FACTION_RANKS} from "@/types/supabase";
@@ -141,7 +141,7 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
           <div className="flex-1 space-y-2">
             <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Kérdés Szövege</Label>
             <Textarea value={localText} onChange={e => setLocalText(e.target.value)} onBlur={handleTextBlur}
-                      className={cn(EDITOR_INPUT, "min-h-[80px] resize-none text-base", !localText && "border-red-900/40")}
+                      className={cn(EDITOR_INPUT, "min-h-[80px] resize-none text-base break-all", !localText && "border-red-900/40")}
                       placeholder="Írd be a kérdést..."/>
           </div>
           <div className="flex flex-col gap-4 min-w-[220px]">
@@ -230,6 +230,12 @@ export function ExamEditor() {
   const [submissionCount, setSubmissionCount] = useState(0);
   const loadedExamIdRef = useRef<string | null>(null);
 
+  // Eredeti ID-k tárolása a törléshez
+  const [originalIds, setOriginalIds] = useState<{ questions: string[], options: string[] }>({
+    questions: [],
+    options: []
+  });
+
   const [examData, setExamData] = useState<Partial<Exam>>({
     title: "",
     description: "",
@@ -279,11 +285,18 @@ export function ExamEditor() {
           const {exam_questions, ...cleanData} = data;
           setExamData(cleanData);
           const sorted = (data.exam_questions || []).sort((a: any, b: any) => a.order_index - b.order_index);
+
           setQuestions(sorted.map((q: any) => ({
             ...q,
             is_required: q.is_required ?? true,
             page_number: q.page_number ?? 1
           })));
+
+          // EREDETI ID-K MENTÉSE (Hogy tudjuk, mit kell törölni mentéskor)
+          const qIds = sorted.map((q: any) => q.id);
+          const oIds = sorted.flatMap((q: any) => q.exam_options.map((o: any) => o.id));
+          setOriginalIds({questions: qIds, options: oIds});
+
           loadedExamIdRef.current = examId;
         }
         setIsLoading(false);
@@ -349,7 +362,9 @@ export function ExamEditor() {
   const confirmDeletePage = () => {
     if (pageToDelete === null) return;
     setQuestions(prev => {
+      // 1. Kiszűrjük a törlendő oldal kérdéseit
       const remaining = prev.filter(q => q.page_number !== pageToDelete);
+      // 2. Csúsztatjuk a többi oldalt
       return remaining.map(q => {
         if (q.page_number > pageToDelete) return {...q, page_number: q.page_number - 1};
         return q;
@@ -400,6 +415,7 @@ export function ExamEditor() {
     if (!examData.title) return toast.error("Cím kötelező!");
     if (questions.length === 0) return toast.error("Nincs kérdés!");
 
+    // Validáció...
     for (const q of questions) {
       if (!q.question_text?.trim()) {
         toast.error(`${q.page_number}. oldalon hiányos kérdés!`);
@@ -443,6 +459,23 @@ export function ExamEditor() {
         const {error} = await supabase.from('exams').update(examPayload).eq('id', examId);
         if (error) throw error;
       }
+
+      // ----------------------------------------------------
+      // JAVÍTÁS: Törölt elemek eltávolítása az adatbázisból
+      // ----------------------------------------------------
+      const currentQIds = questions.map(q => q.id).filter(id => !id.startsWith('temp-'));
+      const currentOIds = questions.flatMap(q => q.exam_options.map((o: any) => o.id)).filter((id: any) => !id.startsWith('temp-'));
+
+      const questionsToDelete = originalIds.questions.filter(id => !currentQIds.includes(id));
+      const optionsToDelete = originalIds.options.filter(id => !currentOIds.includes(id));
+
+      if (optionsToDelete.length > 0) {
+        await supabase.from('exam_options').delete().in('id', optionsToDelete);
+      }
+      if (questionsToDelete.length > 0) {
+        await supabase.from('exam_questions').delete().in('id', questionsToDelete);
+      }
+      // ----------------------------------------------------
 
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
@@ -565,7 +598,7 @@ export function ExamEditor() {
                                                                         ...examData,
                                                                         description: e.target.value
                                                                       })}
-                                                                      className={cn(EDITOR_INPUT, "min-h-[150px] resize-none")}
+                                                                      className={cn(EDITOR_INPUT, "min-h-[150px] resize-none break-all")}
                                                                       placeholder="Rövid leírás a vizsgázók számára..."/>
             </div>
 
@@ -626,7 +659,6 @@ export function ExamEditor() {
               <SettingToggle title="Aktív" description="A vizsga kitölthető" active={examData.is_active}
                              onChange={(v: boolean) => setExamData({...examData, is_active: v})} icon={CheckCircle2}
                              activeColorClass="border-yellow-500/50 text-yellow-200"/>
-              {/* ÚJ MEZŐ: MEGHÍVÁSOS */}
               <SettingToggle title="Meghívásos" description="Csak meghívóval tölthető ki"
                              active={examData.is_invitation_only}
                              onChange={(v: boolean) => setExamData({...examData, is_invitation_only: v})} icon={Lock}
@@ -649,8 +681,8 @@ export function ExamEditor() {
               className="bg-orange-950/20 border border-orange-900/50 p-4 rounded-lg flex items-start gap-4 animate-in slide-in-from-top-2">
               <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5"/>
               <div>
-                <h4 className="text-orange-500 font-bold text-sm uppercase tracking-wider">Figyelem: Aktív kitöltések
-                  ({submissionCount} db)</h4>
+                <h4 className="text-orange-500 font-bold text-sm uppercase tracking-wider">Figyelem: Már vannak
+                  kitöltések ({submissionCount} db)</h4>
                 <p className="text-slate-400 text-xs mt-1 leading-relaxed">A kérdések módosítása befolyásolhatja a
                   meglévő eredményeket.</p>
               </div>
@@ -662,12 +694,9 @@ export function ExamEditor() {
             <Button variant="ghost" disabled={currentEditorPage === 1} onClick={() => setCurrentEditorPage(p => p - 1)}
                     className="text-slate-400 hover:text-white hover:bg-slate-800"><ChevronLeft
               className="w-4 h-4 mr-2"/> ELŐZŐ</Button>
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4">
-              {pageNumbers.map(pageNum => (
-                <button key={pageNum} onClick={() => setCurrentEditorPage(pageNum)}
-                        className={cn("w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold transition-all border", currentEditorPage === pageNum ? "bg-yellow-500 text-black border-yellow-600 shadow-lg shadow-yellow-500/20" : "bg-slate-900 text-slate-500 border-slate-800 hover:border-slate-600 hover:text-slate-300")}>{pageNum}</button>
-              ))}
-            </div>
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4">{pageNumbers.map(pageNum => (
+              <button key={pageNum} onClick={() => setCurrentEditorPage(pageNum)}
+                      className={cn("w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold transition-all border", currentEditorPage === pageNum ? "bg-yellow-500 text-black border-yellow-600 shadow-lg shadow-yellow-500/20" : "bg-slate-900 text-slate-500 border-slate-800 hover:border-slate-600 hover:text-slate-300")}>{pageNum}</button>))}</div>
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" disabled={pageNumbers.length === 1}
                       onClick={() => setPageToDelete(currentEditorPage)}
@@ -700,9 +729,8 @@ export function ExamEditor() {
                                 onAddOption={addOption} onRemoveOption={removeOption} onUpdateOption={updateOption}/>
                 ))}
                 <Button onClick={() => addQuestionToPage(currentEditorPage)}
-                        className="w-full border-dashed border-2 border-slate-800 bg-slate-900/20 hover:bg-slate-900 hover:border-slate-600 text-slate-500 hover:text-white h-20 uppercase font-bold tracking-widest transition-all">
-                  <Plus className="w-5 h-5 mr-2"/> ÚJ KÉRDÉS HOZZÁADÁSA A(Z) {currentEditorPage}. OLDALHOZ
-                </Button>
+                        className="w-full border-dashed border-2 border-slate-800 bg-slate-900/20 hover:bg-slate-900 hover:border-slate-600 text-slate-500 hover:text-white h-20 uppercase font-bold tracking-widest transition-all"><Plus
+                  className="w-5 h-5 mr-2"/> ÚJ KÉRDÉS HOZZÁADÁSA A(Z) {currentEditorPage}. OLDALHOZ</Button>
               </>
             )}
           </div>
