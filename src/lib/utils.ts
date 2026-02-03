@@ -118,7 +118,6 @@ export const canManageCommanders = (editor: Profile) => !!editor.is_bureau_manag
 export const canManageExamContent = (user: Profile, exam: Exam) => {
   if (user.is_bureau_manager) return true;
   if (exam.type === 'trainee' || exam.type === 'deputy_i') return false;
-  if (exam.required_rank === 'Deputy Sheriff Trainee' || exam.required_rank === 'Deputy Sheriff I.') return false;
 
   if (exam.division && user.commanded_divisions?.includes(exam.division)) return true;
   if (user.is_bureau_commander && user.division === exam.division) return true;
