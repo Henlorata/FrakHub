@@ -6,24 +6,13 @@ import {Button} from "@/components/ui/button";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
-import {Badge} from "@/components/ui/badge";
 import {toast} from "sonner";
 import {
   Copy, FilePlus, FolderPlus, RefreshCcw, User, Shield, FileText, Gavel,
-  Siren, Lock, CarFront, Megaphone, TriangleAlert, Receipt, Calendar, Hash, DollarSign, Clock, Users
+  Lock, CarFront, Calendar, Hash, DollarSign, Clock, Users
 } from "lucide-react";
 import {cn} from "@/lib/utils";
 import {SheriffBackground} from "@/components/SheriffBackground";
-
-// SABLONOK
-const TEMPLATES = {
-  trafficStop: `A mai napon járőrszolgálatot teljesítettem, amikor figyelmes lettem egy [JÁRMŰ TÍPUS]-ra, amely [OK, PL. ÁTHAJTOTT A PIROSON]. A járművet fény- és hangjelzés kíséretében félreállítottam a [HELYSZÍN]-en. A sofőrt igazoltattam, az iratokat rendben találtam.`,
-  ticket: `Az igazoltatás során megállapítottam, hogy a sofőr [VÉTSÉG OKA]. A vétséget közöltem vele, amit elismert. Helyszíni bírságot állítottam ki [ÖSSZEG] értékben, majd útjára engedtem.`,
-  pursuit: `A felszólítás ellenére a jármű nem állt meg, menekülőre fogta. Üldözést kezdeményeztem, amelybe bekapcsolódott [EGYSÉGEK]. Az üldözés során a menekülő [VESZÉLYES MANŐVEREK]. Végül a jármű [MEGÁLLÁS OKA, PL. ÜTKÖZÖTT / MŰSZAKI HIBÁS LETT] a [HELYSZÍN]-en.`,
-  accident: `Helyszínre érkezve konstatáltam, hogy egy [JÁRMŰVEK] ütköztek. A helyszínt biztosítottam, a forgalmat eltereltem. Személyi sérülés [TÖRTÉNT / NEM TÖRTÉNT]. A mentők kiérkezéséig az elsősegélynyújtást megkezdtem.`,
-  arrest: `A gyanúsítottat a helyszínen földre vittem és megbilincseltem. A ruházatátvízsgálás során [TALÁLT TÁRGYAK]-t találtam. A Miranda jogait a helyszínen ismertettem, azokat megértette / nem élt velük. A kapitányságra szállítottam.`,
-  interrogation: `A kihallgatóban a gyanúsított [VISELKEDÉS, PL. EGYÜTTMŰKÖDŐ VOLT / TAGADOTT]. A vádakat közöltem vele. A bírságot elfogadta, a szabadságvesztést megkezdte.`
-};
 
 // --- TECH INPUT KOMPONENS ---
 const TechInput = ({icon: Icon, className, ...props}: any) => (
@@ -150,14 +139,6 @@ ${formData.description}
     toast.success("BBCode másolva!");
   };
 
-  const insertTemplate = (text: string) => {
-    setFormData(prev => ({
-      ...prev,
-      description: prev.description ? prev.description + "\n\n" + text : text
-    }));
-    toast.info("Sablon beszúrva.");
-  };
-
   const resetForm = () => {
     if (!profile) return;
     setFormData({
@@ -170,15 +151,6 @@ ${formData.description}
     });
     toast.info("Űrlap törölve.");
   };
-
-  const TemplateButton = ({label, text, icon: Icon, colorClass}: any) => (
-    <button onClick={() => insertTemplate(text)}
-            className={cn("flex flex-col items-center justify-center p-3 rounded-lg border border-slate-800 bg-slate-950 hover:bg-slate-900 transition-all group shadow-sm hover:shadow-md", colorClass)}>
-      <Icon className="w-5 h-5 mb-1 opacity-70 group-hover:opacity-100 transition-opacity"/>
-      <span
-        className="text-[10px] font-bold uppercase tracking-wide text-slate-400 group-hover:text-white">{label}</span>
-    </button>
-  );
 
   return (
     <div
@@ -356,25 +328,8 @@ ${formData.description}
                         className="pb-3 border-b border-slate-800/50 bg-slate-950/30 flex flex-row items-center justify-between py-3">
                         <CardTitle className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">IV.
                           Esetleírás</CardTitle>
-                        <Badge variant="outline" className="text-[9px] text-slate-500 border-slate-700 bg-slate-900/50">GYORS
-                          SABLONOK</Badge>
                       </CardHeader>
                       <CardContent className="pt-4 space-y-4">
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-                          <TemplateButton label="IGAZOLTATÁS" text={TEMPLATES.trafficStop} icon={CarFront}
-                                          colorClass="hover:border-blue-500/50 hover:text-blue-400"/>
-                          <TemplateButton label="BÍRSÁG" text={TEMPLATES.ticket} icon={Receipt}
-                                          colorClass="hover:border-green-500/50 hover:text-green-400"/>
-                          <TemplateButton label="BALESET" text={TEMPLATES.accident} icon={TriangleAlert}
-                                          colorClass="hover:border-yellow-500/50 hover:text-yellow-400"/>
-                          <TemplateButton label="ÜLDÖZÉS" text={TEMPLATES.pursuit} icon={Siren}
-                                          colorClass="hover:border-red-500/50 hover:text-red-400"/>
-                          <TemplateButton label="ELFOGÁS" text={TEMPLATES.arrest} icon={Lock}
-                                          colorClass="hover:border-orange-500/50 hover:text-orange-400"/>
-                          <TemplateButton label="KIHALLGATÁS" text={TEMPLATES.interrogation} icon={Megaphone}
-                                          colorClass="hover:border-slate-500 hover:text-slate-300"/>
-                        </div>
-
                         <div className="relative group">
                           <div
                             className="absolute -inset-0.5 bg-gradient-to-b from-slate-800 to-transparent rounded-lg opacity-50 group-focus-within:opacity-100 group-focus-within:from-blue-600/50 transition-all blur-sm"></div>
