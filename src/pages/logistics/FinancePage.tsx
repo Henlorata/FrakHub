@@ -276,7 +276,7 @@ export function FinancePage() {
             <div className="col-span-1 text-right">DATE</div>
           </div>
 
-          <ScrollArea className="flex-1">
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
             {filteredRequests.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 opacity-30 text-slate-500">
                 <CreditCard className="w-16 h-16 mb-4"/>
@@ -351,7 +351,7 @@ export function FinancePage() {
                 </div>
               )
             })}
-          </ScrollArea>
+          </div>
         </div>
       </Tabs>
 
