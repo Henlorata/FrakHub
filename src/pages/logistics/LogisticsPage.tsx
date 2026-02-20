@@ -200,7 +200,7 @@ export function LogisticsPage() {
         className="flex-1 min-h-0 bg-[#050a14] border border-slate-800 relative rounded-md overflow-hidden flex flex-col shadow-2xl">
         <BlueprintGrid/>
 
-        <ScrollArea className="flex-1">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredRequests.length === 0 ? (
               <div className="col-span-full flex flex-col items-center justify-center py-20 opacity-30">
@@ -312,7 +312,7 @@ export function LogisticsPage() {
               ))
             )}
           </div>
-        </ScrollArea>
+        </div>
       </div>
 
       <NewVehicleRequestDialog open={isNewOpen} onOpenChange={setIsNewOpen} onSuccess={fetchRequests}/>

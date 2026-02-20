@@ -5,29 +5,61 @@ import {Card} from "@/components/ui/card";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
-import {
-  Dialog, DialogContent, DialogTitle, DialogFooter
-} from "@/components/ui/dialog";
+import {Dialog, DialogContent, DialogFooter, DialogTitle} from "@/components/ui/dialog";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import {toast} from "sonner";
 import {
-  CheckCircle2, Loader2, Trash2, Search, Crown, Star, Users,
-  CalendarClock, Award, ShieldCheck, Medal, PenTool, ShieldAlert, UserCog, Briefcase, Lock, Check, X
+  Award,
+  Briefcase,
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  Crown,
+  Loader2,
+  Lock,
+  Medal,
+  PenTool,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  Star,
+  Trash2,
+  UserCog,
+  Users,
+  X
 } from "lucide-react";
 import {
-  FACTION_RANKS, type Profile, type DepartmentDivision, type Qualification,
-  type InvestigatorRank, type OperatorRank
+  type DepartmentDivision,
+  FACTION_RANKS,
+  type InvestigatorRank,
+  type OperatorRank,
+  type Profile,
+  type Qualification
 } from "@/types/supabase";
 import {
-  cn, canEditUser, getAllowedPromotionRanks, canAwardRibbon,
-  isExecutive, isSupervisory, isCommand,
-  canManageUserRank, canManageUserDivision, canManageUserQualification, getDepartmentLabel
+  canAwardRibbon,
+  canEditUser,
+  canManageUserDivision,
+  canManageUserQualification,
+  canManageUserRank,
+  cn,
+  getAllowedPromotionRanks,
+  getDepartmentLabel,
+  isCommand,
+  isExecutive,
+  isSupervisory
 } from "@/lib/utils";
 import {differenceInDays} from "date-fns";
 import {GiveAwardDialog} from "@/pages/profile/components/GiveAwardDialog";
@@ -88,6 +120,8 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
   const {supabase, session} = useAuth();
   const [loading, setLoading] = React.useState(false);
   const [formData, setFormData] = React.useState<Partial<Profile>>({});
+  const [newPassword, setNewPassword] = React.useState("");
+  const [isChangingPassword, setIsChangingPassword] = React.useState(false);
 
   React.useEffect(() => {
     if (user && open) {
@@ -135,7 +169,7 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
       if (hasDivisionRight) updates._division = formData.division;
       else updates._division = user.division;
 
-      const finalQuals = QUALIFICATIONS.reduce((acc, q) => {
+      updates._qualifications = QUALIFICATIONS.reduce((acc, q) => {
         const hasRight = canManageUserQualification(currentUser, user, q);
         const isSetInForm = formData.qualifications?.includes(q);
         const isSetOriginally = user.qualifications?.includes(q);
@@ -147,7 +181,6 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
         }
         return acc;
       }, [] as Qualification[]);
-      updates._qualifications = finalQuals;
 
       const {error: rpcError} = await supabase.rpc('hr_update_user_profile_v2', updates);
       if (rpcError) throw rpcError;
@@ -176,6 +209,30 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
       toast.error("Hiba: " + e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    if (!user || newPassword.length < 6) {
+      toast.error("A jelszónak legalább 6 karakterből kell állnia!");
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      const response = await fetch('/api/admin/update-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ targetUserId: user.id, newPassword })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Hiba a jelszó módosításakor.");
+
+      toast.success("Jelszó sikeresen kényszerítve!");
+      setNewPassword("");
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -441,6 +498,36 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
                     })}
                   </div>
                 </div>
+              </div>
+            </section>
+          )}
+          {/* 5. BIZTONSÁG (CSAK EXECUTIVE STAFF) */}
+          {isExecutive(currentUser) && currentUser?.id !== user.id && (
+            <section className="space-y-4 pt-4 border-t border-slate-800">
+              <div className="flex items-center gap-2 pb-2">
+                <Lock className="w-4 h-4 text-red-500"/>
+                <h4 className="text-xs font-black text-red-500 uppercase tracking-widest">Biztonság (Executive Staff)</h4>
+              </div>
+              <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 p-5 bg-red-950/10 border border-red-900/30 rounded-xl relative overflow-hidden">
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagonal-stripes.png')] opacity-5"></div>
+
+                <div className="flex-1 space-y-1.5 w-full relative z-10">
+                  <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Új jelszó kényszerítése</Label>
+                  <Input
+                    type="password"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Új jelszó megadása..."
+                    className="bg-slate-950 border-red-900/50 font-mono text-sm focus-visible:ring-red-500/50 h-10 placeholder:text-slate-700"
+                  />
+                </div>
+                <Button
+                  onClick={handlePasswordChange}
+                  disabled={isChangingPassword || newPassword.length < 6}
+                  className="bg-red-600 hover:bg-red-500 text-white font-bold tracking-wider uppercase text-xs h-10 px-6 w-full sm:w-auto relative z-10"
+                >
+                  {isChangingPassword ? <Loader2 className="w-4 h-4 animate-spin"/> : "JELSZÓ MÓDOSÍTÁSA"}
+                </Button>
               </div>
             </section>
           )}
