@@ -8,22 +8,11 @@ import {
 import {Textarea} from "@/components/ui/textarea";
 import {toast} from "sonner";
 import {
-  Plus, Check, X, Clock, Loader2, Trash2, Eye, Wallet, History, DollarSign, FileBarChart, CreditCard
+  Plus, Check, X, Clock, Loader2, Eye, Wallet, History, DollarSign, FileBarChart, CreditCard
 } from "lucide-react";
 import type {BudgetRequest} from "@/types/supabase";
 import {NewBudgetRequestDialog} from "./components/NewBudgetRequestDialog";
-import {ScrollArea} from "@/components/ui/scroll-area";
 import {ImageViewerDialog} from "@/pages/mcb/components/ImageViewerDialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog";
 import {Tabs} from "@/components/ui/tabs";
 import {cn} from "@/lib/utils";
 
@@ -52,8 +41,6 @@ export function FinancePage() {
 
   const [viewerOpen, setViewerOpen] = React.useState(false);
   const [viewImage, setViewImage] = React.useState<{ url: string, name: string } | null>(null);
-  const [isCleanupAlertOpen, setIsCleanupAlertOpen] = React.useState(false);
-  const [isCleaning, setIsCleaning] = React.useState(false);
 
   // Adatok lekérése
   const fetchRequests = React.useCallback(async () => {
@@ -123,21 +110,6 @@ export function FinancePage() {
     }
   };
 
-  const handleCleanup = async () => {
-    setIsCleaning(true);
-    try {
-      const response = await fetch('/api/cron/daily-cleanup', {method: 'POST'});
-      if (!response.ok) throw new Error();
-      toast.success("Archiválás kész.");
-      void fetchRequests();
-    } catch {
-      toast.error("Hiba a tisztítás közben");
-    } finally {
-      setIsCleaning(false);
-      setIsCleanupAlertOpen(false);
-    }
-  };
-
   const handleViewImage = async (path: string) => {
     const cleanPath = path.replace(/['"]+/g, '');
     const {data} = await supabase.storage.from('finance_proofs').createSignedUrl(cleanPath, 3600);
@@ -189,12 +161,6 @@ export function FinancePage() {
           </div>
         </div>
         <div className="relative z-10 flex gap-3">
-          {isExecutive && (
-            <Button variant="outline" className="border-red-900/50 text-red-400 hover:bg-red-900/20 hover:text-red-300"
-                    onClick={() => setIsCleanupAlertOpen(true)}>
-              <Trash2 className="w-4 h-4 mr-2"/> ARCHÍVUM
-            </Button>
-          )}
           <Button onClick={() => setIsNewOpen(true)}
                   className="bg-green-600 hover:bg-green-500 text-white font-bold uppercase tracking-wider h-10 px-6 shadow-[0_0_20px_rgba(34,197,94,0.2)]">
             <Plus className="w-4 h-4 mr-2"/> ÚJ TÉTEL
@@ -408,19 +374,6 @@ export function FinancePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* ARCHIVE CONFIRM */}
-      <AlertDialog open={isCleanupAlertOpen} onOpenChange={setIsCleanupAlertOpen}>
-        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
-          <AlertDialogHeader><AlertDialogTitle>Archiválás</AlertDialogTitle><AlertDialogDescription>Törlöd a 40 napnál
-            régebbi lezárt tételeket?</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-slate-700 hover:bg-slate-800 text-white">Mégse</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 hover:bg-red-700 border-none" onClick={handleCleanup}>{isCleaning ?
-              <Loader2 className="animate-spin w-4 h-4"/> : "Törlés"}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
