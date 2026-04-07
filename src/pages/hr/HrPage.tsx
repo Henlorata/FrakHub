@@ -163,6 +163,8 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
         _division_rank: formData.division_rank,
       };
 
+      const rankChanged = hasRankRight && formData.faction_rank !== user.faction_rank;
+
       if (hasRankRight) updates._faction_rank = formData.faction_rank;
       else updates._faction_rank = user.faction_rank;
 
@@ -185,23 +187,41 @@ function EditUserDialog({user, open, onOpenChange, onUpdate, currentUser, onKick
       const {error: rpcError} = await supabase.rpc('hr_update_user_profile_v2', updates);
       if (rpcError) throw rpcError;
 
-      if (isManager) {
-        const roleUpdates: any = {};
-        if (formData.is_bureau_manager !== user.is_bureau_manager) roleUpdates.is_bureau_manager = formData.is_bureau_manager;
-        if (formData.is_bureau_commander !== user.is_bureau_commander) roleUpdates.is_bureau_commander = formData.is_bureau_commander;
+      const apiUpdates: any = { userId: user.id };
+      let needApiCall = false;
 
+      if (rankChanged) {
+        apiUpdates.faction_rank = formData.faction_rank;
+        apiUpdates.force_rank_notification = true;
+        needApiCall = true;
+      }
+
+      if (isManager) {
+        if (formData.is_bureau_manager !== user.is_bureau_manager) {
+          apiUpdates.is_bureau_manager = formData.is_bureau_manager;
+          needApiCall = true;
+        }
+        if (formData.is_bureau_commander !== user.is_bureau_commander) {
+          apiUpdates.is_bureau_commander = formData.is_bureau_commander;
+          needApiCall = true;
+        }
         const oldCmd = JSON.stringify(user.commanded_divisions?.sort() || []);
         const newCmd = JSON.stringify(formData.commanded_divisions?.sort() || []);
-        if (oldCmd !== newCmd) roleUpdates.commanded_divisions = formData.commanded_divisions;
-
-        if (Object.keys(roleUpdates).length > 0) {
-          await fetch('/api/admin/update-role', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}`},
-            body: JSON.stringify({userId: user.id, ...roleUpdates})
-          });
+        if (oldCmd !== newCmd) {
+          apiUpdates.commanded_divisions = formData.commanded_divisions;
+          needApiCall = true;
         }
       }
+
+      if (needApiCall) {
+        const res = await fetch('/api/admin/update-role', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}`},
+          body: JSON.stringify(apiUpdates)
+        });
+        if (!res.ok) throw new Error("Hiba a rendszerjogosultságok szinkronizálásakor.");
+      }
+
       toast.success("Sikeres mentés!");
       onUpdate();
       onOpenChange(false);
