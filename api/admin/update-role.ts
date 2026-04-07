@@ -28,9 +28,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({error: 'Method Not Allowed'});
 
   try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({error: 'Unauthorized: No token provided.'});
+
+    const {data: {user: authUser}, error: authError} = await supabaseAdmin.auth.getUser(token);
+    if (authError || !authUser) return res.status(401).json({error: 'Invalid token.'});
+
+    const {data: callerProfile} = await supabaseAdmin.from('profiles').select('system_role').eq('id', authUser.id).single();
+    if (!callerProfile || (callerProfile.system_role !== 'admin' && callerProfile.system_role !== 'supervisor')) {
+      return res.status(403).json({error: 'Nincs jogosultságod módosítani a jogosultságokat.'});
+    }
+
     const {
       userId,
       faction_rank,
+      force_rank_notification,
       division,
       division_rank,
       qualifications,
@@ -41,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!userId) return res.status(400).json({error: 'User ID is required'});
 
-    const {data: currentUser, error: fetchError} = await supabaseAdmin
+    const {data: targetUser, error: fetchError} = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', userId)
@@ -52,18 +64,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const updates: any = {};
     const notificationsToInsert = [];
 
-    const nextRank = faction_rank || currentUser.faction_rank;
-
+    const nextRank = faction_rank || targetUser.faction_rank;
     const nextSystemRole = calculateSystemRole(nextRank);
 
     if (
-      currentUser.system_role === 'pending' ||
-      faction_rank !== undefined ||
-      currentUser.system_role !== nextSystemRole
+      targetUser.system_role === 'pending' ||
+      targetUser.system_role !== nextSystemRole ||
+      force_rank_notification
     ) {
       updates.system_role = nextSystemRole;
 
-      if (currentUser.system_role === 'pending') {
+      if (targetUser.system_role === 'pending') {
         notificationsToInsert.push({
           user_id: userId,
           title: 'Fiók Jóváhagyva',
@@ -73,24 +84,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    if (division !== undefined) {
-      updates.division = division;
-      if (currentUser.division !== division) {
-        notificationsToInsert.push({
-          user_id: userId,
-          title: 'Áthelyezés',
-          message: `Új osztályba kerültél: ${division}`,
-          type: 'info'
-        });
-      }
-    }
-
-    if (division_rank !== undefined) updates.division_rank = division_rank;
-    if (qualifications !== undefined) updates.qualifications = qualifications;
-
     if (faction_rank !== undefined) {
-      updates.faction_rank = faction_rank;
-      if (currentUser.faction_rank !== faction_rank) {
+      if (force_rank_notification || targetUser.faction_rank !== faction_rank) {
         updates.last_promotion_date = new Date().toISOString();
         notificationsToInsert.push({
           user_id: userId,
@@ -99,8 +94,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           type: 'success'
         });
       }
+      updates.faction_rank = faction_rank;
     }
 
+    if (division !== undefined) {
+      updates.division = division;
+      if (targetUser.division !== division) {
+        notificationsToInsert.push({
+          user_id: userId, title: 'Áthelyezés', message: `Új osztályba kerültél: ${division}`, type: 'info'
+        });
+      }
+    }
+
+    if (division_rank !== undefined) updates.division_rank = division_rank;
+    if (qualifications !== undefined) updates.qualifications = qualifications;
     if (is_bureau_manager !== undefined) updates.is_bureau_manager = is_bureau_manager;
     if (is_bureau_commander !== undefined) updates.is_bureau_commander = is_bureau_commander;
     if (commanded_divisions !== undefined) updates.commanded_divisions = commanded_divisions;
@@ -117,6 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({success: true, updates});
   } catch (err) {
+    console.error("Update role error:", err);
     return res.status(500).json({error: (err as Error).message});
   }
 }
