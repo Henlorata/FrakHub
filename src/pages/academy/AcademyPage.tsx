@@ -5,7 +5,7 @@ import {
   GraduationCap, Siren, Crosshair, BookOpen, ShieldAlert, Lock, ChevronLeft, ChevronRight, Target
 } from "lucide-react";
 import {BasicAcademyView} from "./views/BasicAcademyView";
-// import {DivisionAcademyView} from "./views/DivisionAcademyView";
+import {DivisionAcademyView} from "./views/DivisionAcademyView";
 
 type AcademyView = 'basic' | 'mcb' | 'seb' | string;
 
