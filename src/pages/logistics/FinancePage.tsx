@@ -144,7 +144,7 @@ export function FinancePage() {
 
   return (
     <div
-      className="space-y-6 max-w-[1600px] mx-auto animate-in fade-in duration-500 pb-10 h-[calc(100vh-6rem)] flex flex-col">
+      className="w-full h-full flex flex-col space-y-6 animate-in fade-in duration-500">
 
       {/* --- FINANCE HEADER --- */}
       <div

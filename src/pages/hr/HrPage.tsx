@@ -821,7 +821,7 @@ export function HrPage() {
 
   return (
     <div
-      className="space-y-8 max-w-[1600px] mx-auto animate-in fade-in duration-500 pb-10 h-[calc(100vh-6rem)] flex flex-col">
+      className="space-y-8 w-full animate-in fade-in duration-500 pb-10 h-[calc(100vh-6rem)] flex flex-col">
       <AlertDialog open={isKickAlertOpen} onOpenChange={setIsKickAlertOpen}>
         <AlertDialogContent className="bg-[#0b1221] border-red-900/50 border text-white">
           <AlertDialogHeader>
