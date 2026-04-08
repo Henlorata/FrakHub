@@ -159,7 +159,7 @@ export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
       const imagesToDelete = extractImageUrls(currentMaterial.content);
 
       if (imagesToDelete.length > 0) {
-        imagesToDelete.forEach(async (url) => {
+        for (const url of imagesToDelete) {
           const publicId = getPublicIdFromUrl(url);
           if (publicId) {
             await fetch('/api/delete-image', {
@@ -168,7 +168,7 @@ export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
               body: JSON.stringify({publicId}) // Legacy törlés
             }).catch(console.error);
           }
-        });
+        }
       }
 
       // 2. Adatbázis törlés

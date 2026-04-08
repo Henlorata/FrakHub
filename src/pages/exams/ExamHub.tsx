@@ -18,9 +18,7 @@ import {
   canManageExamAccess,
   canGradeExam,
   isSupervisory,
-  isCommand,
-  isExecutive,
-  getRankPriority
+  getRankPriority, isHighCommand
 } from "@/lib/utils";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
@@ -71,8 +69,8 @@ export function ExamHub() {
 
   const [myOverrides, setMyOverrides] = useState<Record<string, string>>({});
 
-  const hasGradingRights = (profile && (pendingGrading.length > 0 || canCreateAnyExam(profile) || profile.qualifications?.includes('TB') || ['Sergeant I.', 'Sergeant II.'].includes(profile.faction_rank)));
-  const canAssignExams = profile && (isSupervisory(profile) || isCommand(profile) || isExecutive(profile) || profile.is_bureau_manager);
+  const hasGradingRights = (profile && (pendingGrading.length > 0 || canCreateAnyExam(profile) || profile.qualifications?.includes('TB') || isSupervisory(profile) || isHighCommand(profile)));
+  const canAssignExams = profile && (isSupervisory(profile) || isHighCommand(profile) || profile.is_bureau_manager);
 
   // JAVÍTVA: examIdFilter hozzáadva
   const fetchHistory = useCallback(async (page: number, userIdFilter: string, examIdFilter: string) => {

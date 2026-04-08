@@ -12,7 +12,12 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {autoRefreshToken: false, persistSession: false}
 });
 
-export default async function handler(_req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const authHeader = req.headers.authorization;
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid CRON secret' });
+  }
+  
   const results = {
     financeDeleted: 0,
     vehicleDeleted: 0,
