@@ -484,7 +484,7 @@
             "min_fegyhaz": null,
             "max_fegyhaz": null,
             "rovidites": "IAA/I.",
-            "megjegyzes": "Semmilyen színben nem engedélyezett."
+            "megjegyzes": "Minden színben engedélyezett, kivéve: PIROS / KÉK. Ezeknek sem a sima, se a villogó változata."
           },
           {
             "paragrafus": "(2)",
@@ -1654,7 +1654,99 @@
             "min_fegyhaz": null,
             "max_fegyhaz": null,
             "rovidites": "CE/V.",
+            "megjegyzes": "Benzinkutak tartoznak ebbe a kategóriába."
+          },
+          {
+            "paragrafus": "(6)",
+            "megnevezes": "Gépjárműkozmetika esetén:",
+            "min_birsag": 5000000,
+            "max_birsag": 10000000,
+            "min_fegyhaz": null,
+            "max_fegyhaz": null,
+            "rovidites": "CE/VI.",
+            "megjegyzes": "Autómosók tartoznak ebbe a kategóriába."
+          }
+        ]
+      },
+      {
+        "paragrafus": "114 §",
+        "megnevezes": "Tűzvédelmi Engedély Hiánya",
+        "min_birsag": null,
+        "max_birsag": null,
+        "min_fegyhaz": null,
+        "max_fegyhaz": null,
+        "rovidites": null,
+        "megjegyzes": "Ez egy főkategória, aminek az alkategóriáit bünteted.",
+        "alpontok": [
+          {
+            "paragrafus": "(1)",
+            "megnevezes": "Állami Intézmények esetén:",
+            "min_birsag": 10000000,
+            "max_birsag": 20000000,
+            "min_fegyhaz": null,
+            "max_fegyhaz": null,
+            "rovidites": "TEH /I.",
+            "megjegyzes": "Rendőrség, Tűzoltóság, hasonló állami cégek épületei tartoznak ebbe a kategóriába."
+          },
+          {
+            "paragrafus": "(2)",
+            "megnevezes": "Kiskereskedelmi egység esetén:",
+            "min_birsag": 1000000,
+            "max_birsag": 2000000,
+            "min_fegyhaz": null,
+            "max_fegyhaz": null,
+            "rovidites": "TEH /II.",
+            "megjegyzes": "Boltok, Klubbok egyéb kiskereskedelmi láncok tartoznak ebbe a kategóriába."
+          },
+          {
+            "paragrafus": "(3)",
+            "megnevezes": "Gépjárműbérlő esetén:",
+            "min_birsag": 5000000,
+            "max_birsag": 10000000,
+            "min_fegyhaz": null,
+            "max_fegyhaz": null,
+            "rovidites": "TEH /III.",
             "megjegyzes": ""
+          },
+          {
+            "paragrafus": "(4)",
+            "megnevezes": "Gépjárműkereskedés esetén:",
+            "min_birsag": 10000000,
+            "max_birsag": 20000000,
+            "min_fegyhaz": null,
+            "max_fegyhaz": null,
+            "rovidites": "TEH /IV.",
+            "megjegyzes": ""
+          },
+          {
+            "paragrafus": "(5)",
+            "megnevezes": "Gépjárműszerelő-műhely esetén:",
+            "min_birsag": 15000000,
+            "max_birsag": 30000000,
+            "min_fegyhaz": null,
+            "max_fegyhaz": null,
+            "rovidites": "TEH /V.",
+            "megjegyzes": ""
+          },
+          {
+            "paragrafus": "(6)",
+            "megnevezes": "Töltőállomás esetén:",
+            "min_birsag": 20000000,
+            "max_birsag": 40000000,
+            "min_fegyhaz": null,
+            "max_fegyhaz": null,
+            "rovidites": "TEH /VI.",
+            "megjegyzes": "Benzinkutak tartoznak ebbe a kategóriába."
+          },
+          {
+            "paragrafus": "(7)",
+            "megnevezes": "Gépjárműkozmetika esetén:",
+            "min_birsag": 5000000,
+            "max_birsag": 10000000,
+            "min_fegyhaz": null,
+            "max_fegyhaz": null,
+            "rovidites": "TEH /VII.",
+            "megjegyzes": "Autómosók tartoznak ebbe a kategóriába."
           }
         ]
       }
