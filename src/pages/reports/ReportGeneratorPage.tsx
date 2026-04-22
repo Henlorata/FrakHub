@@ -154,7 +154,7 @@ ${formData.description}
 
   return (
     <div
-      className="h-[calc(100vh-6rem)] flex flex-col max-w-[1800px] mx-auto animate-in fade-in duration-500 px-6 pb-6 overflow-hidden relative">
+      className="h-[calc(100vh-6rem)] flex flex-col w-full animate-in fade-in duration-500 px-6 pb-6 overflow-hidden relative">
       <SheriffBackground side="right"/>
 
       {/* HEADER */}
