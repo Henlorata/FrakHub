@@ -30,30 +30,56 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
   const fetchData = async (query = "") => {
     setIsLoading(true);
     try {
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      // 1. Gazdátlan Vizsgák (Dátum korlátozás nélkül, a legújabb 50, a BUKOTTAK ELREJTVE)
+      let examQuery = supabase
+        .from('exam_submissions')
+        .select('id, applicant_name, start_time, status, exams(title)')
+        .is('user_id', null)
+        .neq('status', 'failed');
 
-      // 1. Vizsgák
-      let examQuery = supabase.from('exam_submissions').select('id, applicant_name, start_time, status, exams(title)').is('user_id', null);
-      if (query) examQuery = examQuery.ilike('applicant_name', `%${query}%`);
-      else examQuery = examQuery.gte('start_time', threeDaysAgo.toISOString());
+      if (query) {
+        examQuery = examQuery.ilike('applicant_name', `%${query}%`);
+      }
 
-      const {data: exams} = await examQuery.order('start_time', {ascending: false}).limit(20);
+      const { data: exams, error: examError } = await examQuery
+        .order('start_time', { ascending: false })
+        .limit(50);
+
+      if (examError) throw examError;
       setOrphanExams(exams || []);
 
-      // 2. Trainees
-      const {data: existingSubmissions} = await supabase.from('exam_submissions').select('user_id').not('user_id', 'is', null);
+      // 2. Trainees lekérése (kizárva azokat, akiknek MÁR VAN bármilyen vizsgája)
+      const { data: existingSubmissions, error: subError } = await supabase
+        .from('exam_submissions')
+        .select('user_id')
+        .not('user_id', 'is', null);
+
+      if (subError) throw subError;
+
       const excludedUserIds = existingSubmissions?.map(s => s.user_id) || [];
 
-      let userQuery = supabase.from('profiles').select('id, full_name, badge_number').eq('faction_rank', 'Deputy Sheriff Trainee');
-      if (excludedUserIds.length > 0) userQuery = userQuery.not('id', 'in', `(${excludedUserIds.join(',')})`);
-      if (query) userQuery = userQuery.ilike('full_name', `%${query}%`);
+      let userQuery = supabase
+        .from('profiles')
+        .select('id, full_name, badge_number')
+        .eq('faction_rank', 'Deputy Sheriff Trainee');
 
-      const {data: users} = await userQuery.order('full_name').limit(20);
+      if (excludedUserIds.length > 0) {
+        userQuery = userQuery.not('id', 'in', `(${excludedUserIds.join(',')})`);
+      }
+
+      if (query) {
+        userQuery = userQuery.ilike('full_name', `%${query}%`);
+      }
+
+      const { data: users, error: userError } = await userQuery
+        .order('full_name')
+        .limit(50);
+
+      if (userError) throw userError;
       setTrainees(users || []);
 
     } catch (e: any) {
-      toast.error("Hiba: " + e.message);
+      toast.error("Hiba az adatok lekérésekor: " + e.message);
     } finally {
       setIsLoading(false);
     }
@@ -77,12 +103,15 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
         _target_user_id: selectedUserId
       });
       if (error) throw error;
-      toast.success("Hozzárendelve!");
+
+      toast.success("Vizsga sikeresen hozzárendelve a profilhoz!");
+
+      // Frissítjük a listát és nullázzuk a kijelöléseket
       await fetchData(searchTerm);
       setSelectedExamId(null);
       setSelectedUserId(null);
     } catch (e: any) {
-      toast.error("Hiba: " + e.message);
+      toast.error("Hiba a hozzárendelés során: " + e.message);
     } finally {
       setIsLoading(false);
     }
@@ -110,7 +139,7 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
                    className="pl-10 bg-slate-900 border-slate-700 font-mono text-xs h-10"/>
           </div>
           <Button variant="outline" onClick={() => fetchData(searchTerm)}
-                  className="border-slate-700 bg-slate-900"><RefreshCw
+                  className="border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"><RefreshCw
             className={cn("w-4 h-4", isLoading && "animate-spin")}/></Button>
         </div>
 
@@ -136,6 +165,10 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
                     className="text-[9px] text-slate-600 font-mono mt-1 text-right">{new Date(ex.start_time).toLocaleDateString()}</div>
                 </div>
               ))}
+
+              {orphanExams.length === 0 && !isLoading && (
+                <div className="text-center p-4 text-xs font-mono text-slate-500">Nincs gazdátlan vizsga.</div>
+              )}
             </div>
           </div>
 
@@ -151,15 +184,19 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
                      className={cn("p-3 rounded border cursor-pointer transition-all flex items-center justify-between", selectedUserId === u.id ? "bg-green-900/20 border-green-500/50 shadow-[inset_0_0_10px_rgba(34,197,94,0.1)]" : "bg-slate-900/50 border-slate-800 hover:bg-slate-900 hover:border-slate-600")}>
                   <div className="flex items-center gap-3">
                     <div
-                      className="w-8 h-8 rounded bg-slate-950 border border-slate-700 flex items-center justify-center text-slate-500">
+                      className="w-8 h-8 rounded bg-slate-950 border border-slate-700 flex items-center justify-center text-slate-500 shrink-0">
                       <User className="w-4 h-4"/></div>
                     <span
-                      className={cn("font-bold text-sm", selectedUserId === u.id ? "text-green-400" : "text-white")}>{u.full_name}</span>
+                      className={cn("font-bold text-sm truncate", selectedUserId === u.id ? "text-green-400" : "text-white")}>{u.full_name}</span>
                   </div>
                   <span
-                    className="text-[10px] font-mono bg-black/40 px-1.5 py-0.5 rounded text-slate-400">{u.badge_number}</span>
+                    className="text-[10px] font-mono bg-black/40 px-1.5 py-0.5 rounded text-slate-400 shrink-0">{u.badge_number}</span>
                 </div>
               ))}
+
+              {trainees.length === 0 && !isLoading && (
+                <div className="text-center p-4 text-xs font-mono text-slate-500">Nincs találat a Trainee-k között.</div>
+              )}
             </div>
           </div>
         </div>
@@ -171,7 +208,7 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
             {selectedExamId && selectedUserId ? "RENDSZER KÉSZ A PÁROSÍTÁSRA" : "VÁLASSZ MINDKÉT LISTÁBÓL"}
           </div>
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>Mégse</Button>
+            <Button variant="ghost" className="text-slate-300 hover:text-white" onClick={() => onOpenChange(false)}>Mégse</Button>
             <Button onClick={handleAssign} disabled={!selectedExamId || !selectedUserId || isLoading}
                     className="bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider">
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : "ÖSSZERENDELÉS"}
