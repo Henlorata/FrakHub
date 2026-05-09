@@ -21,9 +21,17 @@ export function OnboardingPage() {
 
   const checkExamStatus = async () => {
     if (!user) return;
-    const {data} = await supabase.from('exam_submissions').select('id').eq('user_id', user.id).limit(1);
-    if (data && data.length > 0) {
+    const { data, error } = await supabase
+      .from('exam_submissions')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'passed')
+      .not('claim_token', 'is', null)
+      .limit(1);
+    if (!error && data && data.length > 0) {
       setIsExamLinked(true);
+    } else {
+      setIsExamLinked(false);
     }
   };
 
