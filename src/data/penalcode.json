@@ -263,8 +263,8 @@
       {
         "paragrafus": "18 §",
         "megnevezes": "Járművezetés Ittas Állapotban",
-        "min_birsag": 750000,
-        "max_birsag": 1500000,
+        "min_birsag": 250000,
+        "max_birsag": 500000,
         "min_fegyhaz": 15,
         "max_fegyhaz": 30,
         "rovidites": "JIÁ",
@@ -273,8 +273,8 @@
       {
         "paragrafus": "19 §",
         "megnevezes": "Járművezetés Eltiltás Hatálya Alatt",
-        "min_birsag": 750000,
-        "max_birsag": 1500000,
+        "min_birsag": 500000,
+        "max_birsag": 1000000,
         "min_fegyhaz": 15,
         "max_fegyhaz": 30,
         "rovidites": "JEHA",
@@ -283,8 +283,8 @@
       {
         "paragrafus": "20 §",
         "megnevezes": "Helytelen Járműabroncs Használata",
-        "min_birsag": 750000,
-        "max_birsag": 1500000,
+        "min_birsag": 250000,
+        "max_birsag": 500000,
         "min_fegyhaz": null,
         "max_fegyhaz": null,
         "rovidites": "HJH",
@@ -293,12 +293,12 @@
       {
         "paragrafus": "21 §",
         "megnevezes": "Közlekedési Korlátozás Megszegése",
-        "min_birsag": 4500000,
-        "max_birsag": 9000000,
+        "min_birsag": 500000,
+        "max_birsag": 1000000,
         "min_fegyhaz": null,
         "max_fegyhaz": null,
         "rovidites": "KKM",
-        "megjegyzes": ""
+        "megjegyzes": "Aki a kormányrendeletben vagy hatósági felhívásban szereplő korlátozásokat gépjárművével megszegi."
       }
     ]
   },
@@ -494,7 +494,7 @@
             "min_fegyhaz": null,
             "max_fegyhaz": null,
             "rovidites": "IAA/II.",
-            "megjegyzes": "Kivétel : Gyári Fehér, Xenon Kék, Kadmium Sárga."
+            "megjegyzes": "Minden színben engedélyezett, kivéve: PIROS / KÉK. Ezeknek sem a sima, se a villogó változata."
           }
         ]
       },
@@ -558,8 +558,8 @@
       {
         "paragrafus": "27 §",
         "megnevezes": "Személyi Igazolvány Hiánya",
-        "min_birsag": 500000,
-        "max_birsag": 1000000,
+        "min_birsag": 250000,
+        "max_birsag": 500000,
         "min_fegyhaz": null,
         "max_fegyhaz": null,
         "rovidites": "SZIH",
@@ -568,8 +568,8 @@
       {
         "paragrafus": "28 §",
         "megnevezes": "Útlevél Hiánya",
-        "min_birsag": 500000,
-        "max_birsag": 1000000,
+        "min_birsag": 250000,
+        "max_birsag": 500000,
         "min_fegyhaz": null,
         "max_fegyhaz": null,
         "rovidites": "ÚH",
@@ -598,8 +598,8 @@
       {
         "paragrafus": "31 §",
         "megnevezes": "Láthatósági Mellény Viselésének Elmulasztása",
-        "min_birsag": 750000,
-        "max_birsag": 1500000,
+        "min_birsag": 500000,
+        "max_birsag": 1000000,
         "min_fegyhaz": null,
         "max_fegyhaz": null,
         "rovidites": "LMVE",
@@ -608,8 +608,8 @@
       {
         "paragrafus": "32 §",
         "megnevezes": "Lövedékálló Mellény Viselése Közterületen",
-        "min_birsag": 1500000,
-        "max_birsag": 3000000,
+        "min_birsag": 500000,
+        "max_birsag": 1000000,
         "min_fegyhaz": null,
         "max_fegyhaz": null,
         "rovidites": "LMVK",
