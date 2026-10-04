@@ -49,7 +49,7 @@ function NewSuspectDialog({open, onOpenChange, onSuccess}: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#050a14] border border-slate-800 text-white sm:max-w-lg p-0 overflow-hidden shadow-2xl">
+        className="bg-[#050a14]/55 backdrop-blur-xl border border-slate-800 text-white sm:max-w-lg p-0 overflow-hidden shadow-2xl">
         <div
           className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center gap-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-16 h-full bg-gradient-to-l from-red-900/20 to-transparent"></div>

@@ -120,7 +120,7 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#0b1221] border border-orange-500/30 text-white sm:max-w-lg p-0 shadow-[0_0_40px_rgba(249,115,22,0.15)] overflow-hidden">
+        className="bg-[#0b1221]/75 backdrop-blur-xl border border-orange-500/30 text-white sm:max-w-lg p-0 shadow-[0_0_40px_rgba(249,115,22,0.15)] overflow-hidden">
 
         {/* --- FORM HEADER --- */}
         <div className="bg-orange-500/10 border-b border-orange-500/20 p-5 flex items-center justify-between">

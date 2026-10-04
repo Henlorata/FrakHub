@@ -453,14 +453,14 @@ export function ExamRunner({exam}: { exam: Exam }) {
   // --- LOBBY KÉPERNYŐ ---
   if (!isStarted && !successToken) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
         {/* Background Grid */}
         <div
           className="absolute inset-0 tex-carbon opacity-20 pointer-events-none"></div>
         <div className="absolute inset-0 bg-gradient-to-b from-slate-900/80 to-slate-950 z-0"></div>
 
         <Card
-          className="max-w-2xl w-full relative z-10 bg-[#0b1221] border-slate-800 shadow-[0_0_50px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in duration-300">
+          className="max-w-2xl w-full relative z-10 bg-[#0b1221]/75 backdrop-blur-xl border-slate-800 shadow-[0_0_50px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in duration-300">
           {/* Header Strip */}
           <div className="h-1.5 w-full bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.5)]"></div>
 
@@ -514,12 +514,12 @@ export function ExamRunner({exam}: { exam: Exam }) {
   // --- TOKEN SIKER KÉPERNYŐ ---
   if (successToken) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
         <div
           className="absolute inset-0 tex-diamonds opacity-5 pointer-events-none"></div>
 
         <Card
-          className="max-w-md w-full bg-[#0b1221] border border-green-500/30 shadow-[0_0_60px_rgba(34,197,94,0.15)] animate-in zoom-in duration-300">
+          className="max-w-md w-full bg-[#0b1221]/75 backdrop-blur-xl border border-green-500/30 shadow-[0_0_60px_rgba(34,197,94,0.15)] animate-in zoom-in duration-300">
           <div className="h-1 w-full bg-green-500"></div>
           <CardContent className="p-10 text-center space-y-8">
             <div
@@ -571,10 +571,10 @@ export function ExamRunner({exam}: { exam: Exam }) {
 
   // --- VIZSGA FOLYAMATBAN (HUD INTERFACE) ---
   return (
-    <div className="relative min-h-screen bg-slate-950 pb-20 selection:bg-yellow-500/30">
+    <div className="relative min-h-screen pb-20 selection:bg-yellow-500/30">
       {/* CONFIRM DIALOG */}
       <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
-        <AlertDialogContent className="bg-[#0b1221] border-slate-800 text-white">
+        <AlertDialogContent className="bg-[#0b1221]/75 backdrop-blur-xl border-slate-800 text-white">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-xl font-black uppercase tracking-tight">VIZSGA
               BEFEJEZÉSE?</AlertDialogTitle>

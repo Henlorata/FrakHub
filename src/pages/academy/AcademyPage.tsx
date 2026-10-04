@@ -25,7 +25,7 @@ export default function AcademyPage() {
   const availableQualifications = ['SAHP', 'AB', 'MU', 'GW', 'FAB', 'SIB', 'TB'];
 
   return (
-    <div className="flex h-shell bg-[#0b1120] overflow-hidden text-slate-200 font-sans rounded-xl border border-slate-800 shadow-2xl relative">
+    <div className="flex h-shell bg-[#0b1120]/70 backdrop-blur-xl overflow-hidden text-slate-200 font-sans rounded-xl border border-slate-800 shadow-2xl relative">
 
       {/* Kinyitó gomb, ha össze van csukva */}
       {isCollapsed && (
@@ -99,7 +99,7 @@ export default function AcademyPage() {
       </div>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#0b1120] relative">
+      <div className="flex-1 flex flex-col min-w-0 bg-[#0b1120]/70 backdrop-blur-xl relative">
         <div className="absolute inset-0 tex-grid opacity-[0.02] pointer-events-none"></div>
         <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-sky-500/5 blur-[100px] pointer-events-none rounded-full"></div>
 

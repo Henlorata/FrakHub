@@ -97,7 +97,7 @@ export function AddCollaboratorDialog({
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
-        className="bg-[#0a0f1c] border border-blue-900/50 text-white sm:max-w-md p-0 overflow-hidden shadow-2xl">
+        className="bg-[#0a0f1c]/80 backdrop-blur-xl border border-blue-900/50 text-white sm:max-w-md p-0 overflow-hidden shadow-2xl">
         <div className="bg-blue-950/20 border-b border-blue-900/30 px-6 py-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
             <UserCog className="w-5 h-5 text-blue-400"/>

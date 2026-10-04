@@ -1,8 +1,10 @@
 # FrakHub
 
 Management hub ("MDT") for the San Fierro Sheriff's Department roleplay faction: MCB case
-management, HR, logistics and finance requests, penal code calculator, report generator,
-exams and academy training. The user interface is Hungarian.
+management, HR (roster with one-click promotions, monthly duty time sheet, former members,
+the old Google Sheet's registry columns), logistics (requests and the vehicle fleet with
+registration reminders and vehicle warnings) and finance, penal code calculator, report
+generator, exams and academy training. The user interface is Hungarian.
 
 **Stack:** React 19 · Vite 8 (Rolldown) · TypeScript 6 · Tailwind CSS 4 · shadcn/Radix ·
 BlockNote · Supabase (Postgres, Auth, Realtime, Storage) · Cloudinary · Vercel (static
@@ -37,9 +39,10 @@ CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 ```
 
-`supabase/seed.sql` creates four local accounts (password `password123`):
-`admin@frakhub.local`, `supervisor@frakhub.local`, `user@frakhub.local` and
-`pending@frakhub.local`. Studio runs at http://127.0.0.1:54323.
+`supabase/seed.sql` creates local accounts (password `password123`): `admin`, `supervisor`,
+`user`, `pending`, `captain`, `investigator`, `operator` and `trainee` (all `@frakhub.local`),
+plus sample cases, exams, duty times, fleet vehicles and former members. Studio runs at
+http://127.0.0.1:54323.
 
 `bun run dev` also serves the serverless functions in `api/` (via
 `tooling/vite-vercel-api.ts`), so registration and the admin endpoints work locally without
@@ -150,6 +153,15 @@ it. Before applying a migration, replay the deployed client's queries against it
 - Exams are submitted through `submit_exam()` (server-side scoring, claim codes for guests);
   editors save with `save_exam_questions()` and graders read `get_exam_answer_key()`.
   Wrongly submitted sheets go to a trash (`exam_submission_trash/restore/purge`).
+- HR registry (the old sheet's columns): `member_details` (station, parking spot, joining,
+  recruiter, activity), `member_bank_accounts` (the member and staff only),
+  `duty_time_entries` (monthly, staff), `former_members` (filled by `/api/admin/delete-user`).
+  The HR page and the profile read all of it with one `get_hr_registry()` call
+  (`SECURITY INVOKER`, so RLS decides what each caller gets).
+- Fleet: approving a vehicle request registers the vehicle (`fleet_vehicles`); owners record
+  renewed registrations with `fleet_renew_registration()`; the daily cron calls
+  `fleet_send_reminders()`. Three active `vehicle_warnings` of an owner become one personal
+  warning (`hr_records`) in a trigger.
 
 ```bash
 bun run db:types                   # generates src/types/database.types.ts from the local DB

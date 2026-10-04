@@ -48,7 +48,7 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <SystemStatusProvider>
-            <div className="min-h-screen bg-background text-foreground font-sans antialiased">
+            <div className="min-h-screen text-foreground font-sans antialiased">
               <ActiveExamAlert/>
               <Suspense fallback={<LoadingScreen/>}>
                 <Routes>

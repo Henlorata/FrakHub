@@ -315,7 +315,7 @@ function SuspectsPageView({
 
       {/* HEADER */}
       <div
-        className="flex items-center justify-between shrink-0 mb-6 bg-[#0a0f1c] p-4 rounded-xl border border-slate-800 shadow-xl">
+        className="flex items-center justify-between shrink-0 mb-6 bg-[#0a0f1c]/80 backdrop-blur-xl p-4 rounded-xl border border-slate-800 shadow-xl">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-sky-500/10 rounded-lg border border-sky-500/20">
             <Fingerprint className="w-6 h-6 text-sky-500"/>
@@ -366,7 +366,7 @@ function SuspectsPageView({
 
       {/* --- TARTALOM --- */}
       <div
-        className="flex-1 overflow-y-auto custom-scrollbar bg-[#050a14] rounded-xl border border-slate-800/50 p-6 relative min-h-[400px]">
+        className="flex-1 overflow-y-auto custom-scrollbar bg-[#050a14]/55 backdrop-blur-xl rounded-xl border border-slate-800/50 p-6 relative min-h-[400px]">
         {loading && <div
           className="absolute inset-0 flex items-center justify-center bg-black/80 z-50 backdrop-blur-sm text-sky-500 font-bold font-mono">
           <Activity className="w-6 h-6 animate-spin mr-3"/> ADATBÁZIS SZINKRONIZÁLÁSA...</div>}

@@ -141,7 +141,7 @@ export function UploadEvidenceDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#0b1120] border-2 border-slate-800 text-white sm:max-w-[500px] p-0 gap-0 overflow-hidden shadow-2xl rounded-xl transition-all duration-300 [&>button:not(.my-custom-close)]:hidden">
+        className="bg-[#0b1120]/70 backdrop-blur-xl border-2 border-slate-800 text-white sm:max-w-[500px] p-0 gap-0 overflow-hidden shadow-2xl rounded-xl transition-all duration-300 [&>button:not(.my-custom-close)]:hidden">
 
         <button
           onClick={() => onOpenChange(false)}

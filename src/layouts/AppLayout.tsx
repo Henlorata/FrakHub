@@ -1,7 +1,7 @@
 import {Suspense, useCallback, useEffect, useState} from "react";
 import {Link, Navigate, Outlet, useLocation, useNavigate} from "react-router";
 import {
-  BellRing, ChevronsLeft, ChevronsRight, Loader2, LogOut, Menu, RotateCcw, Search, Shield, User,
+  BellRing, ChevronsLeft, ChevronsRight, Loader2, LogOut, Menu, RotateCcw, Search, User,
 } from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {useSystemStatus} from "@/context/SystemStatusContext";
@@ -18,6 +18,8 @@ import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
 import {NotificationBell} from "@/components/notifications/NotificationBell";
 import {CommandPalette} from "@/components/layout/CommandPalette";
 import {SystemStatusMenu} from "@/components/layout/SystemStatusMenu";
+import {AppBackdrop} from "@/components/layout/AppBackdrop";
+import {SheriffStar} from "@/components/brand/SheriffStar";
 import {ALERT_LEVELS} from "@/lib/alert-levels";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import {cn} from "@/lib/utils";
@@ -108,12 +110,12 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
 
   return (
     <div className="relative flex min-h-screen text-slate-100 selection:bg-primary/30">
-      <AmbientBackground/>
+      <AppBackdrop/>
       <div className="status-line-top"/>
 
       {showChrome && (
         <aside className={cn(
-          "fixed inset-y-0 left-0 z-40 hidden flex-col border-r bg-[#070c17]/95 backdrop-blur-xl transition-[width] duration-300 lg:flex",
+          "fixed inset-y-0 left-0 z-40 hidden flex-col border-r bg-gradient-to-b from-[#0a1324]/65 via-[#060b16]/60 to-[#060b16]/75 backdrop-blur-2xl transition-[width] duration-300 lg:flex",
           collapsed ? "w-[76px]" : "w-64",
         )}>
           <Brand collapsed={collapsed}/>
@@ -136,7 +138,7 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
 
       <div className={cn("flex min-w-0 flex-1 flex-col transition-[padding] duration-300", showChrome && (collapsed ? "lg:pl-[76px]" : "lg:pl-64"))}>
         {showChrome && (
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/75 px-3 backdrop-blur-xl sm:gap-3 sm:px-5">
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-[#050913]/60 px-3 backdrop-blur-2xl sm:gap-3 sm:px-5">
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Menü">
               <Menu className="size-5"/>
             </Button>
@@ -160,14 +162,16 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
         )}
 
         <main className="relative flex min-w-0 flex-1 flex-col p-4 md:p-6 lg:p-8">
-          <Suspense fallback={<PageLoader/>}>
-            <Outlet/>
-          </Suspense>
+          <div key={location.pathname.split("/")[1]} className="page-enter flex min-w-0 flex-1 flex-col">
+            <Suspense fallback={<PageLoader/>}>
+              <Outlet/>
+            </Suspense>
+          </div>
         </main>
       </div>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 bg-[#070c17] p-0">
+        <SheetContent side="left" className="w-72 bg-[#060b16]/95 p-0 backdrop-blur-2xl">
           <SheetTitle className="sr-only">Navigáció</SheetTitle>
           <Brand collapsed={false}/>
           <SidebarNav profile={profile} collapsed={false} onNavigate={() => setMobileOpen(false)}/>
@@ -179,22 +183,12 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
   );
 }
 
-const AmbientBackground = () => (
-  <div className="pointer-events-none fixed inset-0 z-[-1] overflow-hidden bg-background">
-    <div className="absolute -top-40 -left-40 size-[620px] rounded-full bg-sky-900/15 blur-[120px]"/>
-    <div className="absolute -right-40 -bottom-56 size-[700px] rounded-full bg-yellow-900/10 blur-[140px]"/>
-    <div className="tex-noise absolute inset-0 opacity-[0.025]"/>
-  </div>
-);
-
 function Brand({collapsed}: {collapsed: boolean}) {
   const {alertLevel} = useSystemStatus();
   const level = ALERT_LEVELS[alertLevel];
   return (
-    <Link to="/dashboard" className={cn("flex h-14 shrink-0 items-center gap-3 border-b px-5", collapsed && "justify-center px-0")}>
-      <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 ring-1 ring-primary/25">
-        <Shield className="size-5 text-primary"/>
-      </div>
+    <Link to="/dashboard" className={cn("group/brand flex h-14 shrink-0 items-center gap-3 border-b px-5", collapsed && "justify-center px-0")}>
+      <SheriffStar className="size-9 shrink-0 drop-shadow-[0_0_10px_rgb(234_179_8/0.35)] transition-transform duration-500 group-hover/brand:rotate-[51deg]"/>
       {!collapsed && (
         <div className="min-w-0 leading-tight">
           <p className="truncate text-sm font-bold tracking-tight text-white">SFSD Intranet</p>
@@ -229,11 +223,12 @@ function SidebarNav({profile, collapsed, onNavigate}: {profile: Profile; collaps
                   className={cn(
                     "group relative flex h-9 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
                     collapsed && "justify-center px-0",
-                    active ? "bg-white/[0.06] text-white" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-100",
+                    active ? "bg-gradient-to-r from-white/[0.08] to-white/[0.02] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.05)]" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-100",
                   )}
                 >
-                  {active && <span className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-r-full bg-[var(--status-color)]"/>}
-                  <item.icon className={cn("size-[18px] shrink-0", active ? "text-[var(--status-color)]" : "text-slate-500 group-hover:text-slate-300")}/>
+                  {active && <span className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-r-full bg-[var(--status-color)] shadow-[0_0_12px_var(--status-color)]"/>}
+                  <item.icon className={cn("size-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110",
+                    active ? "text-[var(--status-color)] drop-shadow-[0_0_6px_var(--status-glow)]" : "text-slate-500 group-hover:text-slate-300")}/>
                   {!collapsed && <span className="truncate">{item.label}</span>}
                   {badge > 0 && (
                     <span className={cn(

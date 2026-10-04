@@ -12,7 +12,6 @@ import {
   Lock, CarFront, Calendar, Hash, DollarSign, Clock, Users
 } from "lucide-react";
 import {cn} from "@/lib/utils";
-import {SheriffBackground} from "@/components/SheriffBackground";
 
 // --- TECH INPUT KOMPONENS ---
 const TechInput = ({icon: Icon, className, ...props}: any) => (
@@ -22,7 +21,7 @@ const TechInput = ({icon: Icon, className, ...props}: any) => (
       <Icon className="w-4 h-4 text-slate-500 group-focus-within:text-blue-400 transition-colors"/>
     </div>
     <Input
-      className={cn("pl-12 bg-[#0b1221] border-slate-800 focus-visible:ring-blue-500/20 focus-visible:border-blue-500/50 h-10 font-mono text-sm text-slate-200 placeholder:text-slate-700", className)}
+      className={cn("pl-12 bg-[#0b1221]/75 backdrop-blur-xl border-slate-800 focus-visible:ring-blue-500/20 focus-visible:border-blue-500/50 h-10 font-mono text-sm text-slate-200 placeholder:text-slate-700", className)}
       {...props}
     />
   </div>
@@ -154,8 +153,7 @@ ${formData.description}
 
   return (
     <div
-      className="h-shell flex flex-col w-full animate-in fade-in duration-500 overflow-hidden relative">
-      <SheriffBackground side="right"/>
+      className="h-shell flex flex-col w-full animate-in fade-in duration-500 overflow-hidden relative">
 
       {/* HEADER */}
       <div
@@ -181,7 +179,7 @@ ${formData.description}
         </TabsList>
 
         <TabsContent value="folder" className="flex-1">
-          <Card className="bg-[#0b1221] border border-slate-800 max-w-2xl shadow-2xl">
+          <Card className="bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 max-w-2xl shadow-2xl">
             <CardHeader className="border-b border-slate-800/50 bg-slate-950/30"><CardTitle
               className="text-white uppercase font-bold tracking-wide text-sm">Havi Mappa
               BBCode</CardTitle></CardHeader>
@@ -193,7 +191,7 @@ ${formData.description}
                 <div
                   className="absolute -inset-0.5 bg-gradient-to-r from-yellow-600 to-slate-600 rounded-lg opacity-20 group-hover:opacity-40 transition-opacity blur"></div>
                 <Textarea readOnly value={generateFolderCode()}
-                          className="relative h-32 bg-[#050a14] border-slate-800 font-mono text-xs text-slate-300 resize-none p-4 focus:ring-0 break-all"/>
+                          className="relative h-32 bg-[#050a14]/55 backdrop-blur-xl border-slate-800 font-mono text-xs text-slate-300 resize-none p-4 focus:ring-0 break-all"/>
                 <Button size="sm"
                         className="absolute top-3 right-3 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-xs uppercase tracking-wider"
                         onClick={() => copyToClipboard(generateFolderCode())}><Copy
@@ -208,7 +206,7 @@ ${formData.description}
 
             {/* --- BAL OSZLOP: ŰRLAP --- */}
             <div
-              className="xl:col-span-8 h-full flex flex-col bg-[#0b1221] border border-slate-800 rounded-xl overflow-hidden shadow-2xl relative">
+              className="xl:col-span-8 h-full flex flex-col bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 rounded-xl overflow-hidden shadow-2xl relative">
               <div
                 className="p-4 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center backdrop-blur-md shrink-0">
                 <span
@@ -286,7 +284,7 @@ ${formData.description}
                     </div>
 
                     {/* III. INTÉZKEDÉS */}
-                    <Card className="bg-[#0b1221] border border-slate-800">
+                    <Card className="bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800">
                       <CardHeader className="pb-3 border-b border-slate-800/50 bg-slate-950/30 py-3"><CardTitle
                         className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">III.
                         Szankciók</CardTitle></CardHeader>
@@ -323,7 +321,7 @@ ${formData.description}
                     </Card>
 
                     {/* IV. LEÍRÁS */}
-                    <Card className="bg-[#0b1221] border border-slate-800">
+                    <Card className="bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800">
                       <CardHeader
                         className="pb-3 border-b border-slate-800/50 bg-slate-950/30 flex flex-row items-center justify-between py-3">
                         <CardTitle className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">IV.
@@ -334,7 +332,7 @@ ${formData.description}
                           <div
                             className="absolute -inset-0.5 bg-gradient-to-b from-slate-800 to-transparent rounded-lg opacity-50 group-focus-within:opacity-100 group-focus-within:from-blue-600/50 transition-all blur-sm"></div>
                           <Textarea placeholder="Részletes leírás..."
-                                    className="relative bg-[#050a14] border-slate-800 min-h-[200px] text-sm leading-relaxed break-all font-mono text-slate-300 focus-visible:ring-0 focus-visible:border-blue-500/50 p-4 resize-none break-all"
+                                    className="relative bg-[#050a14]/55 backdrop-blur-xl border-slate-800 min-h-[200px] text-sm leading-relaxed break-all font-mono text-slate-300 focus-visible:ring-0 focus-visible:border-blue-500/50 p-4 resize-none break-all"
                                     value={formData.description}
                                     onChange={e => handleChange('description', e.target.value)}/>
                         </div>
@@ -349,13 +347,13 @@ ${formData.description}
             {/* --- JOBB OSZLOP: PREVIEW --- */}
             <div className="xl:col-span-4 h-full flex flex-col">
               <Card
-                className="bg-[#0b1221] border border-slate-800 shadow-xl border-t-4 border-t-yellow-600 flex-1 flex flex-col overflow-hidden">
+                className="bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 shadow-xl border-t-4 border-t-yellow-600 flex-1 flex flex-col overflow-hidden">
                 <CardHeader className="pb-4 shrink-0 bg-slate-900/50 border-b border-slate-800 backdrop-blur-sm">
                   <CardTitle className="flex items-center gap-2 text-lg"><Copy
                     className="w-5 h-5 text-yellow-500"/> Előnézet & Kód</CardTitle>
                   <CardDescription>A generált BBCode a fórumhoz.</CardDescription>
                 </CardHeader>
-                <div className="flex-1 relative min-h-0 bg-[#050a14]">
+                <div className="flex-1 relative min-h-0 bg-[#050a14]/55 backdrop-blur-xl">
                   <Textarea readOnly value={generateReportCode()}
                             className="absolute inset-0 w-full h-full bg-transparent border-none font-mono text-[11px] leading-relaxed text-green-500/80 focus:ring-0 resize-none p-4 rounded-none custom-scrollbar break-all"/>
                 </div>

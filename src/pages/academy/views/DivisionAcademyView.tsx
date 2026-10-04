@@ -246,7 +246,7 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
   const isPageLockedByProgression = !isInstructor && !isEditing && courseConfig?.linear_progression && currentPageIndex > 0 && !completedMaterialIds.includes(materials[currentPageIndex - 1].id);
 
   return (
-    <div className="h-full flex flex-col relative bg-[#050a14]">
+    <div className="h-full flex flex-col relative bg-[#050a14]/55 backdrop-blur-xl">
 
       {/* HEADER */}
       <div className="bg-slate-950/90 backdrop-blur-md border-b border-slate-800 p-4 flex items-center justify-between z-20 shrink-0">
@@ -324,7 +324,7 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
 
           {/* BEÁLLÍTÁSOK PANEL (Csak Szerkesztés módban) */}
           {isEditing && (
-            <Card className="bg-[#0b1221] border-slate-800 mb-8 shadow-2xl">
+            <Card className="bg-[#0b1221]/75 backdrop-blur-xl border-slate-800 mb-8 shadow-2xl">
               <CardContent className="p-6 space-y-6">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
                   <Settings className="w-5 h-5 text-yellow-500"/>
@@ -378,7 +378,7 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
 
               {isEditing ? (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#0b1221] p-6 rounded-xl border border-slate-800 shadow-xl">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#0b1221]/75 backdrop-blur-xl p-6 rounded-xl border border-slate-800 shadow-xl">
                     <div className="space-y-2">
                       <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Oldal Címe</Label>
                       <Input

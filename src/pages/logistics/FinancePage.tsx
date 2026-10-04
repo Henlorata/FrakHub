@@ -171,7 +171,7 @@ export function FinancePage() {
           }
         ].map((s, i) => (
           <div key={i}
-               className="bg-[#0b1221] border border-slate-800 p-5 flex items-center gap-4 relative overflow-hidden group hover:border-slate-700 transition-all">
+               className="bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 p-5 flex items-center gap-4 relative overflow-hidden group hover:border-slate-700 transition-all">
             <div className={`p-3 rounded ${s.bg} ${s.border} ${s.color} border`}>
               <s.icon className="w-6 h-6"/>
             </div>
@@ -203,7 +203,7 @@ export function FinancePage() {
         </div>
 
         <div
-          className="flex-1 bg-[#0b1221] border border-slate-800 rounded-sm relative overflow-hidden flex flex-col shadow-2xl">
+          className="flex-1 bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 rounded-sm relative overflow-hidden flex flex-col shadow-2xl">
           {/* Table Header */}
           <div
             className="bg-slate-950/80 border-b border-slate-800 grid grid-cols-12 gap-2 px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest sticky top-0 z-10 backdrop-blur-md">
@@ -225,7 +225,7 @@ export function FinancePage() {
               const paths = getProofPaths(req);
               return (
                 <div key={req.id}
-                     className={cn("grid grid-cols-12 gap-2 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-900/50 transition-colors group text-sm items-start font-mono relative", i % 2 === 0 ? 'bg-[#0b1221]' : 'bg-[#0d1526]')}>
+                     className={cn("grid grid-cols-12 gap-2 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-900/50 transition-colors group text-sm items-start font-mono relative", i % 2 === 0 ? 'bg-[#0b1221]/75 backdrop-blur-xl' : 'bg-[#0d1526]')}>
 
                   {/* Bal oldali státusz csík */}
                   <div
@@ -275,7 +275,7 @@ export function FinancePage() {
                   {/* Quick Actions (Admin) */}
                   {isExecutive && req.status === 'pending' && (
                     <div
-                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 bg-[#0b1221] p-1 rounded border border-slate-700 shadow-xl">
+                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 bg-[#0b1221]/75 backdrop-blur-xl p-1 rounded border border-slate-700 shadow-xl">
                       <Button size="icon" className="h-6 w-6 bg-green-600 hover:bg-green-500 text-white"
                               onClick={() => {
                                 setSelectedRequest(req);
@@ -301,7 +301,7 @@ export function FinancePage() {
       {/* ADMIN PROCESS DIALOG */}
       <Dialog open={!!selectedRequest} onOpenChange={(o) => !o && closeAdminDialog()}>
         <DialogContent
-          className="bg-[#0b1221] border border-slate-700 text-white sm:max-w-md p-0 overflow-hidden shadow-2xl">
+          className="bg-[#0b1221]/75 backdrop-blur-xl border border-slate-700 text-white sm:max-w-md p-0 overflow-hidden shadow-2xl">
           <div
             className={`p-4 border-b border-white/10 ${actionType === 'approve' ? 'bg-green-900/20' : 'bg-red-900/20'} flex items-center gap-3`}>
             <div

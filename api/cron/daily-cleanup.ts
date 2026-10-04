@@ -44,7 +44,7 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
   const supabase = getSupabaseAdmin();
   const results = {
     financeDeleted: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0,
-    errors: [] as string[],
+    registrationReminders: 0, errors: [] as string[],
   };
   const fail = (step: string, error: unknown) => {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
@@ -121,6 +121,15 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
     results.notificationsDeleted = (read.count ?? 0) + (old.count ?? 0);
   } catch (error) {
     fail("notifications", error);
+  }
+
+  // 5. Fleet: "expires soon" / "expired" registration reminders (once per stage).
+  try {
+    const {data, error} = await supabase.rpc("fleet_send_reminders");
+    if (error) throw error;
+    results.registrationReminders = typeof data === "number" ? data : 0;
+  } catch (error) {
+    fail("fleet_reminders", error);
   }
 
   console.log("[api/cron/daily-cleanup] done", results);

@@ -86,7 +86,7 @@ export function NewBudgetRequestDialog({open, onOpenChange, onSuccess}: NewBudge
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#0b1221] border border-green-500/30 text-white sm:max-w-[450px] p-0 overflow-hidden shadow-[0_0_40px_rgba(34,197,94,0.1)]">
+        className="bg-[#0b1221]/75 backdrop-blur-xl border border-green-500/30 text-white sm:max-w-[450px] p-0 overflow-hidden shadow-[0_0_40px_rgba(34,197,94,0.1)]">
 
         {/* Header */}
         <div className="bg-green-500/10 border-b border-green-500/20 p-5 flex items-center gap-3">

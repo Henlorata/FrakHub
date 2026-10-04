@@ -164,7 +164,7 @@ function AdminPageView({users, filteredUsers, loading, search, setSearch, getMcb
       </div>
 
       {/* User Table */}
-      <div className="flex-1 min-h-0 bg-[#0a0f1c] relative overflow-hidden flex flex-col">
+      <div className="flex-1 min-h-0 bg-[#0a0f1c]/80 backdrop-blur-xl relative overflow-hidden flex flex-col">
         <div className="absolute inset-0 pointer-events-none opacity-[0.02]" style={{
           backgroundImage: 'linear-gradient(90deg, #fff 1px, transparent 1px), linear-gradient(#fff 1px, transparent 1px)',
           backgroundSize: '40px 40px'

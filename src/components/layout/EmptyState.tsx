@@ -13,8 +13,8 @@ interface EmptyStateProps {
 
 export function EmptyState({icon: Icon, title, description, action, className, compact}: EmptyStateProps) {
   return (
-    <div className={cn("flex flex-col items-center justify-center text-center", compact ? "gap-2 py-8" : "gap-3 py-16", className)}>
-      <div className="grid size-12 place-items-center rounded-2xl bg-white/[0.04] text-slate-500 ring-1 ring-white/10">
+    <div className={cn("animate-fade flex flex-col items-center justify-center text-center", compact ? "gap-2 py-8" : "gap-3 py-16", className)}>
+      <div className="animate-float-y grid size-12 place-items-center rounded-2xl bg-gradient-to-b from-white/[0.07] to-white/[0.02] text-slate-400 ring-1 ring-white/10">
         <Icon className="size-6"/>
       </div>
       <div>

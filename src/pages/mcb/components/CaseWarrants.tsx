@@ -102,7 +102,7 @@ export function CaseWarrants({caseId, suspects, readOnly = false}: {
               </div>
             ) : warrants.map(w => (
               <div key={w.id}
-                   className="relative bg-[#0b1221] border border-slate-800 rounded overflow-hidden group hover:border-slate-600 transition-all">
+                   className="relative bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 rounded overflow-hidden group hover:border-slate-600 transition-all">
                 <div className={cn("absolute left-0 top-0 bottom-0 w-1",
                   w.type === 'arrest' ? 'bg-red-600' : 'bg-orange-500',
                   w.status === 'executed' ? 'bg-blue-500' : w.status === 'rejected' ? 'bg-slate-700' : '')}/>

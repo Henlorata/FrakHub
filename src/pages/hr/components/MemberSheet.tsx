@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
 import {toast} from "sonner";
 import {
-  AlertTriangle, Award, CalendarOff, Check, Crown, History, KeyRound, Loader2, Medal, NotebookPen, Plus, Save,
+  AlertTriangle, Award, CalendarOff, Check, ClipboardList, Crown, History, KeyRound, Loader2, Medal, NotebookPen, Plus, Save,
   ShieldCheck, Star, ThumbsUp, Trash2, UserMinus, X,
 } from "lucide-react";
 import {Sheet, SheetContent, SheetDescription, SheetTitle} from "@/components/ui/sheet";
@@ -13,10 +13,6 @@ import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
 import {Switch} from "@/components/ui/switch";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {useAuth} from "@/context/AuthContext";
 import {postApi} from "@/lib/api";
@@ -32,7 +28,9 @@ import {
 } from "@/types/supabase";
 import {daysSince, DIVISION_META, formatDate, formatSpan} from "../hr-utils";
 import {RankStepper} from "./RankControls";
-import type {AwardSummary, HrMember, MemberChanges} from "../useHrData";
+import {DismissDialog, MemberRegistryTab, type Departure} from "./MemberRegistryTab";
+import {ACTIVITY_META} from "@/lib/registry";
+import type {AwardSummary, DetailsPatch, HrMember, MemberChanges} from "../useHrData";
 
 interface MemberSheetProps {
   member: HrMember | null;
@@ -41,9 +39,11 @@ interface MemberSheetProps {
   busy: boolean;
   onRankChange: (member: HrMember, rank: string) => void;
   onUpdate: (memberId: string, changes: MemberChanges) => Promise<Profile>;
-  onRemove: (member: HrMember) => Promise<void>;
+  onRemove: (member: HrMember, departure: Departure) => Promise<void>;
   onRecordChanged: (record: HrRecord) => void;
   onAwardsChanged: (memberId: string, awards: AwardSummary[]) => void;
+  onSaveDetails: (memberId: string, patch: DetailsPatch) => Promise<void>;
+  onSaveBankAccount: (memberId: string, accountNumber: string | null) => Promise<void>;
 }
 
 export function MemberSheet(props: MemberSheetProps) {
@@ -57,7 +57,8 @@ export function MemberSheet(props: MemberSheetProps) {
   );
 }
 
-function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove, onRecordChanged, onAwardsChanged}: MemberSheetProps & {member: HrMember}) {
+function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove, onRecordChanged, onAwardsChanged, onSaveDetails,
+  onSaveBankAccount}: MemberSheetProps & {member: HrMember}) {
   const [tab, setTab] = useState("profile");
   const division = DIVISION_META[member.division] ?? DIVISION_META.TSB;
   const allowedRanks = useMemo(
@@ -95,6 +96,17 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
                   <AlertTriangle className="size-3"/> {member.warnings} figyelmeztetés
                 </span>
               )}
+              {member.details && !member.onLeaveNow && (
+                <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-md px-2 text-xs ring-1", ACTIVITY_META[member.details.activity_status].pill)}>
+                  <span className={cn("size-1.5 rounded-full", ACTIVITY_META[member.details.activity_status].dot)}/>
+                  {ACTIVITY_META[member.details.activity_status].label}
+                </span>
+              )}
+              {member.details?.station && (
+                <span className="inline-flex h-6 items-center rounded-md bg-white/[0.04] px-2 text-xs text-slate-300 ring-1 ring-white/10">
+                  {member.details.station}{member.details.parking_spot ? ` · ${member.details.parking_spot}` : ""}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -117,6 +129,7 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
         <TabsList className="mx-5 mt-4 w-auto justify-start self-start">
           <TabsTrigger value="profile"><ShieldCheck className="size-3.5"/> Adatlap</TabsTrigger>
+          <TabsTrigger value="registry"><ClipboardList className="size-3.5"/> Nyilvántartás</TabsTrigger>
           <TabsTrigger value="history"><History className="size-3.5"/> Előzmények</TabsTrigger>
           <TabsTrigger value="records"><NotebookPen className="size-3.5"/> Feljegyzések</TabsTrigger>
           <TabsTrigger value="awards"><Medal className="size-3.5"/> Kitüntetések</TabsTrigger>
@@ -124,6 +137,10 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <TabsContent value="profile" className="mt-0">
             <ProfileTab member={member} viewer={viewer} onUpdate={onUpdate} onRemove={onRemove}/>
+          </TabsContent>
+          <TabsContent value="registry" className="mt-0">
+            <MemberRegistryTab key={`${member.details?.updated_at ?? ""}|${member.bankAccount ?? ""}`} member={member} viewer={viewer}
+                               onSaveDetails={onSaveDetails} onSaveBankAccount={onSaveBankAccount}/>
           </TabsContent>
           <TabsContent value="history" className="mt-0">
             {tab === "history" && <MemberHistoryTimeline member={member}/>}
@@ -154,7 +171,7 @@ function Fact({label, value, hint}: {label: string; value: ReactNode; hint?: str
 function ProfileTab({member, viewer, onUpdate, onRemove}: {
   member: HrMember; viewer: Profile;
   onUpdate: (memberId: string, changes: MemberChanges) => Promise<Profile>;
-  onRemove: (member: HrMember) => Promise<void>;
+  onRemove: (member: HrMember, departure: Departure) => Promise<void>;
 }) {
   const isManager = !!viewer.is_bureau_manager;
   const canEdit = canEditUser(viewer, member);
@@ -207,10 +224,11 @@ function ProfileTab({member, viewer, onUpdate, onRemove}: {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <Fact label="Szolgálati idő" value={formatSpan(daysSince(member.created_at))} hint={`Csatlakozott: ${formatDate(member.created_at)}`}/>
+        <Fact label="Szolgálati idő" value={formatSpan(daysSince(member.details?.joined_on ?? member.created_at))}
+              hint={`Csatlakozott: ${formatDate(member.details?.joined_on ?? member.created_at)}`}/>
         <Fact label="Rangon töltött idő" value={formatSpan(daysSince(member.last_promotion_date ?? member.created_at))}
               hint={`Utolsó előléptetés: ${formatDate(member.last_promotion_date)}`}/>
-        <Fact label="Csatlakozott" value={formatDate(member.created_at)}/>
+        <Fact label="Csatlakozott" value={formatDate(member.details?.joined_on ?? member.created_at)}/>
         <Fact label="Utolsó előléptetés" value={formatDate(member.last_promotion_date)}/>
         <Fact label="Kitüntetések" value={member.awards.length}/>
         {isStaff(viewer) && (
@@ -336,28 +354,14 @@ function ProfileTab({member, viewer, onUpdate, onRemove}: {
           )}
           {canDismiss && (
             <Button variant="outline" className="text-red-300 hover:text-red-200" onClick={() => setConfirmRemove(true)}>
-              <UserMinus/> Elbocsátás
+              <UserMinus/> Távozás / elbocsátás
             </Button>
           )}
         </section>
       ) : null}
 
-      <AlertDialog open={confirmRemove} onOpenChange={setConfirmRemove}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{member.full_name} elbocsátása</AlertDialogTitle>
-            <AlertDialogDescription>
-              A fiók és minden hozzá tartozó adat (értesítések, feljegyzések, vizsgák) véglegesen törlődik. A művelet nem vonható vissza.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Mégse</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 text-white hover:bg-red-500" onClick={() => void onRemove(member)}>
-              Elbocsátás
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DismissDialog member={member} open={confirmRemove} onOpenChange={setConfirmRemove}
+                     onConfirm={(departure) => onRemove(member, departure)}/>
     </div>
   );
 }

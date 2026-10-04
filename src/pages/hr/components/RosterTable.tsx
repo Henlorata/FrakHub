@@ -1,5 +1,5 @@
 import {useMemo, useState, type ReactNode} from "react";
-import {AlertTriangle, ArrowDownUp, Award, CalendarOff, Crown, Search, Star, Users, X} from "lucide-react";
+import {ArrowDownUp, Award, CalendarOff, Car, Crown, Search, Star, Users, X} from "lucide-react";
 import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
@@ -9,11 +9,13 @@ import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import {cn, getRankPriority, getStaffCategory, type StaffCategory} from "@/lib/utils";
 import {QUALIFICATIONS, type Profile} from "@/types/supabase";
 import {CATEGORY_META, daysSince, DIVISION_META, formatDate, formatSpan} from "../hr-utils";
+import {StrikeDots} from "@/components/hr/StrikeDots";
+import {ACTIVITY_META, formatDuty, recentMonths, registrationStatus} from "@/lib/registry";
 import {RankStepper} from "./RankControls";
 import type {HrMember} from "../useHrData";
 
-type SortKey = "rank" | "name" | "badge" | "rank_time" | "service" | "last_seen";
-type StatusFilter = "all" | "leave" | "warning" | "inactive";
+type SortKey = "rank" | "name" | "badge" | "rank_time" | "service" | "last_seen" | "duty";
+type StatusFilter = "all" | "leave" | "warning" | "inactive" | "flagged" | "vehicle";
 
 const INACTIVE_DAYS = 14;
 const CATEGORY_ORDER: StaffCategory[] = ["executive", "command", "supervisory", "field"];
@@ -47,6 +49,9 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
       if (status === "leave" && !member.leave) return false;
       if (status === "warning" && member.warnings === 0) return false;
       if (status === "inactive" && (daysSince(member.lastSeen) ?? 999) < INACTIVE_DAYS) return false;
+      if (status === "flagged" && (member.details?.activity_status ?? "active") === "active") return false;
+      if (status === "vehicle" && member.vehicleWarnings === 0
+          && !member.vehicles.some((vehicle) => registrationStatus(vehicle.registration_expires_on).state !== "ok")) return false;
       return true;
     });
     const byRank = (a: HrMember, b: HrMember) => getRankPriority(a.faction_rank) - getRankPriority(b.faction_rank)
@@ -56,8 +61,9 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
       name: (a, b) => a.full_name.localeCompare(b.full_name, "hu"),
       badge: (a, b) => a.badge_number.localeCompare(b.badge_number, "hu", {numeric: true}),
       rank_time: (a, b) => (daysSince(b.last_promotion_date ?? b.created_at) ?? 0) - (daysSince(a.last_promotion_date ?? a.created_at) ?? 0),
-      service: (a, b) => (daysSince(b.created_at) ?? 0) - (daysSince(a.created_at) ?? 0),
+      service: (a, b) => (daysSince(b.details?.joined_on ?? b.created_at) ?? 0) - (daysSince(a.details?.joined_on ?? a.created_at) ?? 0),
       last_seen: (a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? ""),
+      duty: (a, b) => (b.dutyLastMonth ?? -1) - (a.dutyLastMonth ?? -1),
     };
     return [...list].sort(sorters[sort]);
   }, [members, search, division, category, qualification, status, sort]);
@@ -70,7 +76,7 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
   }, [filtered, grouped, sort]);
 
   const hasFilters = search || division !== "all" || category !== "all" || qualification !== "all" || status !== "all";
-  const columnCount = staff ? 8 : 7;
+  const columnCount = staff ? 9 : 8;
 
   return (
     <div className="panel overflow-hidden">
@@ -110,8 +116,10 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
             <SelectContent>
               <SelectItem value="all">Minden állapot</SelectItem>
               <SelectItem value="leave">Szabadságon</SelectItem>
+              <SelectItem value="flagged">Kevésbé aktív / inaktív</SelectItem>
+              <SelectItem value="vehicle">Jármű teendő</SelectItem>
               {staff && <SelectItem value="warning">Figyelmeztetett</SelectItem>}
-              {staff && <SelectItem value="inactive">Inaktív ({INACTIVE_DAYS}+ nap)</SelectItem>}
+              {staff && <SelectItem value="inactive">Nem lépett be ({INACTIVE_DAYS}+ nap)</SelectItem>}
             </SelectContent>
           </Select>
           {hasFilters && (
@@ -135,6 +143,7 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
               <SelectItem value="badge">Jelvényszám szerint</SelectItem>
               <SelectItem value="rank_time">Rangon töltött idő</SelectItem>
               <SelectItem value="service">Szolgálati idő</SelectItem>
+              <SelectItem value="duty">Duty idő (előző hónap)</SelectItem>
               {staff && <SelectItem value="last_seen">Utolsó aktivitás</SelectItem>}
             </SelectContent>
           </Select>
@@ -150,15 +159,16 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
         <EmptyState icon={Users} title="Nincs a szűrésnek megfelelő tag." compact/>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-sm">
+          <table className="w-full min-w-[1080px] text-sm">
             <thead>
               <tr className="border-b text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 <th className="py-2.5 pr-3 pl-4">Tag</th>
                 <th className="px-3 py-2.5">Rendfokozat</th>
                 <th className="px-3 py-2.5">Osztály</th>
+                <th className="px-3 py-2.5">Kirendeltség</th>
                 <th className="px-3 py-2.5">Képesítések</th>
+                <th className="px-3 py-2.5">Duty (előző hó)</th>
                 <th className="px-3 py-2.5">Rangon</th>
-                <th className="px-3 py-2.5">Szolgálat</th>
                 {staff && <th className="px-3 py-2.5">Utoljára aktív</th>}
                 <th className="py-2.5 pr-4 pl-3 text-right">Állapot</th>
               </tr>
@@ -203,8 +213,11 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
   onRankChange: (member: HrMember, rank: string) => void; onOpen: (member: HrMember) => void;
 }) {
   const rankDays = daysSince(member.last_promotion_date ?? member.created_at);
-  const serviceDays = daysSince(member.created_at);
+  const serviceDays = daysSince(member.details?.joined_on ?? member.created_at);
   const seenDays = daysSince(member.lastSeen);
+  const activity = ACTIVITY_META[member.details?.activity_status ?? "active"];
+  const states = member.vehicles.map((vehicle) => registrationStatus(vehicle.registration_expires_on).state);
+  const vehicleIssue = states.includes("expired") ? "expired" : states.find((state) => state === "soon" || state === "missing");
   const division = DIVISION_META[member.division] ?? DIVISION_META.TSB;
 
   return (
@@ -212,10 +225,14 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
         className="group cursor-pointer border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.03]">
       <td className="py-2.5 pr-3 pl-4">
         <div className="flex items-center gap-3">
-          <Avatar className="size-9 ring-1 ring-white/10">
-            <AvatarImage src={getOptimizedAvatarUrl(member.avatar_url, 72) || undefined} alt=""/>
-            <AvatarFallback className="bg-slate-800 text-xs font-semibold text-slate-300">{member.full_name.charAt(0)}</AvatarFallback>
-          </Avatar>
+          <div className="relative">
+            <Avatar className="size-9 ring-1 ring-white/10 transition-transform duration-200 group-hover:scale-105">
+              <AvatarImage src={getOptimizedAvatarUrl(member.avatar_url, 72) || undefined} alt=""/>
+              <AvatarFallback className="bg-slate-800 text-xs font-semibold text-slate-300">{member.full_name.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <span title={member.onLeaveNow ? "Szabadságon" : activity.label}
+                  className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-[#0a1120]", member.onLeaveNow ? "bg-sky-400" : activity.dot)}/>
+          </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="truncate font-medium text-white group-hover:text-primary">{member.full_name}</span>
@@ -228,7 +245,7 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
                 </span>
               )}
             </div>
-            <span className="font-mono text-xs text-slate-500">#{member.badge_number}</span>
+            <span className="font-mono text-xs text-slate-500" title={`Szolgálatban: ${formatSpan(serviceDays)}`}>#{member.badge_number}</span>
           </div>
         </div>
       </td>
@@ -240,6 +257,14 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
           <span className={cn("inline-flex h-6 items-center rounded-md px-2 text-xs font-semibold ring-1", division.pill)}>{division.label}</span>
           {member.division_rank && <span className="text-xs text-slate-400">{member.division_rank}</span>}
         </div>
+      </td>
+      <td className="px-3 py-2.5 text-xs">
+        {member.details?.station ? (
+          <>
+            <span className="text-slate-200">{member.details.station}</span>
+            {member.details.parking_spot && <span className="block font-mono text-[11px] text-slate-500">P {member.details.parking_spot}</span>}
+          </>
+        ) : <span className="text-slate-600">–</span>}
       </td>
       <td className="px-3 py-2.5">
         <div className="flex flex-wrap gap-1">
@@ -254,12 +279,11 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
             ))}
         </div>
       </td>
+      <td className="px-3 py-2.5"><DutySparkline member={member}/></td>
       <td className="px-3 py-2.5 text-xs text-slate-300 tabular-nums" title={`Utolsó előléptetés: ${formatDate(member.last_promotion_date)}`}>
         {formatSpan(rankDays)}
       </td>
-      <td className="px-3 py-2.5 text-xs text-slate-400 tabular-nums" title={`Csatlakozott: ${formatDate(member.created_at)}`}>
-        {formatSpan(serviceDays)}
-      </td>
+
       {staff && (
         <td className={cn("px-3 py-2.5 text-xs tabular-nums", (seenDays ?? 999) >= INACTIVE_DAYS ? "text-red-300" : "text-slate-400")}>
           {member.lastSeen ? (seenDays === 0 ? "ma" : `${formatSpan(seenDays)} ezelőtt`) : "–"}
@@ -274,15 +298,54 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
               <CalendarOff className="size-3"/>{member.onLeaveNow ? "Szabadságon" : "Szabadság"}
             </span>
           )}
-          {member.warnings > 0 && (
-            <span title={`${member.warnings} aktív figyelmeztetés`}
-                  className="inline-flex h-6 items-center gap-1 rounded-md bg-red-500/10 px-2 text-[11px] font-medium text-red-300 ring-1 ring-red-500/30">
-              <AlertTriangle className="size-3"/>{member.warnings}
+          {vehicleIssue && (
+            <span title={vehicleIssue === "expired" ? "Lejárt forgalmi" : vehicleIssue === "soon" ? "Hamarosan lejáró forgalmi" : "Hiányzó forgalmi dátum"}
+                  className={cn("inline-flex h-6 items-center rounded-md px-1.5 ring-1",
+                    vehicleIssue === "expired" ? "bg-red-500/10 text-red-300 ring-red-500/30" : "bg-amber-500/10 text-amber-300 ring-amber-500/30")}>
+              <Car className="size-3.5"/>
             </span>
           )}
-          {!member.leave && member.warnings === 0 && <span className="text-xs text-emerald-400/80">Aktív</span>}
+          {member.vehicleWarnings > 0 && (
+            <span title={`${member.vehicleWarnings}/3 jármű-hibapont`}
+                  className="inline-flex h-6 items-center gap-1 rounded-md bg-amber-500/10 px-1.5 text-[11px] font-medium text-amber-300 ring-1 ring-amber-500/30">
+              <Car className="size-3"/>{member.vehicleWarnings}/3
+            </span>
+          )}
+          {member.warnings > 0 && (
+            <span title={`${member.warnings} aktív figyelmeztetés`} className="inline-flex h-6 items-center rounded-md bg-red-500/[0.06] px-2 ring-1 ring-red-500/25">
+              <StrikeDots count={member.warnings}/>
+            </span>
+          )}
+          {!member.leave && member.warnings === 0 && !vehicleIssue && member.vehicleWarnings === 0 && (
+            <span className={cn("text-xs", member.details?.activity_status === "inactive" ? "text-red-300"
+              : member.details?.activity_status === "less_active" ? "text-amber-300" : "text-emerald-400/80")}>
+              {activity.label}
+            </span>
+          )}
         </div>
       </td>
     </tr>
+  );
+}
+
+/** Previous month's duty time with a six-month sparkline (like the sheet's monthly columns). */
+function DutySparkline({member}: {member: HrMember}) {
+  const months = recentMonths(6);
+  const values = months.map((month) => member.duty.find((entry) => entry.month.slice(0, 10) === month)?.minutes ?? 0);
+  const max = Math.max(60, ...values);
+  return (
+    <div className="flex items-center gap-2.5" title={months.map((month, index) => `${month.slice(0, 7)}: ${formatDuty(values[index], true)}`).join("\n")}>
+      <div className="flex h-6 items-end gap-[2px]">
+        {values.map((value, index) => (
+          <span key={months[index]}
+                className={cn("w-1.5 rounded-sm", index === values.length - 1 ? "bg-primary/80" : index === values.length - 2 ? "bg-sky-400" : "bg-sky-400/40")}
+                style={{height: `${Math.max(8, (value / max) * 100)}%`}}/>
+        ))}
+      </div>
+      <span className={cn("font-mono text-xs tabular-nums", member.dutyLastMonth === null ? "text-slate-600"
+        : member.dutyLastMonth < 600 ? "text-amber-300" : "text-slate-200")}>
+        {member.dutyLastMonth === null ? "–" : formatDuty(member.dutyLastMonth, true)}
+      </span>
+    </div>
   );
 }

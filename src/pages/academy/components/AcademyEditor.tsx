@@ -50,7 +50,7 @@ const THEMES: Record<string, {className: string; editorTheme: "light" | "dark"; 
     editorTheme: "light",
     cssVars: {"--bn-colors-editor-background": "#ffffff", "--bn-colors-editor-text": "#0f172a"}
   },
-  default: {className: "bg-[#0b1221] text-slate-200", editorTheme: "dark", cssVars: {}},
+  default: {className: "bg-[#0b1221]/75 backdrop-blur-xl text-slate-200", editorTheme: "dark", cssVars: {}},
 };
 
 export function AcademyEditor({

@@ -122,7 +122,7 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#0b1221] border border-blue-900/30 text-white sm:max-w-3xl h-[700px] flex flex-col p-0 shadow-2xl">
+        className="bg-[#0b1221]/75 backdrop-blur-xl border border-blue-900/30 text-white sm:max-w-3xl h-[700px] flex flex-col p-0 shadow-2xl">
         <div className="bg-blue-950/20 border-b border-blue-900/30 p-5 flex items-center gap-3">
           <div className="p-2 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400"><Link
             className="w-5 h-5"/></div>
@@ -147,7 +147,7 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
 
         <div className="flex-1 min-h-0 grid grid-cols-2 gap-px bg-slate-800">
           {/* LEFT: EXAMS */}
-          <div className="bg-[#050a14] flex flex-col min-h-0">
+          <div className="bg-[#050a14]/55 backdrop-blur-xl flex flex-col min-h-0">
             <div
               className="p-2 bg-slate-900/80 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center border-b border-slate-800 sticky top-0">Gazdátlan
               Vizsgák
@@ -175,7 +175,7 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
           </div>
 
           {/* RIGHT: TRAINEES */}
-          <div className="bg-[#050a14] flex flex-col min-h-0">
+          <div className="bg-[#050a14]/55 backdrop-blur-xl flex flex-col min-h-0">
             <div
               className="p-2 bg-slate-900/80 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center border-b border-slate-800 sticky top-0">Trainee
               Lista

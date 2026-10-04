@@ -81,6 +81,22 @@
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         font-feature-settings: "cv11", "ss03";
+        /* A long word or link wraps instead of pushing its box wider. */
+        overflow-wrap: break-word;
+    }
+
+    ::selection {
+        background-color: rgb(234 179 8 / 0.3);
+    }
+}
+
+/* Motion is decoration: honour the operating system setting. */
+@media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }
 
@@ -114,11 +130,237 @@
     height: calc(100dvh - var(--shell-header) - 2 * var(--shell-pad) - var(--mcb-header));
 }
 
-/* --- SURFACES --- */
+/* --- SURFACES ---
+   Frosted glass over the animated backdrop, with a faint top highlight. */
 @utility panel {
-    background-color: var(--card);
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0) 140px),
+    rgb(10 16 30 / 0.68);
     border: 1px solid var(--border);
     border-radius: calc(var(--radius) + 4px);
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 18px 40px -24px rgb(0 0 0 / 0.8);
+    backdrop-filter: blur(18px) saturate(1.4);
+}
+
+/* Cards that react to the pointer: lift, brighter edge, golden glow. */
+@utility lift {
+    transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1), border-color 0.25s, box-shadow 0.25s, background-color 0.25s;
+
+    &:hover {
+        transform: translateY(-2px);
+        border-color: rgb(255 255 255 / 0.18);
+        box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.07), 0 22px 48px -22px rgb(0 0 0 / 0.9), 0 0 0 1px rgb(234 179 8 / 0.1);
+    }
+
+    &:active {
+        transform: translateY(0) scale(0.99);
+    }
+}
+
+/* Gradient text for headings ("gold leaf"). */
+@utility text-gold {
+    background: linear-gradient(100deg, #fff7d6 0%, #facc15 40%, #eab308 60%, #fde68a 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Animated border (hero cards): a light runs around the edge. */
+@utility glow-border {
+    position: relative;
+    isolation: isolate;
+
+    &::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        z-index: -1;
+        border-radius: inherit;
+        padding: 1px;
+        background: conic-gradient(from var(--glow-angle), transparent 0 68%, rgb(250 204 21 / 0.75) 80%, rgb(56 189 248 / 0.55) 90%, transparent 100%);
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        animation: glow-turn 8s linear infinite;
+        pointer-events: none;
+    }
+}
+
+/* Loading placeholder with a moving sheen. */
+@utility skeleton {
+    border-radius: calc(var(--radius) + 2px);
+    background: linear-gradient(100deg, rgb(255 255 255 / 0.03) 30%, rgb(255 255 255 / 0.08) 50%, rgb(255 255 255 / 0.03) 70%);
+    background-size: 300% 100%;
+    animation: sheen 1.6s ease-in-out infinite;
+}
+
+/* --- MOTION ---
+   Entrance: "animate-rise" (fade + slide up); style={{"--i": index}} staggers lists. */
+@property --glow-angle {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
+}
+
+@keyframes rise-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes fade-in-soft {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes sheen {
+    from {
+        background-position: 100% 0;
+    }
+    to {
+        background-position: -100% 0;
+    }
+}
+
+@keyframes glow-turn {
+    to {
+        --glow-angle: 360deg;
+    }
+}
+
+@keyframes float-y {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+@keyframes bell-ring {
+    0%, 100% {
+        transform: rotate(0);
+    }
+    15% {
+        transform: rotate(14deg);
+    }
+    30% {
+        transform: rotate(-12deg);
+    }
+    45% {
+        transform: rotate(8deg);
+    }
+    60% {
+        transform: rotate(-5deg);
+    }
+    75% {
+        transform: rotate(2deg);
+    }
+}
+
+@keyframes backdrop-breathe {
+    0%, 100% {
+        opacity: 0.55;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.12);
+    }
+}
+
+@keyframes aurora-drift {
+    0% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+        transform: translate3d(5vmax, 3vmax, 0) scale(1.12);
+    }
+    100% {
+        transform: translate3d(-4vmax, 6vmax, 0) scale(0.94);
+    }
+}
+
+@keyframes shine-pan {
+    to {
+        background-position: -200% 0;
+    }
+}
+
+@utility animate-rise {
+    animation: rise-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+@utility animate-fade {
+    animation: fade-in-soft 0.5s ease-out both;
+    animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+@utility animate-float-y {
+    animation: float-y 6s ease-in-out infinite;
+}
+
+@utility animate-bell {
+    animation: bell-ring 1s ease-in-out;
+    transform-origin: 50% 0;
+}
+
+@utility animate-shine {
+    animation: shine-pan 6s linear infinite;
+}
+
+/* Route changes: the new page fades in and rises slightly. */
+.page-enter {
+    animation: rise-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* --- APP BACKDROP (AppBackdrop.tsx) --- */
+.aurora-blob {
+    position: absolute;
+    width: 72vmax;
+    height: 72vmax;
+    border-radius: 9999px;
+    will-change: transform;
+    animation: aurora-drift 34s ease-in-out infinite alternate;
+}
+
+.aurora-a {
+    top: -26vmax;
+    right: -18vmax;
+    background: radial-gradient(circle at center, var(--aurora-1) 0%, transparent 62%);
+}
+
+.aurora-b {
+    top: 6vmax;
+    left: -30vmax;
+    background: radial-gradient(circle at center, var(--aurora-2) 0%, transparent 60%);
+    animation-duration: 42s;
+    animation-delay: -12s;
+}
+
+.aurora-c {
+    bottom: -34vmax;
+    left: 18vmax;
+    background: radial-gradient(circle at center, var(--aurora-3) 0%, transparent 60%);
+    animation-duration: 48s;
+    animation-delay: -24s;
+}
+
+.backdrop-grid {
+    background-image: linear-gradient(rgb(234 179 8 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(234 179 8 / 0.05) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 80% 70% at 70% 100%, #000 10%, transparent 70%);
 }
 
 /* --- TEXTURES (local, CSS only) --- */
@@ -171,41 +413,6 @@
     box-shadow: 0 0 15px var(--status-glow);
     z-index: 50;
     transition: all 0.5s ease;
-}
-
-/* Glassmorphism Panel (Sidebar & Cards) */
-.glass-panel {
-    background: rgba(10, 15, 28, 0.7);
-    backdrop-filter: blur(12px);
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Nav Link Hover Effect */
-.nav-item-active {
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
-    border-left: 3px solid var(--status-color);
-    color: white;
-}
-
-/* Ambient Background Animation */
-@keyframes ambient-float {
-    0%, 100% {
-        transform: translate(0, 0);
-        opacity: 0.3;
-    }
-    50% {
-        transform: translate(-20px, 20px);
-        opacity: 0.5;
-    }
-}
-
-.ambient-light {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    opacity: 0.3;
-    animation: ambient-float 10s ease-in-out infinite;
-    pointer-events: none;
 }
 
 /* --- MODERN TACTICAL SCROLLBAR --- */
@@ -656,4 +863,13 @@
     background-size: 60px 60px;
     background-position: 0 0, 30px 30px;
     animation: network-drift 60s linear infinite;
+}
+/* Bars of DutyChart grow from the baseline. */
+@keyframes bar-grow {
+    from {
+        transform: scaleY(0);
+    }
+    to {
+        transform: scaleY(1);
+    }
 }

@@ -9,8 +9,19 @@ import {Card, CardContent} from "@/components/ui/card";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
 import {Button} from "@/components/ui/button";
+import {AppBackdrop} from "@/components/layout/AppBackdrop";
 
+/** Public entrance exam (outside the app shell), on the same animated backdrop. */
 export function PublicExamPage() {
+  return (
+    <>
+      <AppBackdrop/>
+      <PublicExamContent/>
+    </>
+  );
+}
+
+function PublicExamContent() {
   const {examId} = useParams<{ examId: string }>();
   const navigate = useNavigate();
   const {user, loading: authLoading} = useAuth();
@@ -62,12 +73,12 @@ export function PublicExamPage() {
   }, [examId, user, authLoading]);
 
   if (loading || authLoading) return <div
-    className="min-h-screen bg-slate-950 flex flex-col items-center justify-center"><Loader2
+    className="min-h-screen flex flex-col items-center justify-center"><Loader2
     className="w-12 h-12 text-yellow-500 animate-spin mb-4"/><p
     className="text-slate-400 font-mono tracking-widest text-sm">BETÖLTÉS...</p></div>;
 
   if (isBlocked && blockedUntil) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="max-w-md w-full bg-slate-900/50 border-red-900/30 shadow-2xl">
         <CardContent className="p-8 text-center space-y-6">
           <div
@@ -88,7 +99,7 @@ export function PublicExamPage() {
   );
 
   if (error || !exam) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="max-w-md w-full bg-slate-900/50 border-slate-800 shadow-2xl">
         <CardContent className="p-10 text-center space-y-6">
           <div
@@ -105,7 +116,7 @@ export function PublicExamPage() {
   );
 
   if (!exam.is_active) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="max-w-md w-full bg-slate-900/50 border-orange-900/30 shadow-2xl">
         <CardContent className="p-8 text-center">
           <div
@@ -119,7 +130,7 @@ export function PublicExamPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 py-10 px-4 md:px-8 relative overflow-hidden">
+    <div className="min-h-screen py-10 px-4 md:px-8 relative overflow-hidden">
       <div className="fixed inset-0 pointer-events-none opacity-20" style={{
         backgroundImage: 'radial-gradient(circle at 2px 2px, #334155 1px, transparent 0)',
         backgroundSize: '40px 40px'

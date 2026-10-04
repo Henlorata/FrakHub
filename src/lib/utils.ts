@@ -38,6 +38,7 @@ export {
   isStaff,
   outranks,
   canManageRecords,
+  canManageMemberDetails,
   getDivisionRanks,
 } from "@shared/ranks";
 

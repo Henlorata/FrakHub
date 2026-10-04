@@ -323,7 +323,7 @@ export function CaseEditor({
           cssVars: {"--bn-colors-editor-background": "#ffffff", "--bn-colors-editor-text": "#0f172a"}
         };
       default:
-        return {className: `${baseClasses} bg-[#0b1221] text-slate-200`, editorTheme: "dark" as const, cssVars: {}};
+        return {className: `${baseClasses} bg-[#0b1221]/75 backdrop-blur-xl text-slate-200`, editorTheme: "dark" as const, cssVars: {}};
     }
   };
 

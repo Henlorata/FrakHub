@@ -169,7 +169,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#0b1120] border-2 border-slate-800 text-slate-200 max-w-2xl p-0 gap-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] [&>button]:hidden rounded-xl">
+        className="bg-[#0b1120]/70 backdrop-blur-xl border-2 border-slate-800 text-slate-200 max-w-2xl p-0 gap-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] [&>button]:hidden rounded-xl">
 
         {/* AKADÁLYMENTESÍTÉS JAVÍTÁS */}
         <DialogTitle className="sr-only">Profil Adatok</DialogTitle>
@@ -200,12 +200,12 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
 
         {/* LOADING VAGY TARTALOM */}
         {loading ? (
-          <div className="h-[350px] flex flex-col items-center justify-center gap-4 bg-[#0b1120]">
+          <div className="h-[350px] flex flex-col items-center justify-center gap-4 bg-[#0b1120]/70 backdrop-blur-xl">
             <Loader2 className="w-10 h-10 animate-spin text-blue-500"/>
             <span className="text-xs uppercase tracking-[0.3em] text-slate-500 font-mono animate-pulse">Adatok letöltése...</span>
           </div>
         ) : profile ? (
-          <div className="relative z-10 bg-[#0b1120] flex flex-col">
+          <div className="relative z-10 bg-[#0b1120]/70 backdrop-blur-xl flex flex-col">
 
             {/* PROFILKÉP & NÉV */}
             <div className="px-8 pb-6 -mt-16 flex items-end gap-6 relative">
@@ -403,7 +403,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
 
           </div>
         ) : (
-          <div className="p-20 text-center text-slate-500 bg-[#0b1120]">
+          <div className="p-20 text-center text-slate-500 bg-[#0b1120]/70 backdrop-blur-xl">
             <UserX className="w-12 h-12 mx-auto mb-4 opacity-20"/>
             <p className="uppercase tracking-widest text-xs">Profil nem elérhető</p>
           </div>

@@ -199,6 +199,14 @@ export const outranks = (editor: RankSubject, target: RankSubject): boolean => {
 export const canManageRecords = (editor: RankSubject, target: RankSubject): boolean =>
   editor.id !== target.id && isStaff(editor) && outranks(editor, target);
 
+/**
+ * Sheet-era HR data of a member (station, parking spot, recruiter, activity, bank account):
+ * staff above the member; executives and the bureau manager also their own. Same rule as
+ * private.can_manage_member() in the database.
+ */
+export const canManageMemberDetails = (editor: RankSubject, target: RankSubject): boolean =>
+  isStaff(editor) && (editor.id === target.id ? isExecutive(editor) || !!editor.is_bureau_manager : outranks(editor, target));
+
 /** Academy instructors may edit course material and its images. */
 export const isAcademyInstructor = (p?: RankSubject | null): boolean => {
   if (!p || p.faction_rank === TRAINEE_RANK) return false;

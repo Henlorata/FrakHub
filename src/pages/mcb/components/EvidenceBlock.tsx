@@ -151,8 +151,8 @@ function EvidenceBlockView({block, editor}: EvidenceBlockProps) {
 
       <div className={cn(
         "flex gap-4 items-start rounded border transition-all duration-300 overflow-hidden",
-        isSide && "flex-col md:flex-row p-3 bg-[#0a0f1c] border-slate-800",
-        isBottom && "flex-col p-3 bg-[#0a0f1c] border-slate-800",
+        isSide && "flex-col md:flex-row p-3 bg-[#0a0f1c]/80 backdrop-blur-xl border-slate-800",
+        isBottom && "flex-col p-3 bg-[#0a0f1c]/80 backdrop-blur-xl border-slate-800",
         isCard && "flex-col bg-slate-900 border-slate-800 shadow-md",
         isOverlay && "relative rounded overflow-hidden border-0",
         isImageOnly && "flex-col border-transparent p-0 bg-transparent"

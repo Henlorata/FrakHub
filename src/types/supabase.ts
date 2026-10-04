@@ -301,3 +301,84 @@ export interface Ribbon {
   color_hex: string | null;
   image_url: string | null;
 }
+
+// --- SZEMÉLYÜGYI NYILVÁNTARTÁS ÉS JÁRMŰPARK ---
+export type ActivityStatus = "active" | "less_active" | "inactive";
+export type JoinType = "new" | "returned" | "referral";
+
+/** Sheet-era HR data of a member (visible to members, edited by staff). */
+export interface MemberDetails {
+  user_id: string;
+  station: string | null;
+  parking_spot: string | null;
+  joined_on: string | null;
+  join_type: JoinType;
+  recruited_by: string | null;
+  activity_status: ActivityStatus;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/** Duty time of one member in one calendar month (`month` is the first day). */
+export interface DutyTimeEntry {
+  user_id: string;
+  month: string;
+  minutes: number;
+  updated_at?: string;
+  updated_by?: string | null;
+}
+
+export type LeaveType = "resigned" | "dismissed" | "inactivity" | "transferred" | "other";
+export type RehireStatus = "eligible" | "conditional" | "not_eligible";
+
+export interface FormerMember {
+  id: string;
+  profile_id: string | null;
+  full_name: string;
+  badge_number: string | null;
+  faction_rank: string | null;
+  division: string | null;
+  joined_on: string | null;
+  left_on: string;
+  leave_type: LeaveType;
+  reason: string | null;
+  rehire: RehireStatus;
+  rehire_note: string | null;
+  recorded_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FleetVehicle {
+  id: string;
+  plate: string;
+  model: string;
+  owner_id: string | null;
+  registration_expires_on: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VehicleWarning {
+  id: string;
+  vehicle_id: string | null;
+  plate: string;
+  user_id: string | null;
+  reason: string;
+  issued_by: string | null;
+  created_at: string;
+  revoked_at: string | null;
+  revoked_by: string | null;
+  converted_record_id: string | null;
+}
+
+/** Result of get_hr_registry(): everything the caller may see, in one request. */
+export interface HrRegistry {
+  details: MemberDetails[];
+  duty: DutyTimeEntry[];
+  vehicles: FleetVehicle[];
+  vehicle_warnings: VehicleWarning[];
+  bank_accounts: {user_id: string; account_number: string}[];
+}

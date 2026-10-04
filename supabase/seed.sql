@@ -114,3 +114,35 @@ values ('00000000-0000-4000-8000-000000000007', 'leave', 'Nyaralás', current_da
 insert into public.announcements (title, content, type, is_pinned, show_author, created_by)
 values ('Új egyenruha szabályzat', 'Hétfőtől kötelező az új egyenruha viselése szolgálatban.', 'info', true, true,
         '00000000-0000-4000-8000-000000000005');
+
+-- HR registry (old sheet columns), duty time of the last months and former members.
+insert into public.member_details (user_id, station, parking_spot, joined_on, join_type, recruited_by, activity_status) values
+  ('00000000-0000-4000-8000-000000000001', 'Downtown', '1/1', current_date - 900, 'new', 'Tibi', 'active'),
+  ('00000000-0000-4000-8000-000000000002', 'Angel Pine', '1/9', current_date - 400, 'referral', 'Lisa', 'active'),
+  ('00000000-0000-4000-8000-000000000003', 'Downtown', '2/4', current_date - 95, 'new', 'Supervisor Teszt', 'less_active'),
+  ('00000000-0000-4000-8000-000000000005', 'Fort Carson', '1/2', current_date - 600, 'returned', 'Erik/Gyula', 'active'),
+  ('00000000-0000-4000-8000-000000000006', 'Angel Pine', '1/7', current_date - 160, 'new', 'Döner', 'active'),
+  ('00000000-0000-4000-8000-000000000007', 'Fort Carson', null, current_date - 130, 'referral', 'Zsolti', 'inactive');
+insert into public.member_bank_accounts (user_id, account_number) values
+  ('00000000-0000-4000-8000-000000000001', '11712345-67891234-00025871'),
+  ('00000000-0000-4000-8000-000000000003', '11712345-67891234-00045159');
+insert into public.duty_time_entries (user_id, month, minutes)
+select p.id, date_trunc('month', current_date - make_interval(months => m))::date,
+       (abs(hashtext(p.id::text || m::text)) % 7000) + 300
+from public.profiles p cross join generate_series(0, 5) m
+where p.system_role <> 'pending' and p.id <> '00000000-0000-4000-8000-000000000008';
+insert into public.former_members (full_name, badge_number, faction_rank, division, joined_on, left_on, leave_type, reason, rehire, rehire_note) values
+  ('Régi Rudolf', '0999', 'Corporal', 'TSB', current_date - 700, current_date - 120, 'resigned', 'Elköltözött a megyéből.', 'eligible', null),
+  ('Kirúgott Kálmán', '1288', 'Deputy Sheriff II.', 'SEB', current_date - 300, current_date - 40, 'dismissed',
+   'Ismételt szolgálati vétség, harmadik figyelmeztetés után.', 'not_eligible', 'Vezetői döntés alapján nem vehető vissza.'),
+  ('Pending Teszt', '1004', 'Deputy Sheriff I.', 'TSB', current_date - 500, current_date - 200, 'inactivity', 'Három hónapig nem jelentkezett.',
+   'conditional', 'Újra felvételi vizsga szükséges.');
+
+-- Fleet: one vehicle about to expire, one expired, with vehicle warnings.
+insert into public.fleet_vehicles (id, plate, model, owner_id, registration_expires_on, notes) values
+  ('40000000-0000-4000-8000-000000000001', 'SFSD-12', 'Buffalo STX', '00000000-0000-4000-8000-000000000003', current_date + 2, null),
+  ('40000000-0000-4000-8000-000000000002', 'SFSD-07', 'Granger', '00000000-0000-4000-8000-000000000006', current_date - 3, 'MCB terepjáró'),
+  ('40000000-0000-4000-8000-000000000003', 'SFSD-01', 'Police Cruiser', '00000000-0000-4000-8000-000000000001', current_date + 60, null);
+insert into public.vehicle_warnings (vehicle_id, plate, reason, issued_by) values
+  ('40000000-0000-4000-8000-000000000001', 'SFSD-12', 'Szabálytalan parkolás a kapitányság előtt', '00000000-0000-4000-8000-000000000002'),
+  ('40000000-0000-4000-8000-000000000001', 'SFSD-12', 'Sérülten leadott jármű', '00000000-0000-4000-8000-000000000002');

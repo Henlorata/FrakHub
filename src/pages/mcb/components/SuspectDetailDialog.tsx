@@ -193,7 +193,7 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#050a14] border border-slate-800 text-white sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0 shadow-2xl">
+        className="bg-[#050a14]/55 backdrop-blur-xl border border-slate-800 text-white sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0 shadow-2xl">
 
         {/* --- HEADER STRIP --- */}
         <div

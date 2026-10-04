@@ -35,7 +35,7 @@ import {AdminExamAssignDialog} from "./components/AdminExamAssignDialog";
 import {cn} from "@/lib/utils";
 
 const MAIN_DIVISIONS = ['TSB', 'SEB', 'MCB'];
-const TERMINAL_CARD = "bg-[#0b1221] border border-slate-800 shadow-xl overflow-hidden relative group transition-all hover:border-yellow-500/30 flex flex-col h-full";
+const TERMINAL_CARD = "bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 shadow-xl overflow-hidden relative group transition-all hover:border-yellow-500/30 flex flex-col h-full";
 
 type PendingSubmission = ExamSubmission & {
   exam_title?: string;
@@ -513,7 +513,7 @@ export function ExamHub() {
                       JAVÍTÁSRA VÁRÓ VIZSGA</div>
                   ) : pendingGrading.map(sub => (
                     <div key={sub.id}
-                         className="flex items-center justify-between p-6 rounded-lg bg-[#0b1221] border border-slate-800 hover:border-red-500/30 transition-all shadow-lg group">
+                         className="flex items-center justify-between p-6 rounded-lg bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 hover:border-red-500/30 transition-all shadow-lg group">
                       <div className="flex items-center gap-5">
                         <div
                           className="w-12 h-12 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-slate-300 font-mono font-bold text-lg shadow-inner">{(sub as any).user_badge_number}</div>
@@ -552,7 +552,7 @@ export function ExamHub() {
           {hasGradingRights && (
             <TabsContent value="all_history" className="flex-1 min-h-0 mt-0 flex flex-col">
               <div
-                className="flex flex-col lg:flex-row items-center gap-4 bg-[#0b1221] p-4 rounded-t-xl border border-slate-800 shrink-0">
+                className="flex flex-col lg:flex-row items-center gap-4 bg-[#0b1221]/75 backdrop-blur-xl p-4 rounded-t-xl border border-slate-800 shrink-0">
                 <Users className="w-5 h-5 text-slate-400 shrink-0 hidden lg:block"/>
 
                 {/* USER FILTER DROPDOWN */}
@@ -644,7 +644,7 @@ export function ExamHub() {
               </div>
 
               <div
-                className="flex-1 bg-[#050a14] border-x border-b border-slate-800 rounded-b-xl overflow-hidden flex flex-col relative">
+                className="flex-1 bg-[#050a14]/55 backdrop-blur-xl border-x border-b border-slate-800 rounded-b-xl overflow-hidden flex flex-col relative">
                 <div className="absolute inset-0 pointer-events-none opacity-[0.02]" style={{
                   backgroundImage: 'linear-gradient(to right, #3b82f6 1px, transparent 1px)',
                   backgroundSize: '40px 100%'
@@ -752,7 +752,7 @@ export function ExamHub() {
               <div className="space-y-3 pb-10">
                 {mySubmissions.map(sub => (
                   <div key={sub.id}
-                       className="flex items-center justify-between p-4 rounded-lg bg-[#0b1221] border border-slate-800 group hover:border-slate-600 transition-all cursor-pointer"
+                       className="flex items-center justify-between p-4 rounded-lg bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 group hover:border-slate-600 transition-all cursor-pointer"
                        onClick={() => sub.status !== 'pending' && navigate(`/exams/grading/${sub.id}`)}>
                     <div className="flex items-center gap-4">
                       <div

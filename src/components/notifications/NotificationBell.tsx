@@ -13,6 +13,13 @@ const PREVIEW_COUNT = 8;
 /** Header bell: unread badge and a popover with the latest notifications. */
 export function NotificationBell() {
   const {items, unreadCount, loading, open, markRead, markAllRead} = useNotifications();
+  // The bell rings when the unread count grows (a new notification arrived live).
+  const [ringKey, setRingKey] = useState(0);
+  const [previousCount, setPreviousCount] = useState(unreadCount);
+  if (unreadCount !== previousCount) {
+    if (unreadCount > previousCount) setRingKey((key) => key + 1);
+    setPreviousCount(unreadCount);
+  }
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const preview = items.slice(0, PREVIEW_COUNT);
@@ -34,7 +41,7 @@ export function NotificationBell() {
             isOpen && "bg-white/5 text-white",
           )}
         >
-          <Bell className="size-[18px]"/>
+          <Bell key={ringKey} className={cn("size-[18px]", ringKey > 0 && "animate-bell")}/>
           {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground tabular-nums ring-2 ring-background">
               {unreadCount > 99 ? "99+" : unreadCount}

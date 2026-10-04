@@ -1,127 +1,86 @@
 import * as React from "react";
+import {useSearchParams} from "react-router";
+import {toast} from "sonner";
+import {
+  AlertTriangle, Box, Car, CheckCircle2, Clock, Hash, Loader2, Plane, Plus, Ship, Truck, Wrench, XCircle,
+} from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
-import {Badge} from "@/components/ui/badge";
-import {
-  Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter
-} from "@/components/ui/dialog";
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
-import {toast} from "sonner";
-import {
-  Plus, CheckSquare, XSquare, Loader2, Car, Truck, Ship, Plane,
-  AlertTriangle, ShieldCheck, Box, Wrench, Hash
-} from "lucide-react";
+import {PageHeader} from "@/components/layout/PageHeader";
+import {StatCard} from "@/components/layout/StatCard";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {LicensePlate} from "@/components/fleet/LicensePlate";
+import {useDialogParam} from "@/lib/use-dialog-param";
+import {cn, isHighCommand, isSupervisory} from "@/lib/utils";
+import {formatDate} from "@/pages/hr/hr-utils";
 import type {VehicleRequest} from "@/types/supabase";
 import {NewVehicleRequestDialog} from "./components/NewVehicleRequestDialog";
-import {PageHeader} from "@/components/layout/PageHeader";
-import {useDialogParam} from "@/lib/use-dialog-param";
-import {isSupervisory, isHighCommand, cn} from "@/lib/utils";
+import {FleetPanel} from "./components/FleetPanel";
 
-// --- BLUEPRINT BACKGROUND EFFECT ---
-const BlueprintGrid = () => (
-  <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
-       style={{
-         backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
-         backgroundSize: '20px 20px'
-       }}
-  />
-);
-
-// Jármű ikon választó
-const getVehicleIcon = (type: string) => {
+const vehicleIcon = (type: string) => {
   const t = type.toLowerCase();
-  if (t.includes('maverick') || t.includes('helikopter')) return <Plane className="w-5 h-5"/>;
-  if (t.includes('predator') || t.includes('hajó')) return <Ship className="w-5 h-5"/>;
-  if (t.includes('vontató') || t.includes('arocs') || t.includes('teher')) return <Truck className="w-5 h-5"/>;
-  return <Car className="w-5 h-5"/>;
+  if (t.includes("maverick") || t.includes("helikopter")) return Plane;
+  if (t.includes("predator") || t.includes("hajó")) return Ship;
+  if (t.includes("vontató") || t.includes("arocs") || t.includes("teher")) return Truck;
+  return Car;
 };
+
+const STATUS_META = {
+  pending: {label: "Függőben", icon: Clock, pill: "bg-amber-500/10 text-amber-300 ring-amber-500/30", bar: "from-amber-300 to-orange-500"},
+  approved: {label: "Elfogadva", icon: CheckCircle2, pill: "bg-emerald-500/10 text-emerald-300 ring-emerald-500/30", bar: "from-emerald-300 to-teal-600"},
+  rejected: {label: "Elutasítva", icon: XCircle, pill: "bg-red-500/10 text-red-300 ring-red-500/30", bar: "from-rose-400 to-red-700"},
+} as const;
+
+type Filter = "all" | keyof typeof STATUS_META;
 
 export function LogisticsPage() {
   const {supabase, profile, user} = useAuth();
-  const [requests, setRequests] = React.useState<VehicleRequest[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [isNewOpen, setIsNewOpen] = useDialogParam('new');
-  const [filter, setFilter] = React.useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") === "fleet" ? "fleet" : "requests";
+  const [requests, setRequests] = React.useState<VehicleRequest[] | null>(null);
+  const [isNewOpen, setIsNewOpen] = useDialogParam("new");
+  const [filter, setFilter] = React.useState<Filter>("all");
 
-  // Admin műveletekhez
   const [selectedRequest, setSelectedRequest] = React.useState<VehicleRequest | null>(null);
-  const [actionType, setActionType] = React.useState<'approve' | 'reject' | null>(null);
+  const [actionType, setActionType] = React.useState<"approve" | "reject" | null>(null);
   const [adminPlate, setAdminPlate] = React.useState("");
   const [adminComment, setAdminComment] = React.useState("");
   const [isProcessing, setIsProcessing] = React.useState(false);
 
-  // Adatok betöltése
   const fetchRequests = React.useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const {data, error} = await supabase.from('vehicle_requests')
-        .select(`*, profiles!vehicle_requests_user_id_fkey (full_name, badge_number, faction_rank)`)
-        .order('created_at', {ascending: false});
-      if (error) throw error;
-      setRequests((data as unknown as VehicleRequest[]) || []);
-    } catch {
-      toast.error("Hiba az adatok betöltésekor");
-    } finally {
-      setIsLoading(false);
-    }
+    const {data, error} = await supabase.from("vehicle_requests")
+      .select(`*, profiles!vehicle_requests_user_id_fkey (full_name, badge_number, faction_rank)`)
+      .order("created_at", {ascending: false});
+    if (error) toast.error("Hiba az adatok betöltésekor");
+    setRequests((data as unknown as VehicleRequest[]) || []);
   }, [supabase]);
 
   React.useEffect(() => {
     void fetchRequests();
   }, [fetchRequests]);
 
-  // Statisztikák
   const stats = React.useMemo(() => ({
-    total: requests.length,
-    pending: requests.filter(r => r.status === 'pending').length,
-    approved: requests.filter(r => r.status === 'approved').length,
-    rejected: requests.filter(r => r.status === 'rejected').length,
+    all: requests?.length ?? 0,
+    pending: requests?.filter((r) => r.status === "pending").length ?? 0,
+    approved: requests?.filter((r) => r.status === "approved").length ?? 0,
+    rejected: requests?.filter((r) => r.status === "rejected").length ?? 0,
   }), [requests]);
 
-  // Szűrés
-  const filteredRequests = React.useMemo(() => {
-    if (filter === 'all') return requests;
-    return requests.filter(r => r.status === filter);
-  }, [requests, filter]);
+  const filteredRequests = React.useMemo(
+    () => (requests ?? []).filter((request) => filter === "all" || request.status === filter),
+    [requests, filter],
+  );
 
-  // Jogosultság ellenőrzés (Admin/Supervisor/HighCommand)
-  const canManageRequests = profile?.system_role === 'admin' || isSupervisory(profile) || isHighCommand(profile);
+  const canManage = profile?.system_role === "admin" || isSupervisory(profile) || isHighCommand(profile);
 
-  // Admin művelet végrehajtása
-  const handleAdminAction = async () => {
-    if (!selectedRequest || !actionType || !user) return;
-    setIsProcessing(true);
-    try {
-      const updates: Record<string, string> = {
-        status: actionType === 'approve' ? 'approved' : 'rejected',
-        processed_by: user.id,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Validációk
-      if (actionType === 'approve') {
-        if (!adminPlate) throw new Error("Rendszám megadása kötelező!");
-        updates.vehicle_plate = adminPlate;
-      } else {
-        if (!adminComment) throw new Error("Indoklás megadása kötelező!");
-        updates.admin_comment = adminComment;
-      }
-
-      const {error} = await supabase.from('vehicle_requests').update(updates).eq('id', selectedRequest.id);
-      if (error) throw error;
-
-      // The requester is notified by a database trigger.
-
-      toast.success("Művelet sikeres.");
-      void fetchRequests();
-      closeAdminDialog();
-    } catch (err) {
-      toast.error("Hiba", {description: (err as Error).message});
-    } finally {
-      setIsProcessing(false);
-    }
+  const setTab = (value: "requests" | "fleet") => {
+    const next = new URLSearchParams(searchParams);
+    if (value === "fleet") next.set("tab", "fleet"); else next.delete("tab");
+    setSearchParams(next, {replace: true});
   };
 
   const closeAdminDialog = () => {
@@ -131,13 +90,28 @@ export function LogisticsPage() {
     setAdminComment("");
   };
 
-  if (isLoading && requests.length === 0) return <div className="flex h-screen items-center justify-center"><Loader2
-    className="w-12 h-12 text-orange-500 animate-spin"/></div>;
+  const handleAdminAction = async () => {
+    if (!selectedRequest || !actionType || !user) return;
+    if (actionType === "approve" && !adminPlate.trim()) return toast.error("Rendszám megadása kötelező!");
+    if (actionType === "reject" && !adminComment.trim()) return toast.error("Indoklás megadása kötelező!");
+    setIsProcessing(true);
+    const updates: Record<string, string> = {
+      status: actionType === "approve" ? "approved" : "rejected",
+      processed_by: user.id,
+      updated_at: new Date().toISOString(),
+      ...(actionType === "approve" ? {vehicle_plate: adminPlate.trim().toUpperCase()} : {admin_comment: adminComment.trim()}),
+    };
+    // The requester is notified and (on approval) the vehicle is registered by database triggers.
+    const {error} = await supabase.from("vehicle_requests").update(updates).eq("id", selectedRequest.id);
+    setIsProcessing(false);
+    if (error) return toast.error("Hiba", {description: error.message});
+    toast.success(actionType === "approve" ? "Igénylés elfogadva, a jármű bekerült a járműparkba." : "Igénylés elutasítva.");
+    void fetchRequests();
+    closeAdminDialog();
+  };
 
   return (
-    <div
-      className="w-full h-full flex flex-col space-y-6 animate-in fade-in duration-500">
-
+    <div className="space-y-6">
       <PageHeader
         icon={Truck}
         tone="orange"
@@ -147,187 +121,124 @@ export function LogisticsPage() {
         actions={<Button onClick={() => setIsNewOpen(true)} className="bg-orange-500 text-black hover:bg-orange-400"><Plus/> Új igénylés</Button>}
       />
 
-      {/* --- FILTER TABS --- */}
-      <div
-        className="flex gap-2 p-1 bg-slate-950/50 border border-slate-800 rounded-md w-fit shrink-0 backdrop-blur-sm">
-        {['all', 'pending', 'approved', 'rejected'].map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-                  className={cn("px-4 py-2 rounded-sm text-xs font-bold uppercase tracking-wider transition-all border",
-                    filter === f ? "bg-orange-500/10 text-orange-500 border-orange-500/30" : "text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-900")}>
-            {f === 'all' ? 'ÖSSZES' : f === 'pending' ? 'FÜGGŐ' : f === 'approved' ? 'ELFOGADVA' : 'ELUTASÍTVA'}
+      <div className="flex gap-1 border-b">
+        {([["requests", "Igénylések", Box, stats.pending], ["fleet", "Járműpark", Car, 0]] as const).map(([id, label, Icon, count]) => (
+          <button key={id} type="button" onClick={() => setTab(id)}
+                  className={cn("relative inline-flex h-10 items-center gap-2 px-3 text-sm font-medium transition-colors",
+                    tab === id ? "text-white" : "text-slate-400 hover:text-slate-200")}>
+            <Icon className={cn("size-4", tab === id && "text-orange-400")}/>{label}
+            {count > 0 && <span className="rounded-full bg-orange-500/15 px-1.5 text-[11px] font-semibold text-orange-300 tabular-nums">{count}</span>}
+            {tab === id && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-orange-400 shadow-[0_0_10px_rgb(251_146_60/0.8)]"/>}
           </button>
         ))}
       </div>
 
-      {/* --- GRID (REQUESTS) --- */}
-      <div
-        className="flex-1 min-h-0 bg-[#050a14] border border-slate-800 relative rounded-md overflow-hidden flex flex-col shadow-2xl">
-        <BlueprintGrid/>
+      {tab === "fleet" ? (
+        <div key="fleet" className="animate-fade"><FleetPanel canManage={canManage}/></div>
+      ) : (
+        <div key="requests" className="animate-fade space-y-6">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {(["all", "pending", "approved", "rejected"] as Filter[]).map((value, index) => (
+              <StatCard key={value} index={index} label={value === "all" ? "Összes igénylés" : STATUS_META[value].label}
+                        value={requests === null ? "…" : stats[value]}
+                        icon={value === "all" ? Box : STATUS_META[value].icon}
+                        tone={value === "all" ? "orange" : value === "pending" ? "gold" : value === "approved" ? "emerald" : "red"}
+                        onClick={() => setFilter(value)}
+                        className={cn(filter === value && "ring-1 ring-orange-400/50")}/>
+            ))}
+          </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredRequests.length === 0 ? (
-              <div className="col-span-full flex flex-col items-center justify-center py-20 opacity-30">
-                <Box className="w-20 h-20 text-slate-500 mb-4"/>
-                <p className="font-mono text-sm uppercase tracking-widest text-slate-500">NINCS MEGJELENÍTHETŐ ADAT</p>
-              </div>
-            ) : (
-              filteredRequests.map(req => (
-                <div key={req.id}
-                     className="relative bg-[#0b1221]/90 border border-slate-700/50 hover:border-orange-500/50 transition-all group overflow-hidden rounded-sm shadow-md">
-
-                  {/* Status Strip & ID */}
-                  <div className={cn("absolute top-0 left-0 w-1 h-full",
-                    req.status === 'approved' ? 'bg-green-500' : req.status === 'rejected' ? 'bg-red-500' : 'bg-yellow-500')}
-                  />
-
-                  {/* Header Section */}
-                  <div
-                    className="p-4 border-b border-slate-800/50 flex justify-between items-start pl-6 bg-slate-900/30">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <div
-                          className="text-[9px] font-mono text-slate-500 bg-slate-950 px-1.5 py-0.5 border border-slate-800 rounded-sm">REQ-{req.id.slice(0, 4).toUpperCase()}</div>
-                        <span
-                          className="text-[9px] font-mono text-slate-500">{new Date(req.created_at).toLocaleDateString()}</span>
+          {requests === null ? (
+            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-52"/>)}</div>
+          ) : filteredRequests.length === 0 ? (
+            <div className="panel"><EmptyState icon={Box} title="Nincs megjeleníthető igénylés." compact/></div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+              {filteredRequests.map((request, index) => {
+                const meta = STATUS_META[request.status];
+                const Icon = vehicleIcon(request.vehicle_type);
+                return (
+                  <article key={request.id} style={{"--i": Math.min(index, 12)} as React.CSSProperties}
+                           className="panel lift animate-rise relative flex flex-col overflow-hidden">
+                    <span className={cn("absolute inset-y-0 left-0 w-1 bg-gradient-to-b", meta.bar)}/>
+                    <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
+                      <div className="min-w-0">
+                        <p className="font-mono text-[11px] text-slate-500">REQ-{request.id.slice(0, 4).toUpperCase()} · {formatDate(request.created_at)}</p>
+                        <h3 className="mt-1 flex items-center gap-2 text-base font-semibold text-white">
+                          <Icon className="size-4 shrink-0 text-orange-400"/><span className="truncate" title={request.vehicle_type}>{request.vehicle_type}</span>
+                        </h3>
                       </div>
-                      <h3 className="text-lg font-black text-white uppercase tracking-tight flex items-center gap-2">
-                        {getVehicleIcon(req.vehicle_type)} <span className="truncate max-w-[200px]"
-                                                                 title={req.vehicle_type}>{req.vehicle_type}</span>
-                      </h3>
+                      {request.status === "approved" && request.vehicle_plate
+                        ? <LicensePlate plate={request.vehicle_plate}/>
+                        : <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1", meta.pill,
+                            request.status === "pending" && "motion-safe:animate-pulse")}><meta.icon className="size-3"/>{meta.label}</span>}
                     </div>
-
-                    <div className="text-right">
-                      {req.status === 'approved' ? (
-                        <div className="inline-block">
-                          <div
-                            className="text-[9px] text-green-500 font-bold uppercase tracking-wider mb-0.5">RENDSZÁM
-                          </div>
-                          <div
-                            className="font-mono text-lg font-bold text-white bg-green-900/20 px-2 border border-green-900/50 rounded-sm">{req.vehicle_plate}</div>
+                    <div className="flex-1 space-y-3 px-5 py-4">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-slate-100">{request.profiles?.full_name}</p>
+                          <p className="truncate text-xs text-slate-500">{request.profiles?.faction_rank}</p>
                         </div>
-                      ) : req.status === 'rejected' ? (
-                        <Badge variant="destructive"
-                               className="bg-red-950/50 border-red-900 text-red-500 uppercase rounded-sm font-mono">REJECTED</Badge>
-                      ) : (
-                        <Badge variant="secondary"
-                               className="bg-yellow-900/20 border-yellow-900 text-yellow-500 uppercase rounded-sm animate-pulse font-mono">PENDING</Badge>
+                        <span className="flex items-center gap-1 font-mono text-sm text-orange-300"><Hash className="size-3"/>{request.profiles?.badge_number}</span>
+                      </div>
+                      <p className="rounded-lg bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-slate-300 ring-1 ring-white/5 line-clamp-3 wrap-anywhere">
+                        {request.reason}
+                      </p>
+                      {request.admin_comment && (
+                        <p className="flex items-start gap-1.5 rounded-lg bg-red-500/[0.06] px-3 py-2 text-xs text-red-300 ring-1 ring-red-500/20 wrap-anywhere">
+                          <AlertTriangle className="mt-0.5 size-3 shrink-0"/>{request.admin_comment}
+                        </p>
                       )}
                     </div>
-                  </div>
-
-                  {/* Details Section */}
-                  <div className="p-4 pl-6 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-slate-950/50 p-2 rounded-sm border border-slate-800/50">
-                        <div className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">IGÉNYLŐ</div>
-                        <div className="font-bold text-sm text-white truncate">{req.profiles?.full_name}</div>
-                        <div className="text-[10px] text-slate-400 truncate">{req.profiles?.faction_rank}</div>
-                      </div>
-                      <div className="bg-slate-950/50 p-2 rounded-sm border border-slate-800/50">
-                        <div className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">JELVÉNYSZÁM
-                        </div>
-                        <div className="font-mono text-lg text-orange-400 font-bold flex items-center gap-2">
-                          <Hash className="w-3 h-3 text-orange-600"/> {req.profiles?.badge_number}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-950/30 p-2.5 border border-slate-800/50 rounded-sm">
-                      <div
-                        className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1 flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3"/> INDOKLÁS
-                      </div>
-                      <p
-                        className="text-xs text-slate-300 font-mono leading-relaxed line-clamp-3 italic">"{req.reason}"</p>
-                    </div>
-
-                    {req.admin_comment && (
-                      <div className="bg-red-950/10 p-2 border border-red-900/30 rounded-sm">
-                        <div
-                          className="text-[9px] uppercase text-red-500 font-bold tracking-wider mb-1 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3"/> ELUTASÍTVA
-                        </div>
-                        <p className="text-xs text-red-400 font-mono leading-relaxed">{req.admin_comment}</p>
+                    {canManage && request.status === "pending" && (
+                      <div className="grid grid-cols-2 border-t">
+                        <button type="button" onClick={() => { setSelectedRequest(request); setActionType("approve"); }}
+                                className="flex items-center justify-center gap-2 border-r py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-emerald-500/10 hover:text-emerald-300">
+                          <CheckCircle2 className="size-4"/> Jóváhagyás
+                        </button>
+                        <button type="button" onClick={() => { setSelectedRequest(request); setActionType("reject"); }}
+                                className="flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-red-500/10 hover:text-red-300">
+                          <XCircle className="size-4"/> Elutasítás
+                        </button>
                       </div>
                     )}
-                  </div>
-
-                  {/* Action Buttons (Admin Only) */}
-                  {canManageRequests && req.status === 'pending' && (
-                    <div className="grid grid-cols-2 border-t border-slate-800">
-                      <button onClick={() => {
-                        setSelectedRequest(req);
-                        setActionType('approve');
-                      }}
-                              className="py-2.5 bg-slate-900 hover:bg-green-900/20 text-slate-400 hover:text-green-400 border-r border-slate-800 text-[10px] font-black uppercase transition-colors flex items-center justify-center gap-2 tracking-wider">
-                        <CheckSquare className="w-3.5 h-3.5"/> JÓVÁHAGYÁS
-                      </button>
-                      <button onClick={() => {
-                        setSelectedRequest(req);
-                        setActionType('reject');
-                      }}
-                              className="py-2.5 bg-slate-900 hover:bg-red-900/20 text-slate-400 hover:text-red-400 text-[10px] font-black uppercase transition-colors flex items-center justify-center gap-2 tracking-wider">
-                        <XSquare className="w-3.5 h-3.5"/> ELUTASÍTÁS
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       <NewVehicleRequestDialog open={isNewOpen} onOpenChange={setIsNewOpen} onSuccess={fetchRequests}/>
 
-      {/* ADMIN DIALOG */}
-      <Dialog open={!!selectedRequest} onOpenChange={(o) => !o && closeAdminDialog()}>
-        <DialogContent
-          className="bg-[#0b1221] border border-slate-700 text-white sm:max-w-md p-0 overflow-hidden shadow-2xl">
-          <div
-            className={`p-4 border-b border-white/5 flex items-center gap-3 ${actionType === 'approve' ? 'bg-green-900/20' : 'bg-red-900/20'}`}>
-            <div
-              className={`p-2 rounded border ${actionType === 'approve' ? 'border-green-500 text-green-500' : 'border-red-500 text-red-500'}`}>
-              <Wrench className="w-5 h-5"/>
+      <Dialog open={!!selectedRequest} onOpenChange={(open) => !open && closeAdminDialog()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wrench className={cn("size-5", actionType === "approve" ? "text-emerald-400" : "text-red-400")}/>
+              {actionType === "approve" ? "Igénylés jóváhagyása" : "Igénylés elutasítása"}
+            </DialogTitle>
+            <DialogDescription>{selectedRequest?.profiles?.full_name} · {selectedRequest?.vehicle_type}</DialogDescription>
+          </DialogHeader>
+          {actionType === "approve" ? (
+            <div className="space-y-2">
+              <Label>Kiosztott rendszám</Label>
+              <Input placeholder="Pl. SFSD-01" value={adminPlate} maxLength={16} autoFocus
+                     className="h-12 text-center font-mono text-xl tracking-[0.2em] uppercase" onChange={(event) => setAdminPlate(event.target.value)}/>
+              <p className="text-xs text-slate-500">A jármű automatikusan bekerül a járműparkba a kérelmező nevére.</p>
             </div>
-            <div>
-              <DialogTitle className="text-lg font-black uppercase font-mono tracking-tight">
-                {actionType === 'approve' ? 'IGÉNYLÉS JÓVÁHAGYÁSA' : 'IGÉNYLÉS ELUTASÍTÁSA'}
-              </DialogTitle>
-              <DialogDescription className="text-xs font-mono text-slate-400 uppercase">
-                UNIT: {selectedRequest?.profiles?.badge_number} // {selectedRequest?.vehicle_type}
-              </DialogDescription>
+          ) : (
+            <div className="space-y-2">
+              <Label>Elutasítás indoka</Label>
+              <Textarea value={adminComment} rows={3} maxLength={500} autoFocus onChange={(event) => setAdminComment(event.target.value)}/>
             </div>
-          </div>
-
-          <div className="p-6 space-y-4">
-            {actionType === 'approve' ? (
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Kiosztott
-                  Rendszám</Label>
-                <Input placeholder="PL. SFSD-01"
-                       className="bg-slate-950 border-slate-700 font-mono uppercase text-xl tracking-[0.2em] text-center h-12 text-green-400 focus-visible:ring-green-500/50 placeholder:text-slate-700"
-                       value={adminPlate} onChange={(e) => setAdminPlate(e.target.value)} autoFocus/>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Elutasítás
-                  Indoka</Label>
-                <Textarea placeholder="HIVATALOS INDOKLÁS..."
-                          className="bg-slate-950 border-slate-700 resize-none h-24 font-mono text-sm focus-visible:ring-red-500/50 placeholder:text-slate-700 break-all"
-                          value={adminComment} onChange={(e) => setAdminComment(e.target.value)} autoFocus/>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="p-4 bg-slate-950/50 border-t border-white/5">
-            <Button variant="ghost" onClick={closeAdminDialog}
-                    className="hover:bg-slate-800 text-slate-400 hover:text-white">MÉGSE</Button>
-            <Button
-              className={cn("font-bold uppercase tracking-wider text-black", actionType === 'approve' ? "bg-green-600 hover:bg-green-500" : "bg-red-600 hover:bg-red-500")}
-              onClick={handleAdminAction} disabled={isProcessing}>
-              {isProcessing && <Loader2 className="w-4 h-4 mr-2 animate-spin"/>} VÉGREHAJTÁS
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={closeAdminDialog}>Mégse</Button>
+            <Button onClick={() => void handleAdminAction()} disabled={isProcessing}
+                    className={actionType === "approve" ? "bg-emerald-600 text-white hover:bg-emerald-500" : "bg-red-600 text-white hover:bg-red-500"}>
+              {isProcessing && <Loader2 className="animate-spin"/>} {actionType === "approve" ? "Jóváhagyás" : "Elutasítás"}
             </Button>
           </DialogFooter>
         </DialogContent>

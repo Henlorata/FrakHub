@@ -1,12 +1,12 @@
-import {useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
+import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
 import {useNavigate} from "react-router";
 import {toast} from "sonner";
-import {formatDistanceToNowStrict} from "date-fns";
+import {format, formatDistanceToNowStrict} from "date-fns";
 import {hu} from "date-fns/locale";
 import {
-  Activity, AlertOctagon, AlertTriangle, ArrowRight, Banknote, Bell, CalendarOff, ClipboardCheck, EyeOff, FileText,
-  Fingerprint, Gavel, GraduationCap, Info, Megaphone, Pin, Plus, Receipt, ScrollText, ShieldCheck, Ticket, Trash2,
-  TrendingUp, Truck, UserPlus, Users,
+  AlertOctagon, AlertTriangle, ArrowRight, Banknote, CalendarOff, Car, CheckCircle2, ChevronDown, ClipboardCheck,
+  EyeOff, FileText, Fingerprint, Gavel, GraduationCap, Info, Megaphone, Pin, Plus, Receipt, ScrollText, Trash2,
+  Truck, UserPlus, Users,
 } from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {useSystemStatus} from "@/context/SystemStatusContext";
@@ -20,13 +20,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {SheriffStar} from "@/components/brand/SheriffStar";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {TONE_CLASSES, type Tone} from "@/components/layout/PageHeader";
 import {ALERT_LEVELS} from "@/lib/alert-levels";
-import {canViewCaseList, cn, errorMessage, getAdjacentRank, isStaff, STAFF_CATEGORY_LABELS, type StaffCategory} from "@/lib/utils";
-import type {ActionLog, MemberEvent} from "@/types/supabase";
-import {describeEvent} from "@/pages/hr/components/MemberSheet";
-import {daysSince, formatSpan} from "@/pages/hr/hr-utils";
+import {canViewCaseList, cn, errorMessage, isStaff, STAFF_CATEGORY_LABELS, type StaffCategory} from "@/lib/utils";
+import {daysSince, formatSpan, rankPillClass} from "@/pages/hr/hr-utils";
 
 interface DashboardSummary {
   unread_notifications: number;
@@ -39,6 +38,9 @@ interface DashboardSummary {
   my_open_cases: number | null;
   my_pending_requests: number;
   my_active_warnings: number;
+  my_vehicle_warnings?: number;
+  my_vehicles_due?: number;
+  fleet_registration_due?: number | null;
   members_total: number;
   members_on_leave: number;
 }
@@ -59,21 +61,18 @@ interface FeedAnnouncement {
 }
 
 const ANNOUNCEMENT_TYPES = {
-  info: {label: "Információ", icon: Info, tone: "text-sky-300 bg-sky-500/10 ring-sky-500/30"},
-  alert: {label: "Riasztás", icon: AlertTriangle, tone: "text-red-300 bg-red-500/10 ring-red-500/30"},
-  training: {label: "Képzés", icon: GraduationCap, tone: "text-emerald-300 bg-emerald-500/10 ring-emerald-500/30"},
+  info: {label: "Információ", icon: Info, tone: "text-sky-300 bg-sky-500/10 ring-sky-500/30", bar: "from-sky-400 to-indigo-500"},
+  alert: {label: "Riasztás", icon: AlertTriangle, tone: "text-red-300 bg-red-500/10 ring-red-500/30", bar: "from-red-400 to-rose-600"},
+  training: {label: "Képzés", icon: GraduationCap, tone: "text-emerald-300 bg-emerald-500/10 ring-emerald-500/30", bar: "from-emerald-300 to-teal-600"},
 } as const;
 
 const ago = (iso: string) => formatDistanceToNowStrict(new Date(iso), {addSuffix: true, locale: hu});
 
 export function DashboardPage() {
   const {profile, supabase} = useAuth();
-  const {alertLevel} = useSystemStatus();
   const navigate = useNavigate();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [announcements, setAnnouncements] = useState<FeedAnnouncement[] | null>(null);
-  const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
-  const [events, setEvents] = useState<(MemberEvent & {member?: {full_name: string} | null})[]>([]);
   const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -82,39 +81,24 @@ export function DashboardPage() {
     if (!error) setAnnouncements((data ?? []) as FeedAnnouncement[]);
   }, [supabase]);
 
-  // Four requests in parallel: the summary (one RPC), announcements, activity and HR changes.
+  // Two requests: every counter comes from one RPC, plus the announcement feed.
   useEffect(() => {
     let active = true;
     Promise.all([
       supabase.rpc("get_dashboard_summary"),
       supabase.rpc("get_announcements", {_limit: 12}),
-      supabase.from("action_logs")
-        .select("id, user_id, action_type, details, created_at, profiles!action_logs_user_id_fkey(full_name, badge_number)")
-        .order("created_at", {ascending: false}).limit(8),
-      supabase.from("member_events")
-        .select("id, user_id, actor_id, kind, from_value, to_value, detail, created_at, member:profiles!member_events_user_id_fkey(full_name)")
-        .in("kind", ["joined", "rank", "award"]).order("created_at", {ascending: false}).limit(6),
-    ]).then(([summaryResult, announcementResult, logResult, eventResult]) => {
+    ]).then(([summaryResult, announcementResult]) => {
       if (!active) return;
       if (!summaryResult.error) setSummary(summaryResult.data as DashboardSummary);
       setAnnouncements((announcementResult.data ?? []) as FeedAnnouncement[]);
-      setActionLogs((logResult.data ?? []) as unknown as ActionLog[]);
-      setEvents((eventResult.data ?? []) as unknown as (MemberEvent & {member?: {full_name: string} | null})[]);
     });
     return () => {
       active = false;
     };
   }, [supabase]);
 
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    return hour < 6 ? "Jó éjszakát" : hour < 10 ? "Jó reggelt" : hour < 18 ? "Szép napot" : "Jó estét";
-  }, []);
-
   if (!profile) return null;
-  const level = ALERT_LEVELS[alertLevel];
   const canPost = isStaff(profile);
-  const nextRank = getAdjacentRank(profile.faction_rank, "up");
 
   const confirmDelete = async () => {
     if (!deleteId) return;
@@ -128,17 +112,19 @@ export function DashboardPage() {
     }
   };
 
-  const tasks: {label: string; value: number | null | undefined; icon: typeof Bell; tone: Tone; to: string; hint?: string}[] = [
-    {label: "Olvasatlan értesítés", value: summary?.unread_notifications, icon: Bell, tone: "gold", to: "/notifications"},
+  // Only what needs attention right now; zero counters stay hidden.
+  const tasks: {label: string; value: number | null | undefined; icon: typeof Info; tone: Tone; to: string}[] = [
     {label: "Javítandó vizsgalap", value: summary?.pending_exam_sheets, icon: ClipboardCheck, tone: "violet", to: "/exams?tab=grading"},
     {label: "Jóváhagyásra váró parancs", value: summary?.pending_warrants, icon: Gavel, tone: "red", to: "/mcb"},
     {label: "Új regisztráció", value: summary?.pending_registrations, icon: UserPlus, tone: "emerald", to: "/hr?tab=requests"},
     {label: "Szabadságkérelem", value: summary?.pending_leave_requests, icon: CalendarOff, tone: "blue", to: "/hr?tab=requests"},
     {label: "Járműigénylés", value: summary?.pending_vehicle_requests, icon: Truck, tone: "orange", to: "/logistics"},
     {label: "Költségtérítés", value: summary?.pending_budget_requests, icon: Receipt, tone: "emerald", to: "/finance"},
+    {label: "Lejáró forgalmi a flottában", value: summary?.fleet_registration_due, icon: Car, tone: "orange", to: "/logistics?tab=fleet"},
     {label: "Nyitott aktám", value: summary?.my_open_cases, icon: Fingerprint, tone: "blue", to: "/mcb"},
+    {label: "Járművem forgalmija", value: summary?.my_vehicles_due, icon: Car, tone: "gold", to: "/logistics?tab=fleet"},
   ];
-  const visibleTasks = tasks.filter((task) => task.value !== null);
+  const openTasks = tasks.filter((task) => (task.value ?? 0) > 0);
 
   return (
     <div className="space-y-6">
@@ -156,216 +142,246 @@ export function DashboardPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Greeting */}
-      <section className="panel relative overflow-hidden p-6 md:p-8">
-        <div className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-primary/10 blur-3xl"/>
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary/80">San Fierro Sheriff's Department</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white md:text-4xl">
-              {greeting}, {profile.full_name.split(" ")[0]}!
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {profile.faction_rank} · <span className="font-mono">#{profile.badge_number}</span> · {profile.division}
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[560px]">
-            <MiniFact label="Készültség" value={<span className={level.text}>{level.label}</span>}/>
-            <MiniFact label="Állomány" value={summary ? `${summary.members_total} fő` : "…"}
-                      hint={summary && summary.members_on_leave > 0 ? `${summary.members_on_leave} szabadságon` : undefined}/>
-            <MiniFact label="Rangon" value={formatSpan(daysSince(profile.last_promotion_date ?? profile.created_at))}
-                      hint={nextRank ? `Következő: ${nextRank}` : undefined}/>
-            <MiniFact label="Szolgálatban" value={formatSpan(daysSince(profile.created_at))}/>
-          </div>
-        </div>
-        {!!summary?.my_active_warnings && (
-          <button type="button" onClick={() => navigate("/profile")}
-                  className="relative mt-5 flex w-full items-center gap-3 rounded-xl bg-red-500/10 px-4 py-3 text-left text-sm text-red-200 ring-1 ring-red-500/25 hover:bg-red-500/15">
-            <AlertOctagon className="size-4 shrink-0 text-red-400"/>
-            {summary.my_active_warnings} aktív figyelmeztetésed van. Részletek a profilodon.
-            <ArrowRight className="ml-auto size-4"/>
-          </button>
-        )}
-      </section>
+      <Hero summary={summary} openTasks={openTasks.length}/>
 
-      {/* To do */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-slate-300">Teendők</h2>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {visibleTasks.map((task) => {
+      {openTasks.length > 0 && (
+        <section aria-label="Teendők" className="flex flex-wrap gap-3">
+          {openTasks.map((task, index) => {
             const tone = TONE_CLASSES[task.tone];
-            const count = task.value ?? 0;
             return (
-              <button key={task.label} type="button" onClick={() => navigate(task.to)}
-                      className={cn("panel group flex items-center gap-4 p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.03]",
-                        count === 0 && "opacity-60 hover:opacity-100")}>
-                <div className={cn("grid size-11 shrink-0 place-items-center rounded-xl ring-1", tone.tile)}><task.icon className="size-5"/></div>
+              <button key={task.label} type="button" onClick={() => navigate(task.to)} style={{"--i": index} as CSSProperties}
+                      className="panel lift animate-rise group flex min-w-[220px] flex-1 items-center gap-3 px-4 py-3 text-left sm:flex-none">
+                <div className={cn("grid size-10 shrink-0 place-items-center rounded-xl ring-1", tone.tile)}><task.icon className="size-5"/></div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-2xl font-semibold text-white tabular-nums">{summary ? count : "…"}</div>
+                  <div className="text-xl font-semibold leading-tight text-white tabular-nums">{task.value}</div>
                   <div className="truncate text-xs text-muted-foreground">{task.label}</div>
                 </div>
-                <ArrowRight className="size-4 text-slate-600 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-300"/>
+                <ArrowRight className="size-4 text-slate-600 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-200"/>
               </button>
             );
           })}
-        </div>
-      </section>
+        </section>
+      )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-        {/* Announcements */}
-        <section className="panel overflow-hidden">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <section className="panel animate-rise self-start overflow-hidden" style={{"--i": 2} as CSSProperties}>
           <header className="flex items-center gap-3 border-b px-5 py-4">
-            <Megaphone className="size-4 text-primary"/>
-            <h2 className="text-sm font-semibold text-white">Hirdetmények</h2>
+            <div className="grid size-9 place-items-center rounded-xl bg-primary/10 ring-1 ring-primary/25"><Megaphone className="size-4 text-primary"/></div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-white">Hirdetmények</h2>
+              <p className="text-xs text-slate-500">A vezetőség közleményei</p>
+            </div>
             {canPost && (
               <Button size="sm" className="ml-auto" onClick={() => setIsAnnouncementOpen(true)}><Plus/> Új hirdetmény</Button>
             )}
           </header>
           {announcements === null ? (
             <div className="space-y-3 p-5">
-              {[0, 1].map((i) => <div key={i} className="h-24 animate-pulse rounded-xl bg-white/[0.03]"/>)}
+              {[0, 1, 2].map((i) => <div key={i} className="skeleton h-24"/>)}
             </div>
           ) : announcements.length === 0 ? (
             <EmptyState icon={Megaphone} title="Nincs friss hirdetmény." compact/>
           ) : (
-            <ul className="divide-y divide-white/5">
-              {announcements.map((item) => {
-                const type = ANNOUNCEMENT_TYPES[item.type] ?? ANNOUNCEMENT_TYPES.info;
-                return (
-                  <li key={item.id} className={cn("group px-5 py-4", item.is_pinned && "bg-primary/[0.03]")}>
-                    <div className="flex items-start gap-3">
-                      <div className={cn("grid size-9 shrink-0 place-items-center rounded-xl ring-1", type.tone)}><type.icon className="size-4"/></div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {item.is_pinned && <Pin className="size-3.5 rotate-45 text-primary"/>}
-                          <h3 className="text-sm font-semibold text-white">{item.title}</h3>
-                          <span className="text-xs text-slate-500">{ago(item.created_at)}</span>
-                        </div>
-                        <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-300">{item.content}</p>
-                        <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
-                          {item.author_name ? (
-                            <>
-                              {item.author_name} · {item.author_rank}
-                              {!item.show_author && <span className="inline-flex items-center gap-1 text-amber-300/80" title="Mások csak a beosztást látják"><EyeOff className="size-3"/> rejtett</span>}
-                            </>
-                          ) : (
-                            <>{STAFF_CATEGORY_LABELS[item.author_category]}</>
-                          )}
-                        </p>
-                      </div>
-                      {item.can_delete && (
-                        <Button size="icon-sm" variant="ghost" title="Törlés" onClick={() => setDeleteId(item.id)}
-                                className="text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400">
-                          <Trash2 className="size-4"/>
-                        </Button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
+            <ul className="space-y-3 p-4">
+              {announcements.map((item, index) => (
+                <AnnouncementCard key={item.id} item={item} index={index} onDelete={() => setDeleteId(item.id)}/>
+              ))}
             </ul>
           )}
         </section>
 
-        <div className="space-y-6">
-          <Feed title="Állományhírek" icon={TrendingUp} empty="Még nincs változás." onMore={() => navigate("/hr?tab=history")}>
-            {events.map((event) => (
-              <li key={event.id} className="flex items-start gap-3 px-5 py-3">
-                <span className={cn("mt-1.5 size-2 shrink-0 rounded-full",
-                  event.kind === "award" ? "bg-amber-400" : event.kind === "joined" ? "bg-primary"
-                    : event.detail === "promotion" ? "bg-emerald-400" : "bg-red-400")}/>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-200">
-                    <span className="font-medium text-white">{event.member?.full_name ?? "Tag"}</span>{" "}
-                    <span className="text-slate-400">
-                      {event.kind === "award" ? "kitüntetést kapott" : event.kind === "joined" ? "csatlakozott"
-                        : event.detail === "promotion" ? "előléptetve" : "rendfokozata változott"}
-                    </span>
-                  </p>
-                  <p className="truncate text-xs text-slate-500">{describeEvent(event)}</p>
-                </div>
-                <span className="shrink-0 text-[11px] text-slate-500">{ago(event.created_at)}</span>
-              </li>
-            ))}
-          </Feed>
+        <ModuleGrid/>
+      </div>
+    </div>
+  );
+}
 
-          <Feed title="Eseménynapló (24 óra)" icon={Activity} empty="Csendes nap.">
-            {actionLogs.map((log) => (
-              <li key={log.id} className="flex items-start gap-3 px-5 py-3">
-                <div className={cn("grid size-7 shrink-0 place-items-center rounded-lg ring-1",
-                  log.action_type === "arrest" ? "bg-red-500/10 text-red-300 ring-red-500/25"
-                    : log.action_type === "ticket" ? "bg-orange-500/10 text-orange-300 ring-orange-500/25"
-                      : "bg-sky-500/10 text-sky-300 ring-sky-500/25")}>
-                  {log.action_type === "arrest" ? <AlertOctagon className="size-3.5"/> : log.action_type === "ticket" ? <Ticket className="size-3.5"/> : <Info className="size-3.5"/>}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-200">
-                    <span className="font-medium text-white">{log.profiles?.full_name ?? "Ismeretlen"}</span>{" "}
-                    <span className="text-slate-400">{log.action_type === "arrest" ? "letartóztatás" : log.action_type === "ticket" ? "bírság" : "bejegyzés"}</span>
-                  </p>
-                  <p className="line-clamp-2 break-words text-xs text-slate-500">{log.details}</p>
-                </div>
-                <span className="shrink-0 text-[11px] text-slate-500">
-                  {new Date(log.created_at).toLocaleTimeString("hu-HU", {hour: "2-digit", minute: "2-digit"})}
-                </span>
-              </li>
-            ))}
-          </Feed>
+/** Greeting with the department star, live clock, alert level and personal facts. */
+function Hero({summary, openTasks}: {summary: DashboardSummary | null; openTasks: number}) {
+  const {profile} = useAuth();
+  const {alertLevel} = useSystemStatus();
+  const navigate = useNavigate();
+  const now = useClock();
+  const greeting = useMemo(() => {
+    const hour = now.getHours();
+    return hour < 6 ? "Jó éjszakát" : hour < 10 ? "Jó reggelt" : hour < 18 ? "Szép napot" : "Jó estét";
+  }, [now]);
+  if (!profile) return null;
+  const level = ALERT_LEVELS[alertLevel];
+
+  return (
+    <section className="panel glow-border animate-rise relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_85%_20%,rgb(234_179_8/0.18),transparent_45%),radial-gradient(circle_at_10%_100%,rgb(56_189_248/0.12),transparent_50%)]"/>
+      <div className="tex-grid pointer-events-none absolute inset-0 opacity-[0.03] [mask-image:linear-gradient(to_left,#000,transparent_70%)]"/>
+
+      <div className="relative flex flex-col gap-8 p-6 md:p-8 lg:flex-row lg:items-center">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-primary/80">San Fierro Sheriff's Department</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-5xl">
+            {greeting}, <span className="text-gold animate-shine">{profile.full_name.split(" ")[0]}</span>!
+          </h1>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+            <span className={cn("rounded-full px-2.5 py-1 font-medium ring-1", rankPillClass(profile.faction_rank))}>{profile.faction_rank}</span>
+            <span className="rounded-full bg-white/5 px-2.5 py-1 font-mono text-slate-200 ring-1 ring-white/10">#{profile.badge_number}</span>
+            <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-300 ring-1 ring-white/10">{profile.division}</span>
+            <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+              {formatSpan(daysSince(profile.created_at))} szolgálatban
+            </span>
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-end gap-x-8 gap-y-4">
+            <div>
+              <div className="font-mono text-3xl font-semibold tabular-nums tracking-tight text-white">{format(now, "HH:mm")}
+                <span className="text-lg text-slate-500">:{format(now, "ss")}</span>
+              </div>
+              <div className="text-xs capitalize text-slate-400">{format(now, "yyyy. MMMM d., EEEE", {locale: hu})}</div>
+            </div>
+            <div className={cn("flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium ring-1", level.badge)}>
+              <span className={cn("relative flex size-2.5", level.text)}>
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60"/>
+                <span className="relative inline-flex size-2.5 rounded-full bg-current"/>
+              </span>
+              Készültség: {level.label}
+            </div>
+            {summary && (
+              <div className="text-xs text-slate-400">
+                <span className="font-semibold text-white tabular-nums">{summary.members_total}</span> fő az állományban
+                {summary.members_on_leave > 0 && <> · <span className="text-sky-300">{summary.members_on_leave} szabadságon</span></>}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            {!!summary?.my_active_warnings && (
+              <button type="button" onClick={() => navigate("/profile")}
+                      className="flex items-center gap-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-200 ring-1 ring-red-500/30 transition-colors hover:bg-red-500/15">
+                <AlertOctagon className="size-4 text-red-400"/> {summary.my_active_warnings} aktív figyelmeztetés
+              </button>
+            )}
+            {!!summary?.my_vehicle_warnings && (
+              <button type="button" onClick={() => navigate("/profile")}
+                      className="flex items-center gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-sm text-amber-200 ring-1 ring-amber-500/30 transition-colors hover:bg-amber-500/15">
+                <Car className="size-4 text-amber-400"/> {summary.my_vehicle_warnings}/3 jármű-hibapont
+              </button>
+            )}
+            {summary && openTasks === 0 && !summary.my_active_warnings && (
+              <span className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 ring-1 ring-emerald-500/25">
+                <CheckCircle2 className="size-4 text-emerald-400"/> Nincs függő teendőd
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="relative mx-auto grid size-36 shrink-0 place-items-center sm:size-48 md:size-56 lg:mx-0">
+          <div className="absolute inset-0 rounded-full border border-dashed border-yellow-500/30 motion-safe:animate-[spin_60s_linear_infinite]"/>
+          <div className="absolute inset-4 rounded-full border-2 border-yellow-500/15 border-t-yellow-400/60 border-b-transparent motion-safe:animate-[spin_14s_linear_infinite_reverse]"/>
+          <div className="absolute inset-10 rounded-full bg-yellow-500/15 blur-2xl motion-safe:animate-[backdrop-breathe_6s_ease-in-out_infinite]"/>
+          <SheriffStar className="relative size-28 drop-shadow-[0_8px_30px_rgb(234_179_8/0.45)] motion-safe:animate-[float-y_7s_ease-in-out_infinite] sm:size-36 md:size-40"/>
         </div>
       </div>
-
-      {/* Modules */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-slate-300">Gyors elérés</h2>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-9">
-          {[
-            {label: "Nyomozó Iroda", icon: Fingerprint, to: "/mcb", tone: "blue" as Tone, show: canViewCaseList(profile)},
-            {label: "Logisztika", icon: Truck, to: "/logistics", tone: "orange" as Tone, show: true},
-            {label: "Pénzügy", icon: Banknote, to: "/finance", tone: "emerald" as Tone, show: true},
-            {label: "Vizsgaközpont", icon: ScrollText, to: "/exams", tone: "violet" as Tone, show: true},
-            {label: "Kalkulátor", icon: Gavel, to: "/calculator", tone: "red" as Tone, show: true},
-            {label: "Jelentések", icon: FileText, to: "/reports", tone: "cyan" as Tone, show: true},
-            {label: "Akadémia", icon: GraduationCap, to: "/academy", tone: "blue" as Tone, show: true},
-            {label: "Személyügy", icon: Users, to: "/hr", tone: "gold" as Tone, show: true},
-            {label: "Profilom", icon: ShieldCheck, to: "/profile", tone: "slate" as Tone, show: true},
-          ].filter((module) => module.show).map((module) => (
-            <button key={module.to} type="button" onClick={() => navigate(module.to)}
-                    className="panel group flex flex-col items-start gap-3 p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.03]">
-              <div className={cn("grid size-10 place-items-center rounded-xl ring-1", TONE_CLASSES[module.tone].tile)}><module.icon className="size-5"/></div>
-              <span className="text-sm font-medium text-slate-200 group-hover:text-white">{module.label}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function MiniFact({label, value, hint}: {label: string; value: ReactNode; hint?: string}) {
-  return (
-    <div className="rounded-xl bg-white/[0.03] px-4 py-3 ring-1 ring-white/5">
-      <div className="text-[11px] text-slate-500">{label}</div>
-      <div className="mt-0.5 truncate text-sm font-semibold text-white">{value}</div>
-      {hint && <div className="truncate text-[11px] text-slate-500">{hint}</div>}
-    </div>
-  );
-}
-
-function Feed({title, icon: Icon, empty, onMore, children}: {
-  title: string; icon: typeof Activity; empty: string; onMore?: () => void; children: ReactNode[];
-}) {
-  return (
-    <section className="panel overflow-hidden">
-      <header className="flex items-center gap-3 border-b px-5 py-3.5">
-        <Icon className="size-4 text-primary"/>
-        <h2 className="text-sm font-semibold text-white">{title}</h2>
-        {onMore && (
-          <button type="button" onClick={onMore} className="ml-auto text-xs text-slate-400 hover:text-white">Mind</button>
-        )}
-      </header>
-      {children.length === 0 ? <EmptyState icon={Icon} title={empty} compact/> : <ul className="divide-y divide-white/5">{children}</ul>}
     </section>
   );
+}
+
+function AnnouncementCard({item, index, onDelete}: {item: FeedAnnouncement; index: number; onDelete: () => void}) {
+  const type = ANNOUNCEMENT_TYPES[item.type] ?? ANNOUNCEMENT_TYPES.info;
+  const [expanded, setExpanded] = useState(false);
+  const long = item.content.length > 360 || item.content.split("\n").length > 6;
+
+  return (
+    <li style={{"--i": Math.min(index, 8)} as CSSProperties}
+        className={cn("animate-rise group relative overflow-hidden rounded-xl bg-white/[0.025] p-4 pl-5 ring-1 ring-white/[0.06] transition-colors hover:bg-white/[0.04]",
+          item.is_pinned && "bg-primary/[0.05] ring-primary/25")}>
+      <span className={cn("absolute inset-y-0 left-0 w-1 bg-gradient-to-b", type.bar)}/>
+      <div className="flex items-start gap-3">
+        <div className={cn("grid size-9 shrink-0 place-items-center rounded-xl ring-1", type.tone)}><type.icon className="size-4"/></div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {item.is_pinned && <Pin className="size-3.5 rotate-45 text-primary"/>}
+            <h3 className="min-w-0 text-sm font-semibold text-white wrap-anywhere">{item.title}</h3>
+            <span className="text-xs text-slate-500">{ago(item.created_at)}</span>
+          </div>
+          <p className={cn("mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-slate-300 wrap-anywhere", long && !expanded && "line-clamp-5")}>
+            {item.content}
+          </p>
+          {long && (
+            <button type="button" onClick={() => setExpanded((value) => !value)}
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary/90 hover:text-primary">
+              {expanded ? "Kevesebb" : "Tovább olvasom"} <ChevronDown className={cn("size-3.5 transition-transform", expanded && "rotate-180")}/>
+            </button>
+          )}
+          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+            {item.author_name ? (
+              <>
+                {item.author_name} · {item.author_rank}
+                {!item.show_author && <span className="inline-flex items-center gap-1 text-amber-300/80" title="Mások csak a beosztást látják"><EyeOff className="size-3"/> rejtett</span>}
+              </>
+            ) : (
+              <>{STAFF_CATEGORY_LABELS[item.author_category]}</>
+            )}
+          </p>
+        </div>
+        {item.can_delete && (
+          <Button size="icon-sm" variant="ghost" title="Törlés" onClick={onDelete}
+                  className="text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-400">
+            <Trash2 className="size-4"/>
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function ModuleGrid() {
+  const {profile} = useAuth();
+  const navigate = useNavigate();
+  if (!profile) return null;
+  const modules = [
+    {label: "Nyomozó Iroda", hint: "Akták, körözések", icon: Fingerprint, to: "/mcb", tone: "blue" as Tone, show: canViewCaseList(profile)},
+    {label: "Logisztika", hint: "Járművek, flotta", icon: Truck, to: "/logistics", tone: "orange" as Tone, show: true},
+    {label: "Pénzügy", hint: "Költségtérítés", icon: Banknote, to: "/finance", tone: "emerald" as Tone, show: true},
+    {label: "Vizsgaközpont", hint: "Vizsgák, javítás", icon: ScrollText, to: "/exams", tone: "violet" as Tone, show: true},
+    {label: "Akadémia", hint: "Tananyagok", icon: GraduationCap, to: "/academy", tone: "cyan" as Tone, show: true},
+    {label: "Kalkulátor", hint: "Büntető törvénykönyv", icon: Gavel, to: "/calculator", tone: "red" as Tone, show: true},
+    {label: "Jelentések", hint: "Jelentésgenerátor", icon: FileText, to: "/reports", tone: "slate" as Tone, show: true},
+    {label: "Személyügy", hint: "Állomány, duty idő", icon: Users, to: "/hr", tone: "gold" as Tone, show: true},
+  ].filter((module) => module.show);
+
+  return (
+    <section className="animate-rise" style={{"--i": 3} as CSSProperties}>
+      <h2 className="mb-3 px-1 text-sm font-semibold text-slate-300">Gyors elérés</h2>
+      <div className="grid grid-cols-2 gap-3">
+        {modules.map((module, index) => {
+          const tone = TONE_CLASSES[module.tone];
+          return (
+            <button key={module.to} type="button" onClick={() => navigate(module.to)} style={{"--i": index + 4} as CSSProperties}
+                    className="panel lift animate-rise group relative flex flex-col items-start gap-3 overflow-hidden p-4 text-left">
+              <div className={cn("pointer-events-none absolute -right-8 -bottom-8 size-24 rounded-full bg-gradient-to-br opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-40", tone.gradient)}/>
+              <div className={cn("relative grid size-11 place-items-center rounded-xl bg-gradient-to-br p-px transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3", tone.gradient)}>
+                <div className="grid size-full place-items-center rounded-[11px] bg-[#0a1120]/85">
+                  <module.icon className={cn("size-5", tone.text)}/>
+                </div>
+              </div>
+              <div className="relative min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-100 group-hover:text-white">{module.label}</div>
+                <div className="truncate text-xs text-slate-500">{module.hint}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** Current time, refreshed every second (only while the dashboard is open). */
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
 }
 
 function NewAnnouncementDialog({open, onOpenChange, onCreated}: {open: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void}) {
@@ -420,7 +436,8 @@ function NewAnnouncementDialog({open, onOpenChange, onCreated}: {open: boolean; 
           </div>
           <div className="space-y-1.5">
             <Label>Üzenet</Label>
-            <Textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} placeholder="Írd ide az üzenetet…"/>
+            <Textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} maxLength={4000}
+                      className="max-h-[40vh]" placeholder="Írd ide az üzenetet…"/>
           </div>
           <label className="flex items-center justify-between gap-3 text-sm text-slate-200">
             <span>Kiemelés <span className="block text-xs text-slate-500">A lista tetején marad.</span></span>

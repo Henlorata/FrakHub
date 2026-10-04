@@ -1,13 +1,17 @@
 import {useState} from "react";
 import {toast} from "sonner";
-import {CalendarOff, Check, Inbox, Loader2, UserPlus, X} from "lucide-react";
+import {CalendarOff, Check, History, Inbox, Loader2, UserPlus, X} from "lucide-react";
 import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {canManageRecords, errorMessage, getAllowedPromotionRanks, isStaff} from "@/lib/utils";
-import type {HrRecord, Profile} from "@/types/supabase";
+import {JOIN_TYPE_LABELS, LEAVE_TYPE_META, REHIRE_META} from "@/lib/registry";
+import {cn} from "@/lib/utils";
+import type {FormerMember, HrRecord, JoinType, Profile} from "@/types/supabase";
 import {formatDate} from "../hr-utils";
-import type {HrMember, MemberChanges} from "../useHrData";
+import type {DetailsPatch, HrMember, MemberChanges} from "../useHrData";
+import {findFormerMatch, useFormerMembers} from "./FormerMembersPanel";
 
 interface RequestsPanelProps {
   viewer: Profile;
@@ -17,11 +21,13 @@ interface RequestsPanelProps {
   onApprove: (memberId: string, changes: MemberChanges) => Promise<unknown>;
   onReject: (member: HrMember) => Promise<void>;
   onDecideLeave: (record: HrRecord, approve: boolean) => Promise<boolean>;
+  onSaveDetails: (memberId: string, patch: DetailsPatch) => Promise<void>;
 }
 
-/** Registrations waiting for approval and leave requests. */
-export function RequestsPanel({viewer, pending, members, leaveRequests, onApprove, onReject, onDecideLeave}: RequestsPanelProps) {
+/** Registrations waiting for approval (returning members are recognised) and leave requests. */
+export function RequestsPanel({viewer, pending, members, leaveRequests, onApprove, onReject, onDecideLeave, onSaveDetails}: RequestsPanelProps) {
   const memberById = new Map(members.map((member) => [member.id, member]));
+  const {rows: formerRows} = useFormerMembers();
 
   return (
     <div className="grid gap-6 xl:grid-cols-2">
@@ -36,7 +42,8 @@ export function RequestsPanel({viewer, pending, members, leaveRequests, onApprov
         ) : (
           <ul className="divide-y divide-white/5">
             {pending.map((member) => (
-              <PendingRow key={member.id} member={member} viewer={viewer} onApprove={onApprove} onReject={onReject}/>
+              <PendingRow key={member.id} member={member} viewer={viewer} onApprove={onApprove} onReject={onReject}
+                          former={findFormerMatch(formerRows, member)} onSaveDetails={onSaveDetails}/>
             ))}
           </ul>
         )}
@@ -66,11 +73,15 @@ export function RequestsPanel({viewer, pending, members, leaveRequests, onApprov
   );
 }
 
-function PendingRow({member, viewer, onApprove, onReject}: {
+function PendingRow({member, viewer, onApprove, onReject, former, onSaveDetails}: {
   member: HrMember; viewer: Profile;
   onApprove: (memberId: string, changes: MemberChanges) => Promise<unknown>;
   onReject: (member: HrMember) => Promise<void>;
+  former: FormerMember | null;
+  onSaveDetails: (memberId: string, patch: DetailsPatch) => Promise<void>;
 }) {
+  const [joinType, setJoinType] = useState<JoinType>(former ? "returned" : "new");
+  const [recruiter, setRecruiter] = useState(viewer.full_name);
   const allowedRanks = viewer.is_bureau_manager ? null : getAllowedPromotionRanks(viewer);
   const claimedAllowed = !allowedRanks || allowedRanks.includes(member.faction_rank);
   const [rank, setRank] = useState<string>(claimedAllowed ? member.faction_rank : allowedRanks?.at(-1) ?? member.faction_rank);
@@ -82,6 +93,9 @@ function PendingRow({member, viewer, onApprove, onReject}: {
     try {
       await onApprove(member.id, rank !== member.faction_rank ? {faction_rank: rank} : {});
       toast.success(`${member.full_name} jóváhagyva (${rank}).`);
+      // The sheet's "joined / returned" and "recruiter" columns, filled at the moment of approval.
+      onSaveDetails(member.id, {joined_on: new Date().toISOString().slice(0, 10), join_type: joinType, recruited_by: recruiter.trim() || null})
+        .catch(() => toast.warning("A csatlakozási adatokat nem sikerült menteni; a Nyilvántartás fülön pótolható."));
     } catch (error) {
       toast.error(errorMessage(error, "A jóváhagyás nem sikerült."));
       setBusy(null);
@@ -107,6 +121,28 @@ function PendingRow({member, viewer, onApprove, onReject}: {
           <span className="font-mono">#{member.badge_number}</span> · {member.division} · regisztrált: {formatDate(member.created_at)}
         </p>
         <p className="mt-0.5 text-xs text-amber-300/80">Megadott rang: {member.faction_rank}</p>
+        {former && (
+          <div className={cn("mt-2 rounded-lg px-3 py-2 text-xs ring-1", REHIRE_META[former.rehire].pill)}>
+            <p className="flex items-center gap-1.5 font-semibold"><History className="size-3.5"/> Korábbi tag: {REHIRE_META[former.rehire].label}</p>
+            <p className="mt-0.5 opacity-90">
+              {former.faction_rank ?? "?"} · {LEAVE_TYPE_META[former.leave_type].label.toLowerCase()} {formatDate(former.left_on)}
+              {former.reason && <> · {former.reason}</>}
+            </p>
+            {former.rehire_note && <p className="mt-0.5 opacity-80">{former.rehire_note}</p>}
+          </div>
+        )}
+        {isStaff(viewer) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Select value={joinType} onValueChange={(value) => setJoinType(value as JoinType)}>
+              <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue/></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(JOIN_TYPE_LABELS) as JoinType[]).map((type) => <SelectItem key={type} value={type}>{JOIN_TYPE_LABELS[type]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input value={recruiter} onChange={(event) => setRecruiter(event.target.value)} maxLength={80}
+                   placeholder="Felvételiztető" title="Felvételiztető" className="h-8 w-[180px] text-xs"/>
+          </div>
+        )}
       </div>
       {isStaff(viewer) && (
         <div className="flex items-center gap-2">

@@ -28,7 +28,7 @@ const tempId = () => `temp-${Math.random().toString(36).substr(2, 9)}`;
 
 // --- STÍLUS KONSTANSOK ---
 const EDITOR_INPUT = "bg-[#0f172a] border-slate-800 focus-visible:ring-yellow-500/30 focus-visible:border-yellow-500/50 font-mono text-sm text-white";
-const QUESTION_CARD = "bg-[#0b1221] border border-slate-800 relative group transition-all hover:border-slate-600 shadow-lg overflow-hidden";
+const QUESTION_CARD = "bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 relative group transition-all hover:border-slate-600 shadow-lg overflow-hidden";
 
 const preventInvalidNumberInput = (e: React.KeyboardEvent) => {
   if (['e', 'E', '+', '-'].includes(e.key)) {
@@ -553,7 +553,7 @@ export function ExamEditor() {
 
       {/* --- HEADER --- */}
       <div
-        className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-[#0b1221] border border-slate-800 p-6 rounded-xl shadow-2xl">
+        className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 p-6 rounded-xl shadow-2xl">
         <div className="flex items-center gap-4">
           <Button variant="outline" size="icon" onClick={() => navigate('/exams')}
                   className="border-slate-700 text-slate-400 hover:text-white bg-slate-900"><ArrowLeft
@@ -573,7 +573,7 @@ export function ExamEditor() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full justify-start h-14 bg-[#0b1221] border border-slate-800 rounded-xl p-1 mb-6 gap-2">
+        <TabsList className="w-full justify-start h-14 bg-[#0b1221]/75 backdrop-blur-xl border border-slate-800 rounded-xl p-1 mb-6 gap-2">
           <TabsTrigger value="settings"
                        className="h-full px-6 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-slate-800 data-[state=active]:text-white text-slate-500"><Settings
             className="w-4 h-4 mr-2"/> BEÁLLÍTÁSOK</TabsTrigger>
@@ -687,7 +687,7 @@ export function ExamEditor() {
           )}
 
           <div
-            className="flex items-center justify-between bg-[#0b1221] p-2 rounded-xl border border-slate-800 shadow-lg sticky top-[4.5rem] z-20">
+            className="flex items-center justify-between bg-[#0b1221]/75 backdrop-blur-xl p-2 rounded-xl border border-slate-800 shadow-lg sticky top-[4.5rem] z-20">
             <Button variant="ghost" disabled={currentEditorPage === 1} onClick={() => setCurrentEditorPage(p => p - 1)}
                     className="text-slate-400 hover:text-white hover:bg-slate-800"><ChevronLeft
               className="w-4 h-4 mr-2"/> ELŐZŐ</Button>

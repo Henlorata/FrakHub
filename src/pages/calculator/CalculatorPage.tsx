@@ -1177,14 +1177,14 @@ export function CalculatorPage() {
         {/* GRID LAYOUT */}
         <div className={cn(
           "grid gap-8 items-start relative",
-          "grid-cols-1 lg:grid-cols-[1fr_400px]",
-          isCategorySidebarVisible ? "xl:grid-cols-[280px_1fr_450px]" : "xl:grid-cols-[1fr_460px]"
+          "grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px]",
+          isCategorySidebarVisible ? "2xl:grid-cols-[260px_minmax(0,1fr)_440px]" : "2xl:grid-cols-[minmax(0,1fr)_460px]"
         )}>
 
           {/* 1. BAL OSZLOP (Kategóriák) */}
           {isCategorySidebarVisible && (
             <div
-              className="hidden xl:flex flex-col sticky top-20 h-fit max-h-[calc(100dvh-6rem)] overflow-y-auto scrollbar-hide bg-slate-900/40 rounded-xl border border-slate-800/50 backdrop-blur-sm transition-all duration-300">
+              className="hidden 2xl:flex flex-col sticky top-20 h-fit max-h-[calc(100dvh-6rem)] overflow-y-auto scrollbar-hide bg-slate-900/40 rounded-xl border border-slate-800/50 backdrop-blur-sm transition-all duration-300">
               <div className="p-4 border-b border-slate-800/50 sticky top-0 bg-slate-950/80 backdrop-blur-md z-10">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
                   <ClipboardList className="w-3 h-3"/> Kategóriák
@@ -1250,9 +1250,9 @@ export function CalculatorPage() {
                         className="h-9 w-9 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
                         onClick={() => setIsTemplateModalOpen(true)} title="Sablonok"><ClipboardCheck
                   className="w-4 h-4"/></Button>
-                <div className="hidden xl:block w-px h-6 bg-white/10 mx-1"/>
+                <div className="hidden 2xl:block w-px h-6 bg-white/10 mx-1"/>
                 <Button size="icon" variant="ghost"
-                        className="hidden xl:flex h-9 w-9 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
+                        className="hidden 2xl:flex h-9 w-9 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
                         onClick={() => setIsCategorySidebarVisible(!isCategorySidebarVisible)}
                         title={isCategorySidebarVisible ? "Kategóriák elrejtése" : "Kategóriák megjelenítése"}>
                   {isCategorySidebarVisible ? <PanelLeftClose className="w-4 h-4"/> :

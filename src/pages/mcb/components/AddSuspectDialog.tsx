@@ -88,7 +88,7 @@ export function AddSuspectDialog({
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
-        className="bg-[#0a0f1c] border border-sky-900/50 text-white sm:max-w-md p-0 overflow-hidden shadow-2xl">
+        className="bg-[#0a0f1c]/80 backdrop-blur-xl border border-sky-900/50 text-white sm:max-w-md p-0 overflow-hidden shadow-2xl">
         <div className="bg-sky-950/30 border-b border-sky-900/30 px-6 py-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded bg-sky-500/10 flex items-center justify-center border border-sky-500/20">
             <UserPlus className="w-5 h-5 text-sky-400"/>

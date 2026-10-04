@@ -178,7 +178,7 @@ export function WarrantDialog({open, onOpenChange, caseId, suspects, onSuccess}:
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#0a0f1c] border border-red-900/40 text-white sm:max-w-lg max-h-[90vh] p-0 overflow-hidden shadow-[0_0_50px_rgba(220,38,38,0.1)]">
+        className="bg-[#0a0f1c]/80 backdrop-blur-xl border border-red-900/40 text-white sm:max-w-lg max-h-[90vh] p-0 overflow-hidden shadow-[0_0_50px_rgba(220,38,38,0.1)]">
         <div className="bg-red-950/20 border-b border-red-900/30 px-6 py-4 flex items-center gap-3">
           <div
             className="w-10 h-10 rounded bg-red-500/10 flex items-center justify-center border border-red-500/20 animate-pulse">
