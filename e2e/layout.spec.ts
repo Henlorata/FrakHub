@@ -25,6 +25,14 @@ const data = {
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       profiles: {full_name: LONG.slice(0, 64), badge_number: "4001", faction_rank: "Deputy Sheriff II."},
     }],
+    fleet_categories: [{id: "other", name: LONG.slice(0, 80), description: LONG.slice(0, 300), unit: null, min_rank: null, tone: "green", sort_order: 1}],
+    fleet_vehicles: [{
+      id: "fv1", plate: "SFSD-0123456789", model: LONG.slice(0, 60), category_id: "other", game_id: 99999999, station: "Downtown",
+      callsign: null, license_name: null, capacity: 2, shared_label: LONG.slice(0, 60), allowed_units: null, min_rank: null,
+      is_unmarked: true, registration_required: true, registration_expires_on: null, notes: LONG.slice(0, 500), is_active: true,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      holders: [{user_id: longMember.id, is_temporary: true, note: LONG.slice(0, 200), assigned_at: new Date().toISOString()}],
+    }],
   },
   rpc: {
     get_announcements: [{
@@ -68,7 +76,7 @@ test.describe("long unbroken text", () => {
       await login(page);
       await expect(page).toHaveURL(/\/dashboard$/);
 
-      for (const path of ["/dashboard", "/notifications", "/logistics", "/hr", "/profile"]) {
+      for (const path of ["/dashboard", "/notifications", "/logistics", "/logistics?tab=fleet", "/logistics/fleet/fv1", "/hr", "/profile"]) {
         await page.goto(path);
         await page.waitForLoadState("networkidle");
         await expectNoHorizontalOverflow(page, path);

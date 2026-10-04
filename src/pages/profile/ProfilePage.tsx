@@ -1,8 +1,8 @@
 import * as React from "react";
-import {useNavigate, useSearchParams} from "react-router";
+import {Link, useNavigate, useSearchParams} from "react-router";
 import {toast} from "sonner";
 import {
-  AlertTriangle, BellRing, Briefcase, CalendarClock, CalendarOff, CalendarPlus, Camera, Car, CheckCircle2, Clock, History,
+  AlertTriangle, BellRing, Briefcase, CalendarClock, CalendarOff, CalendarPlus, Camera, Car, CheckCircle2, Clock, History, Hourglass,
   Key, Landmark, Loader2, Medal, NotebookPen, RefreshCw, Save, ShieldCheck, ThumbsUp, TrendingUp, UploadCloud, UserCog, X,
 } from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
@@ -27,10 +27,14 @@ import {
 } from "@/lib/registry";
 import {cn, errorMessage} from "@/lib/utils";
 import {subMonths} from "date-fns";
-import type {DutyTimeEntry, FleetVehicle, HrRecord, HrRegistry, MemberDetails, Profile, Ribbon, VehicleWarning} from "@/types/supabase";
+import type {
+  DutyTimeEntry, FleetVehicle, HrRecord, HrRegistry, MemberDetails, Profile, RegistryVehicle, Ribbon, VehicleWarning,
+} from "@/types/supabase";
 import {IdCard} from "./IdCard";
 import {StrikeDots} from "@/components/hr/StrikeDots";
-import {RenewRegistrationDialog} from "@/components/fleet/RenewRegistrationDialog";
+import {RegistrationDialog} from "@/components/fleet/RegistrationDialog";
+import {LicensePlate} from "@/components/fleet/LicensePlate";
+import {fetchFleetVehicle} from "@/lib/fleet-store";
 
 interface AwardedRibbon extends Ribbon {
   awarded_at: string;
@@ -67,7 +71,7 @@ export function ProfilePage() {
   const [records, setRecords] = React.useState<HrRecord[] | null>(null);
   const [details, setDetails] = React.useState<MemberDetails | null>(null);
   const [duty, setDuty] = React.useState<DutyTimeEntry[]>([]);
-  const [vehicles, setVehicles] = React.useState<FleetVehicle[] | null>(null);
+  const [vehicles, setVehicles] = React.useState<RegistryVehicle[] | null>(null);
   const [vehicleWarnings, setVehicleWarnings] = React.useState<VehicleWarning[]>([]);
   const [bankAccount, setBankAccount] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState(searchParams.get("leave") ? "records" : searchParams.get("tab") ?? "overview");
@@ -169,7 +173,7 @@ export function ProfilePage() {
   const activeVehicleWarnings = vehicleWarnings.filter((warning) => !warning.revoked_at && !warning.converted_record_id);
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1500px] space-y-6">
       <LeaveRequestDialog open={leaveOpen} onOpenChange={closeLeaveDialog} onCreated={(record) => {
         setRecords((prev) => [record, ...(prev ?? [])]);
         changeTab("records");
@@ -260,8 +264,9 @@ export function ProfilePage() {
               </section>
 
               <section className="panel animate-rise overflow-hidden" style={{"--i": 1} as React.CSSProperties}>
-                <div className="px-5 pt-5"><SectionTitle icon={Car} title="Járműveim" hint="A forgalmi lejárta előtt értesítést kapsz."/></div>
-                <MyVehicles vehicles={vehicles} onRenewed={(vehicle) => setVehicles((prev) => (prev ?? []).map((item) => item.id === vehicle.id ? {...item, ...vehicle} : item))}/>
+                <div className="px-5 pt-5"><SectionTitle icon={Car} title="Járműveim" hint="A forgalmi lejárta előtt értesítést kapsz; a megújítást a forgalmi képével rögzítheted."/></div>
+                <MyVehicles vehicles={vehicles} onRenewed={(vehicle) => setVehicles((prev) => (prev ?? []).map((item) => item.id === vehicle.id
+                  ? {...item, registration_expires_on: vehicle.registration_expires_on} : item))} onReviewChange={() => void loadData()}/>
                 {vehicleWarnings.length > 0 && (
                   <div className="border-t px-5 py-4">
                     <div className="mb-2 flex items-center justify-between gap-3">
@@ -406,29 +411,66 @@ function SectionTitle({icon: Icon, title, hint}: {icon: typeof Clock; title: str
   );
 }
 
-function MyVehicles({vehicles, onRenewed}: {vehicles: FleetVehicle[] | null; onRenewed: (vehicle: FleetVehicle) => void}) {
+function MyVehicles({vehicles, onRenewed, onReviewChange}: {
+  vehicles: RegistryVehicle[] | null;
+  onRenewed: (vehicle: FleetVehicle) => void;
+  onReviewChange: () => void;
+}) {
   const [renewing, setRenewing] = React.useState<FleetVehicle | null>(null);
+  const [opening, setOpening] = React.useState<string | null>(null);
   if (vehicles === null) return <div className="space-y-2 p-5">{[0, 1].map((i) => <div key={i} className="skeleton h-14"/>)}</div>;
   if (vehicles.length === 0) {
-    return <EmptyState icon={Car} title="Nincs hozzád rendelt jármű." description="A jóváhagyott járműigénylések automatikusan ide kerülnek." compact/>;
+    return <EmptyState icon={Car} title="Nincs hozzád rendelt jármű." description="A kiosztott járműveid és a jóváhagyott igényléseid ide kerülnek." compact/>;
   }
+
+  // The full vehicle (keys, rules) is loaded only when a renewal is started.
+  const open = async (vehicle: RegistryVehicle) => {
+    setOpening(vehicle.id);
+    try {
+      const full = await fetchFleetVehicle(vehicle.id);
+      if (full) setRenewing(full);
+    } catch (error) {
+      toast.error(errorMessage(error, "A jármű betöltése nem sikerült."));
+    } finally {
+      setOpening(null);
+    }
+  };
+
   return (
     <>
       <ul className="divide-y divide-white/5">
         {vehicles.map((vehicle) => (
           <li key={vehicle.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
-            <div className="rounded-md bg-gradient-to-b from-slate-100 to-slate-300 px-2.5 py-1 font-mono text-sm font-bold tracking-widest text-slate-900 shadow ring-1 ring-black/30">
-              {vehicle.plate}
-            </div>
+            <Link to={`/logistics/fleet/${vehicle.id}`} className="transition-opacity hover:opacity-85"><LicensePlate plate={vehicle.plate}/></Link>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-white">{vehicle.model}</p>
-              <RegistrationBadge expiresOn={vehicle.registration_expires_on} className="mt-1"/>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {vehicle.registration_required
+                  ? <RegistrationBadge expiresOn={vehicle.registration_expires_on}/>
+                  : <span className="text-[11px] text-teal-200">Nem kell forgalmi</span>}
+                {vehicle.pending_review && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200 ring-1 ring-amber-500/30">
+                    <Hourglass className="size-3"/> Ellenőrzésre vár
+                  </span>
+                )}
+              </div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setRenewing(vehicle)}><RefreshCw/> Forgalmi megújítva</Button>
+            {vehicle.registration_required && (
+              <Button size="sm" variant="outline" disabled={opening === vehicle.id} onClick={() => void open(vehicle)}>
+                {opening === vehicle.id ? <Loader2 className="animate-spin"/> : <RefreshCw/>} Forgalmi frissítése
+              </Button>
+            )}
           </li>
         ))}
       </ul>
-      <RenewRegistrationDialog key={renewing?.id ?? "none"} vehicle={renewing} onOpenChange={(open) => !open && setRenewing(null)} onRenewed={onRenewed}/>
+      {renewing && (
+        <RegistrationDialog open vehicle={renewing} onChanged={onRenewed} onOpenChange={(next) => {
+          if (!next) {
+            setRenewing(null);
+            onReviewChange();
+          }
+        }}/>
+      )}
     </>
   );
 }

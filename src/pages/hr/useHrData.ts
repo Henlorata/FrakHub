@@ -6,8 +6,8 @@ import {invalidateProfileDirectory} from "@/lib/profile-directory";
 import {errorMessage, getRankPriority, isStaff} from "@/lib/utils";
 import {recentMonths} from "@/lib/registry";
 import {
-  PROFILE_COLUMNS, type ActiveLeave, type DutyTimeEntry, type FleetVehicle, type HrRecord, type HrRegistry, type MemberDetails,
-  type Profile,
+  PROFILE_COLUMNS, type ActiveLeave, type DutyTimeEntry, type HrRecord, type HrRegistry, type MemberDetails, type Profile,
+  type RegistryVehicle,
 } from "@/types/supabase";
 
 export interface AwardSummary {
@@ -33,7 +33,8 @@ export interface HrMember extends Profile {
   duty: DutyTimeEntry[];
   /** Duty time of the previous (closed) month, in minutes. */
   dutyLastMonth: number | null;
-  vehicles: FleetVehicle[];
+  /** Vehicles the member holds a key of. */
+  vehicles: RegistryVehicle[];
   /** Active vehicle warnings (staff, or the member's own). */
   vehicleWarnings: number;
   /** Bank account number (staff only). */
@@ -129,7 +130,7 @@ export function useHrData() {
           details: details.get(member.id) ?? null,
           duty: registry.duty.filter((entry) => entry.user_id === member.id),
           dutyLastMonth: registry.duty.find((entry) => entry.user_id === member.id && entry.month.slice(0, 10) === lastMonth)?.minutes ?? null,
-          vehicles: registry.vehicles.filter((vehicle) => vehicle.owner_id === member.id),
+          vehicles: registry.vehicles.filter((vehicle) => vehicle.holder_ids.includes(member.id)),
           vehicleWarnings: registry.vehicle_warnings.filter((warning) => warning.user_id === member.id
             && !warning.revoked_at && !warning.converted_record_id).length,
           bankAccount: accounts.get(member.id) ?? null,

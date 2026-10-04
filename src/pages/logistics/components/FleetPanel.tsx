@@ -1,403 +1,328 @@
 import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
+import {Link, useSearchParams} from "react-router";
 import {toast} from "sonner";
 import {
-  AlertTriangle, Car, Loader2, Pencil, Plus, RefreshCw, Save, Search, ShieldAlert, Trash2, Undo2, UserRound,
+  AlertTriangle, Car, ChevronDown, FileSearch, Gauge, KeyRound, MapPin, Plus, Search, ShieldAlert, Ship,
 } from "lucide-react";
 import {Input} from "@/components/ui/input";
-import {Label} from "@/components/ui/label";
 import {Button} from "@/components/ui/button";
-import {Textarea} from "@/components/ui/textarea";
 import {Switch} from "@/components/ui/switch";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {LicensePlate} from "@/components/fleet/LicensePlate";
 import {RegistrationBadge} from "@/components/fleet/RegistrationBadge";
-import {RenewRegistrationDialog} from "@/components/fleet/RenewRegistrationDialog";
-import {StrikeDots} from "@/components/hr/StrikeDots";
+import {FeatureBadges} from "@/components/fleet/VehicleFeatures";
+import {HolderNames, KeyMeter} from "@/components/fleet/Holders";
+import {AssignVehiclesDialog} from "@/components/fleet/AssignDialogs";
+import {IssueWarningDialog} from "@/components/fleet/IssueWarningDialog";
 import {useAuth} from "@/context/AuthContext";
-import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
+import {useLocalStorage} from "@/hooks/use-local-storage";
+import {canAssignAnyVehicle, FLEET_STATIONS, FLEET_TONES, freeKeys, UNIT_LABELS} from "@/lib/fleet";
+import {useFleet} from "@/lib/fleet-store";
 import {useProfileDirectory, type DirectoryProfile} from "@/lib/profile-directory";
 import {registrationStatus, type RegistrationState} from "@/lib/registry";
-import {cn, errorMessage} from "@/lib/utils";
-import {formatDate} from "@/pages/hr/hr-utils";
-import type {FleetVehicle, VehicleWarning} from "@/types/supabase";
+import {cn, isStaff} from "@/lib/utils";
+import type {FleetCategory, FleetVehicle, VehicleWarning} from "@/types/supabase";
+import {RegistrationReviews} from "./RegistrationReviews";
+import {WarningsList} from "./WarningsList";
+import {TuningPanel} from "./TuningPanel";
+import {VehicleEditorDialog} from "./VehicleEditorDialog";
 
-const VEHICLE_COLUMNS = "id, plate, model, owner_id, registration_expires_on, notes, is_active, created_at, updated_at";
 type StatusFilter = "all" | "attention" | RegistrationState;
+type View = "vehicles" | "reviews" | "warnings" | "tuning";
+const ALL = "all";
 
 const GLOW: Record<RegistrationState, string> = {
-  ok: "bg-emerald-500/20",
+  ok: "bg-emerald-500/15",
   soon: "bg-amber-500/25",
   expired: "bg-red-500/30",
-  missing: "bg-slate-500/20",
+  missing: "bg-slate-500/15",
 };
 
+const vehicleState = (vehicle: FleetVehicle): RegistrationState | null =>
+  vehicle.registration_required ? registrationStatus(vehicle.registration_expires_on).state : null;
+
 /**
- * The fleet ("Car Database" sheets): who has which vehicle, whether its registration is
- * valid, and vehicle warnings. Three active warnings of an owner become one personal
- * warning automatically (database trigger).
+ * The fleet ("Car Database" sheets): every vehicle of the stock grouped like the sheet,
+ * who holds its keys, its registration and special features; reviews of renewals, vehicle
+ * warnings and the official tuning in sub-views.
  */
-export function FleetPanel({canManage}: {canManage: boolean}) {
-  const {supabase, profile} = useAuth();
+export function FleetPanel() {
+  const {profile, supabase} = useAuth();
+  const {vehicles, categories, error} = useFleet();
   const {profiles} = useProfileDirectory();
-  const [vehicles, setVehicles] = useState<FleetVehicle[] | null>(null);
-  const [warnings, setWarnings] = useState<VehicleWarning[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = (["reviews", "warnings", "tuning"].includes(searchParams.get("view") ?? "") ? searchParams.get("view") : "vehicles") as View;
+  const staff = isStaff(profile);
+  const people = useMemo(() => new Map(profiles.map((person) => [person.id, person])), [profiles]);
+  const viewer = profile ? people.get(profile.id) ?? null : null;
+  const canAssign = canAssignAnyVehicle(profile, categories);
+
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
-  const [mine, setMine] = useState(!canManage);
-  const [editing, setEditing] = useState<FleetVehicle | "new" | null>(null);
-  const [renewing, setRenewing] = useState<FleetVehicle | null>(null);
-  const [warning, setWarning] = useState<FleetVehicle | null>(null);
+  const [category, setCategory] = useState(ALL);
+  const [station, setStation] = useState(ALL);
+  const [mine, setMine] = useState(false);
+  const [freeOnly, setFreeOnly] = useState(false);
+  const [collapsed, setCollapsed] = useLocalStorage<string[]>("frakhub:fleet-collapsed", []);
+  const [editing, setEditing] = useState<"new" | null>(null);
+  const [assigning, setAssigning] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+  const [warnings, setWarnings] = useState<VehicleWarning[] | null>(null);
+  const [reviewCount, setReviewCount] = useState(0);
 
-  const load = useCallback(async () => {
-    const [vehicleResult, warningResult] = await Promise.all([
-      supabase.from("fleet_vehicles").select(VEHICLE_COLUMNS).eq("is_active", true).order("plate"),
-      supabase.from("vehicle_warnings").select("*").order("created_at", {ascending: false}).limit(200),
-    ]);
-    if (vehicleResult.error) toast.error("A járműpark betöltése nem sikerült.");
-    setVehicles((vehicleResult.data ?? []) as FleetVehicle[]);
-    setWarnings((warningResult.data ?? []) as VehicleWarning[]);
+  const setView = (next: View) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "vehicles") params.delete("view"); else params.set("view", next);
+    setSearchParams(params, {replace: true});
+  };
+
+  // Staff: open reviews (a count only) for the tab badge.
+  useEffect(() => {
+    if (!staff) return;
+    void supabase.from("fleet_registration_requests").select("id", {count: "exact", head: true}).eq("status", "pending")
+      .then(({count}) => setReviewCount(count ?? 0));
+  }, [staff, supabase]);
+
+  const loadWarnings = useCallback(async () => {
+    const {data, error: loadError} = await supabase.from("vehicle_warnings").select("*").order("created_at", {ascending: false}).limit(400);
+    if (loadError) toast.error("A hibapontok betöltése nem sikerült.");
+    setWarnings((data ?? []) as VehicleWarning[]);
   }, [supabase]);
 
+  // Warnings are loaded only when needed (their list, or the points shown while issuing one).
   useEffect(() => {
-    void load();
-  }, [load]);
+    if ((view === "warnings" || issuing) && warnings === null) void loadWarnings();
+  }, [view, issuing, warnings, loadWarnings]);
 
-  const people = useMemo(() => new Map(profiles.map((person) => [person.id, person])), [profiles]);
-  const activeWarnings = useMemo(() => {
+  const activePoints = useMemo(() => {
     const counts = new Map<string, number>();
-    warnings.filter((item) => !item.revoked_at && !item.converted_record_id && item.user_id)
-      .forEach((item) => counts.set(item.user_id!, (counts.get(item.user_id!) ?? 0) + 1));
+    (warnings ?? []).filter((item) => !item.revoked_at && !item.converted_record_id)
+      .forEach((item) => counts.set(item.user_id, (counts.get(item.user_id) ?? 0) + 1));
     return counts;
   }, [warnings]);
+
+  const categoryById = useMemo(() => new Map(categories.map((item) => [item.id, item])), [categories]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return (vehicles ?? []).filter((vehicle) => {
-      const state = registrationStatus(vehicle.registration_expires_on).state;
-      if (mine && vehicle.owner_id !== profile?.id) return false;
-      if (status === "attention" && state === "ok") return false;
+      const state = vehicleState(vehicle);
+      if (category !== ALL && vehicle.category_id !== category) return false;
+      if (station !== ALL && vehicle.station !== station) return false;
+      if (mine && !vehicle.holders.some((holder) => holder.user_id === profile?.id)) return false;
+      if (freeOnly && freeKeys(vehicle) === 0) return false;
+      if (status === "attention" && (state === null || state === "ok")) return false;
       if (status !== "all" && status !== "attention" && state !== status) return false;
       if (!term) return true;
-      const owner = vehicle.owner_id ? people.get(vehicle.owner_id) : null;
-      return vehicle.plate.toLowerCase().includes(term) || vehicle.model.toLowerCase().includes(term)
-        || !!owner?.full_name.toLowerCase().includes(term) || !!owner?.badge_number.includes(term);
+      return [vehicle.plate, vehicle.model, vehicle.callsign, vehicle.game_id, vehicle.station, vehicle.shared_label,
+        ...vehicle.holders.map((holder) => people.get(holder.user_id)?.full_name)]
+        .some((value) => value !== null && value !== undefined && String(value).toLowerCase().includes(term));
     });
-  }, [vehicles, search, status, mine, people, profile?.id]);
+  }, [vehicles, search, status, category, station, mine, freeOnly, people, profile?.id]);
 
   const counts = useMemo(() => {
     const result = {all: vehicles?.length ?? 0, attention: 0, expired: 0, soon: 0, missing: 0, ok: 0};
     (vehicles ?? []).forEach((vehicle) => {
-      const state = registrationStatus(vehicle.registration_expires_on).state;
+      const state = vehicleState(vehicle);
+      if (!state) return;
       result[state] += 1;
       if (state !== "ok") result.attention += 1;
     });
     return result;
   }, [vehicles]);
 
-  const upsertVehicle = (vehicle: FleetVehicle) => setVehicles((prev) =>
-    [...(prev ?? []).filter((item) => item.id !== vehicle.id), vehicle].filter((item) => item.is_active)
-      .sort((a, b) => a.plate.localeCompare(b.plate)));
+  const groups = useMemo(() => [...categories, null].map((item) => ({
+    category: item,
+    vehicles: filtered.filter((vehicle) => (item ? vehicle.category_id === item.id : !vehicle.category_id || !categoryById.has(vehicle.category_id))),
+  })).filter((group) => group.vehicles.length > 0), [categories, categoryById, filtered]);
 
-  const revoke = async (item: VehicleWarning, restore = false) => {
-    const {data, error} = await supabase.from("vehicle_warnings").update({revoked_at: restore ? null : new Date().toISOString()})
-      .eq("id", item.id).select("*").single();
-    if (error) return toast.error(errorMessage(error, "A művelet nem sikerült."));
-    setWarnings((prev) => prev.map((row) => (row.id === item.id ? data as VehicleWarning : row)));
-    toast.success(restore ? "Hibapont visszaállítva." : "Hibapont visszavonva.");
-  };
-
-  const visibleWarnings = warnings.filter((item) => canManage || item.user_id === profile?.id).slice(0, 30);
+  const tabs: [View, string, typeof Car, number | null][] = [
+    ["vehicles", "Járművek", Car, vehicles?.length ?? null],
+    ...(staff ? [["reviews", "Forgalmi ellenőrzés", FileSearch, reviewCount] as [View, string, typeof Car, number]] : []),
+    ["warnings", "Hibapontok", AlertTriangle, null],
+    ["tuning", "Tuning", Gauge, null],
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="panel flex flex-col gap-3 p-4 xl:flex-row xl:items-center">
-        <div className="relative xl:w-72">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rendszám, típus vagy tulajdonos…" className="pl-9"/>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        {tabs.map(([id, label, Icon, count]) => (
+          <button key={id} type="button" onClick={() => setView(id)}
+                  className={cn("inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-sm font-medium ring-1 transition-all",
+                    view === id ? "bg-orange-500/15 text-orange-100 ring-orange-400/40 shadow-[0_0_20px_-8px_rgb(251_146_60/0.8)]"
+                      : "text-slate-400 ring-white/10 hover:text-slate-200 hover:ring-white/20")}>
+            <Icon className="size-4"/>{label}
+            {count !== null && count > 0 && (
+              <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums",
+                id === "reviews" ? "bg-amber-500/25 text-amber-200 motion-safe:animate-pulse" : "bg-white/10 text-slate-300")}>{count}</span>
+            )}
+          </button>
+        ))}
+        <div className="ml-auto flex flex-wrap gap-2">
+          {staff && <Button size="sm" variant="outline" className="text-amber-200" onClick={() => setIssuing(true)}><ShieldAlert/> Hibapont</Button>}
+          {canAssign && <Button size="sm" variant="outline" onClick={() => setAssigning(true)}><KeyRound/> Kiosztás</Button>}
+          {staff && <Button size="sm" onClick={() => setEditing("new")}><Plus/> Új jármű</Button>}
         </div>
-        <div className="inline-flex flex-wrap rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10">
-          {([["all", "Mind"], ["attention", "Teendő"], ["expired", "Lejárt"], ["soon", "Hamarosan"], ["missing", "Nincs dátum"], ["ok", "Érvényes"]] as const)
-            .map(([value, label]) => (
-              <button key={value} type="button" onClick={() => setStatus(value)}
-                      className={cn("h-8 rounded-md px-3 text-xs font-medium transition-colors",
-                        status === value ? "bg-white/10 text-white" : "text-slate-400 hover:text-slate-200")}>
-                {label} <span className="ml-0.5 text-slate-500 tabular-nums">{counts[value]}</span>
-              </button>
-            ))}
-        </div>
-        <label className="flex items-center gap-2 text-xs text-slate-400">
-          <Switch checked={mine} onCheckedChange={setMine}/> Csak az enyéim
-        </label>
-        {canManage && <Button className="xl:ml-auto" onClick={() => setEditing("new")}><Plus/> Új jármű</Button>}
       </div>
 
-      {vehicles === null ? (
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-48"/>)}</div>
-      ) : filtered.length === 0 ? (
-        <div className="panel"><EmptyState icon={Car} title={vehicles.length ? "Nincs a szűrésnek megfelelő jármű." : "Még nincs jármű a nyilvántartásban."}
-                                           description="A jóváhagyott járműigénylések automatikusan bekerülnek." compact/></div>
+      {view === "reviews" && staff ? (
+        <div key="reviews" className="animate-fade">
+          <RegistrationReviews vehicles={vehicles ?? []} people={people} onCountChange={setReviewCount}/>
+        </div>
+      ) : view === "warnings" ? (
+        <div key="warnings" className="animate-fade">
+          <WarningsList warnings={warnings} people={people} canManage={staff} onChanged={() => void loadWarnings()}
+                        onIssue={() => setIssuing(true)}/>
+        </div>
+      ) : view === "tuning" ? (
+        <div key="tuning" className="animate-fade"><TuningPanel canManage={staff}/></div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          {filtered.map((vehicle, index) => {
-            const owner = vehicle.owner_id ? people.get(vehicle.owner_id) ?? null : null;
-            const state = registrationStatus(vehicle.registration_expires_on).state;
-            const ownerWarnings = vehicle.owner_id ? activeWarnings.get(vehicle.owner_id) ?? 0 : 0;
-            const isOwner = vehicle.owner_id === profile?.id;
-            return (
-              <article key={vehicle.id} style={{"--i": Math.min(index, 12)} as CSSProperties}
-                       className="panel lift animate-rise group relative flex flex-col gap-4 overflow-hidden p-5">
-                <div className={cn("pointer-events-none absolute -top-12 -right-12 size-36 rounded-full blur-3xl", GLOW[state])}/>
-                <div className="relative flex items-start justify-between gap-3">
-                  <LicensePlate plate={vehicle.plate} size="lg"/>
-                  <RegistrationBadge expiresOn={vehicle.registration_expires_on}/>
-                </div>
-                <div className="relative min-w-0">
-                  <h3 className="flex items-center gap-2 truncate text-base font-semibold text-white"><Car className="size-4 text-orange-400"/>{vehicle.model}</h3>
-                  {vehicle.notes && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500 wrap-anywhere">{vehicle.notes}</p>}
-                </div>
-                <div className="relative flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/5">
-                  <OwnerChip owner={owner}/>
-                  {owner && (canManage || isOwner) && <StrikeDots count={ownerWarnings}/>}
-                </div>
-                <div className="relative mt-auto flex flex-wrap gap-2">
-                  {(canManage || isOwner) && (
-                    <Button size="sm" variant={state === "ok" ? "outline" : "default"} onClick={() => setRenewing(vehicle)}>
-                      <RefreshCw/> Forgalmi megújítva
-                    </Button>
-                  )}
-                  {canManage && owner && (
-                    <Button size="sm" variant="outline" className="text-amber-300" onClick={() => setWarning(vehicle)}>
-                      <ShieldAlert/> Hibapont
-                    </Button>
-                  )}
-                  {canManage && (
-                    <Button size="icon-sm" variant="ghost" className="ml-auto" title="Szerkesztés" onClick={() => setEditing(vehicle)}>
-                      <Pencil className="size-4"/>
-                    </Button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
+        <div key="vehicles" className="animate-fade space-y-5">
+          <div className="panel flex flex-col gap-3 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="relative lg:w-80">
+                <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
+                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rendszám, típus, ID vagy kulcsos…" className="pl-9"/>
+              </div>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="lg:w-64"><SelectValue/></SelectTrigger>
+                <SelectContent className="max-h-80">
+                  <SelectItem value={ALL}>Minden kategória</SelectItem>
+                  {categories.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={station} onValueChange={setStation}>
+                <SelectTrigger className="lg:w-44"><MapPin className="size-3.5 text-slate-500"/><SelectValue/></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>Minden kirendeltség</SelectItem>
+                  {FLEET_STATIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <div className="flex flex-wrap gap-4 lg:ml-auto">
+                <label className="flex items-center gap-2 text-xs text-slate-400"><Switch checked={mine} onCheckedChange={setMine}/> Csak az enyéim</label>
+                <label className="flex items-center gap-2 text-xs text-slate-400"><Switch checked={freeOnly} onCheckedChange={setFreeOnly}/> Szabad kulccsal</label>
+              </div>
+            </div>
+            <div className="inline-flex flex-wrap self-start rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10">
+              {([["all", "Mind"], ["attention", "Teendő"], ["expired", "Lejárt"], ["soon", "Hamarosan"], ["missing", "Nincs dátum"], ["ok", "Érvényes"]] as const)
+                .map(([value, label]) => (
+                  <button key={value} type="button" onClick={() => setStatus(value)}
+                          className={cn("h-8 rounded-md px-3 text-xs font-medium transition-colors",
+                            status === value ? "bg-white/10 text-white" : "text-slate-400 hover:text-slate-200")}>
+                    {label} <span className="ml-0.5 text-slate-500 tabular-nums">{counts[value]}</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+
+          {vehicles === null ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-40"/>)}</div>
+          ) : error && vehicles.length === 0 ? (
+            <div className="panel"><EmptyState icon={Car} title="A járműpark betöltése nem sikerült." compact/></div>
+          ) : groups.length === 0 ? (
+            <div className="panel"><EmptyState icon={Car} title={vehicles.length ? "Nincs a szűrésnek megfelelő jármű." : "Még nincs jármű a nyilvántartásban."} compact/></div>
+          ) : (
+            groups.map(({category: group, vehicles: list}, groupIndex) => (
+              <CategorySection key={group?.id ?? "none"} category={group} vehicles={list} people={people} index={groupIndex}
+                               collapsed={collapsed.includes(group?.id ?? "none")}
+                               onToggle={() => setCollapsed((prev) => {
+                                 const id = group?.id ?? "none";
+                                 return prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
+                               })}/>
+            ))
+          )}
         </div>
       )}
 
-      {visibleWarnings.length > 0 && (
-        <section className="panel overflow-hidden">
-          <header className="flex items-center gap-3 border-b px-5 py-4">
-            <div className="grid size-9 place-items-center rounded-xl bg-amber-500/10 ring-1 ring-amber-500/25"><AlertTriangle className="size-4 text-amber-400"/></div>
-            <div>
-              <h2 className="text-sm font-semibold text-white">Jármű-hibapontok</h2>
-              <p className="text-xs text-slate-500">Három aktív hibapont után a tulajdonos automatikusan figyelmeztetést kap.</p>
-            </div>
-          </header>
-          <ul className="divide-y divide-white/5">
-            {visibleWarnings.map((item) => {
-              const owner = item.user_id ? people.get(item.user_id) ?? null : null;
-              const issuer = item.issued_by ? people.get(item.issued_by) ?? null : null;
-              const inactive = !!item.revoked_at || !!item.converted_record_id;
-              return (
-                <li key={item.id} className={cn("flex flex-wrap items-center gap-3 px-5 py-3", inactive && "opacity-55")}>
-                  <LicensePlate plate={item.plate} size="sm"/>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-slate-200 wrap-anywhere">{item.reason}</p>
-                    <p className="text-xs text-slate-500">
-                      {owner?.full_name ?? "Ismeretlen"} · {formatDate(item.created_at)}{issuer && ` · kiadta: ${issuer.full_name}`}
-                    </p>
-                  </div>
-                  {item.converted_record_id ? (
-                    <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-[11px] text-red-300 ring-1 ring-red-500/30">Figyelmeztetés lett</span>
-                  ) : item.revoked_at ? (
-                    canManage
-                      ? <Button size="sm" variant="ghost" onClick={() => void revoke(item, true)}><Undo2/> Visszaállítás</Button>
-                      : <span className="text-[11px] text-slate-500">Visszavonva</span>
-                  ) : canManage ? (
-                    <Button size="sm" variant="ghost" className="text-slate-400 hover:text-red-300" onClick={() => void revoke(item)}>
-                      <Trash2/> Visszavonás
-                    </Button>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+      <VehicleEditorDialog key={editing ?? "closed"} vehicle={editing} categories={categories}
+                           defaultCategory={category !== ALL ? category : null} onOpenChange={(open) => !open && setEditing(null)}/>
+      {assigning && (
+        <AssignVehiclesDialog open vehicles={vehicles ?? []} categories={categories} people={profiles} viewer={viewer}
+                              onOpenChange={setAssigning}/>
       )}
-
-      <RenewRegistrationDialog key={`renew-${renewing?.id ?? "none"}`} vehicle={renewing} onOpenChange={(open) => !open && setRenewing(null)}
-                               onRenewed={upsertVehicle}/>
-      <VehicleDialog key={`edit-${editing === "new" ? "new" : editing?.id ?? "closed"}`} vehicle={editing} people={profiles}
-                     onOpenChange={(open) => !open && setEditing(null)} onSaved={upsertVehicle}
-                     onRemoved={(id) => setVehicles((prev) => (prev ?? []).filter((item) => item.id !== id))}/>
-      <WarningDialog key={`warn-${warning?.id ?? "none"}`} vehicle={warning} owner={warning?.owner_id ? people.get(warning.owner_id) ?? null : null}
-                     activeCount={warning?.owner_id ? activeWarnings.get(warning.owner_id) ?? 0 : 0}
-                     onOpenChange={(open) => !open && setWarning(null)} onIssued={() => void load()}/>
+      {issuing && (
+        <IssueWarningDialog open vehicles={vehicles ?? []} categories={categories} people={profiles} activePoints={activePoints}
+                            onOpenChange={setIssuing} onIssued={() => void loadWarnings()}/>
+      )}
     </div>
   );
 }
 
-function OwnerChip({owner}: {owner: DirectoryProfile | null}) {
-  if (!owner) return <span className="flex items-center gap-2 text-xs text-slate-500"><UserRound className="size-4"/> Nincs hozzárendelve</span>;
+function CategorySection({category, vehicles, people, index, collapsed, onToggle}: {
+  category: FleetCategory | null;
+  vehicles: FleetVehicle[];
+  people: Map<string, DirectoryProfile>;
+  index: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const tone = FLEET_TONES[category?.tone ?? "slate"];
+  const free = vehicles.reduce((sum, vehicle) => {
+    const keys = freeKeys(vehicle);
+    return keys === null ? sum : sum + keys;
+  }, 0);
   return (
-    <span className="flex min-w-0 items-center gap-2">
-      <Avatar className="size-7 ring-1 ring-white/10">
-        <AvatarImage src={getOptimizedAvatarUrl(owner.avatar_url, 56) || undefined} alt=""/>
-        <AvatarFallback className="bg-slate-800 text-[10px] font-semibold text-slate-300">{owner.full_name.charAt(0)}</AvatarFallback>
-      </Avatar>
-      <span className="min-w-0">
-        <span className="block truncate text-sm text-slate-100">{owner.full_name}</span>
-        <span className="block truncate text-[11px] text-slate-500">{owner.faction_rank} · #{owner.badge_number}</span>
-      </span>
-    </span>
+    <section style={{"--i": Math.min(index, 8)} as CSSProperties} className="animate-rise space-y-3">
+      <button type="button" onClick={onToggle} aria-expanded={!collapsed}
+              className={cn("group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r to-transparent px-4 py-3 text-left ring-1 ring-white/10 transition-all hover:ring-white/20",
+                tone.band)}>
+        <span className={cn("pointer-events-none absolute -top-10 -left-6 size-28 rounded-full blur-2xl", tone.glow)}/>
+        <span className={cn("relative size-2.5 shrink-0 rounded-full shadow-[0_0_10px_currentColor]", tone.dot, tone.text)}/>
+        <span className="relative min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-white">{category?.name ?? "Kategória nélkül"}</span>
+          {category?.description && <span className="block truncate text-xs text-slate-400">{category.description}</span>}
+        </span>
+        <span className="relative hidden flex-wrap items-center gap-1.5 sm:flex">
+          {category?.unit && <span className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-medium ring-1", tone.chip)}>Csak {UNIT_LABELS[category.unit]}</span>}
+          {category?.min_rank && <span className="rounded-md bg-yellow-500/10 px-1.5 py-0.5 text-[11px] font-medium text-yellow-200 ring-1 ring-yellow-500/30">Min. {category.min_rank}</span>}
+        </span>
+        <span className="relative text-xs text-slate-300 tabular-nums">{vehicles.length} jármű{free > 0 ? ` · ${free} szabad kulcs` : ""}</span>
+        <ChevronDown className={cn("relative size-4 text-slate-400 transition-transform duration-300", collapsed && "-rotate-90")}/>
+      </button>
+      {!collapsed && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {vehicles.map((vehicle, vehicleIndex) => (
+            <VehicleCard key={vehicle.id} vehicle={vehicle} category={category} people={people} index={vehicleIndex}/>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
-function VehicleDialog({vehicle, people, onOpenChange, onSaved, onRemoved}: {
-  vehicle: FleetVehicle | "new" | null;
-  people: DirectoryProfile[];
-  onOpenChange: (open: boolean) => void;
-  onSaved: (vehicle: FleetVehicle) => void;
-  onRemoved: (id: string) => void;
+function VehicleCard({vehicle, category, people, index}: {
+  vehicle: FleetVehicle;
+  category: FleetCategory | null;
+  people: Map<string, DirectoryProfile>;
+  index: number;
 }) {
-  const {supabase} = useAuth();
-  const existing = vehicle && vehicle !== "new" ? vehicle : null;
-  const [plate, setPlate] = useState(existing?.plate ?? "");
-  const [model, setModel] = useState(existing?.model ?? "");
-  const [ownerId, setOwnerId] = useState(existing?.owner_id ?? "none");
-  const [expires, setExpires] = useState(existing?.registration_expires_on ?? "");
-  const [notes, setNotes] = useState(existing?.notes ?? "");
-  const [saving, setSaving] = useState(false);
-  const members = people.filter((person) => person.system_role !== "pending");
-
-  const save = async () => {
-    if (plate.trim().length < 2 || plate.trim().length > 16) return toast.error("A rendszám 2–16 karakter lehet.");
-    if (!model.trim()) return toast.error("Add meg a jármű típusát.");
-    setSaving(true);
-    const payload = {
-      plate: plate.trim().toUpperCase(), model: model.trim(), owner_id: ownerId === "none" ? null : ownerId,
-      registration_expires_on: expires || null, notes: notes.trim() || null,
-    };
-    const {data, error} = existing
-      ? await supabase.from("fleet_vehicles").update(payload).eq("id", existing.id).select(VEHICLE_COLUMNS).single()
-      : await supabase.from("fleet_vehicles").insert(payload).select(VEHICLE_COLUMNS).single();
-    setSaving(false);
-    if (error) {
-      return toast.error(error.code === "23505" ? "Ez a rendszám már szerepel a nyilvántartásban." : errorMessage(error, "A mentés nem sikerült."));
-    }
-    toast.success(existing ? "Jármű frissítve." : "Jármű felvéve.");
-    onSaved(data as FleetVehicle);
-    onOpenChange(false);
-  };
-
-  const retire = async () => {
-    if (!existing || !window.confirm(`${existing.plate} kivezetése a flottából?`)) return;
-    const {error} = await supabase.from("fleet_vehicles").update({is_active: false}).eq("id", existing.id);
-    if (error) return toast.error(errorMessage(error, "A művelet nem sikerült."));
-    toast.success("Jármű kivezetve.");
-    onRemoved(existing.id);
-    onOpenChange(false);
-  };
-
+  const state = vehicleState(vehicle);
   return (
-    <Dialog open={!!vehicle} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{existing ? "Jármű szerkesztése" : "Új jármű"}</DialogTitle>
-          <DialogDescription>Kiosztás és forgalmi engedély.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Rendszám</Label>
-            <Input value={plate} maxLength={16} className="font-mono uppercase tracking-widest" onChange={(event) => setPlate(event.target.value)}/>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Típus</Label>
-            <Input value={model} maxLength={60} placeholder="Pl. Buffalo STX" onChange={(event) => setModel(event.target.value)}/>
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label>Tulajdonos (kinek van kiosztva)</Label>
-            <Select value={ownerId} onValueChange={setOwnerId}>
-              <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
-              <SelectContent className="max-h-72">
-                <SelectItem value="none">Nincs hozzárendelve</SelectItem>
-                {members.map((person) => <SelectItem key={person.id} value={person.id}>{person.full_name} · #{person.badge_number}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Forgalmi érvényes</Label>
-            <Input type="date" value={expires} onChange={(event) => setExpires(event.target.value)}/>
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label>Megjegyzés</Label>
-            <Textarea value={notes} rows={2} maxLength={500} onChange={(event) => setNotes(event.target.value)}/>
-          </div>
-        </div>
-        <DialogFooter className="sm:justify-between">
-          {existing ? <Button variant="ghost" className="text-red-300" onClick={() => void retire()}><Trash2/> Kivezetés</Button> : <span/>}
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>Mégse</Button>
-            <Button onClick={() => void save()} disabled={saving}>{saving ? <Loader2 className="animate-spin"/> : <Save/>} Mentés</Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function WarningDialog({vehicle, owner, activeCount, onOpenChange, onIssued}: {
-  vehicle: FleetVehicle | null; owner: DirectoryProfile | null; activeCount: number;
-  onOpenChange: (open: boolean) => void; onIssued: () => void;
-}) {
-  const {supabase} = useAuth();
-  const [reason, setReason] = useState("");
-  const [saving, setSaving] = useState(false);
-  const becomesWarning = activeCount + 1 >= 3;
-
-  const issue = async () => {
-    if (!vehicle) return;
-    if (reason.trim().length < 3) return toast.error("Add meg az indokot.");
-    setSaving(true);
-    const {error} = await supabase.from("vehicle_warnings").insert({vehicle_id: vehicle.id, plate: vehicle.plate, reason: reason.trim()});
-    setSaving(false);
-    if (error) return toast.error(errorMessage(error, "A hibapont rögzítése nem sikerült."));
-    toast.success(becomesWarning ? "Hibapont rögzítve – a tulajdonos automatikusan figyelmeztetést kapott." : "Hibapont rögzítve.");
-    onIssued();
-    onOpenChange(false);
-  };
-
-  return (
-    <Dialog open={!!vehicle} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><ShieldAlert className="size-5 text-amber-400"/> Jármű-hibapont</DialogTitle>
-          <DialogDescription>{vehicle?.plate} – {vehicle?.model} · {owner?.full_name ?? "Nincs tulajdonos"}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-xl bg-white/[0.03] px-4 py-3 ring-1 ring-white/5">
-            <span className="text-sm text-slate-300">Jelenlegi hibapontok</span>
-            <StrikeDots count={activeCount}/>
-          </div>
-          {becomesWarning && (
-            <p className="rounded-xl bg-red-500/10 px-4 py-3 text-sm text-red-200 ring-1 ring-red-500/30">
-              Ez a harmadik hibapont: a tulajdonos automatikusan személyes figyelmeztetést kap.
-            </p>
-          )}
-          <div className="space-y-1.5">
-            <Label>Indok</Label>
-            <Textarea value={reason} rows={3} maxLength={300} placeholder="Pl. szabálytalan parkolás, sérülten leadott jármű"
-                      onChange={(event) => setReason(event.target.value)}/>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Mégse</Button>
-          <Button className="bg-amber-500 text-black hover:bg-amber-400" onClick={() => void issue()} disabled={saving}>
-            {saving ? <Loader2 className="animate-spin"/> : <ShieldAlert/>} Rögzítés
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <Link to={`/logistics/fleet/${vehicle.id}`} style={{"--i": Math.min(index, 12)} as CSSProperties}
+          className="panel lift animate-rise group relative flex min-w-0 flex-col gap-3 overflow-hidden p-4">
+      <span className={cn("pointer-events-none absolute -top-12 -right-12 size-32 rounded-full blur-3xl transition-opacity duration-500 group-hover:opacity-80",
+        state ? GLOW[state] : "bg-teal-500/15")}/>
+      <div className="relative flex items-start justify-between gap-2">
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <LicensePlate plate={vehicle.plate}/>
+          {vehicle.callsign && <span className="rounded bg-sky-500/10 px-1.5 py-0.5 font-mono text-[10.5px] text-sky-200 ring-1 ring-sky-500/30">{vehicle.callsign}</span>}
+        </span>
+        {vehicle.registration_required ? <RegistrationBadge expiresOn={vehicle.registration_expires_on}/> : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-teal-500/10 px-2 py-0.5 text-[11px] text-teal-200 ring-1 ring-teal-500/30">
+            <Ship className="size-3"/> Nem kell
+          </span>
+        )}
+      </div>
+      <div className="relative min-w-0">
+        <h3 className="truncate text-sm font-semibold text-white group-hover:text-gold">{vehicle.model}</h3>
+        <p className="truncate text-[11px] text-slate-500">{[vehicle.game_id ? `#${vehicle.game_id}` : null, vehicle.station].filter(Boolean).join(" · ")}</p>
+      </div>
+      <div className="relative mt-auto flex items-center justify-between gap-2 rounded-xl bg-white/[0.03] px-2.5 py-1.5 ring-1 ring-white/5">
+        <HolderNames vehicle={vehicle} people={people} max={2} className="min-w-0"/>
+        <KeyMeter vehicle={vehicle} className="shrink-0"/>
+      </div>
+      <FeatureBadges vehicle={vehicle} category={category} limit={3} className="relative"/>
+    </Link>
   );
 }

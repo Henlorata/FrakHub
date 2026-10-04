@@ -44,7 +44,7 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
   const supabase = getSupabaseAdmin();
   const results = {
     financeDeleted: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0,
-    registrationReminders: 0, errors: [] as string[],
+    registrationReminders: 0, registrationFilesDeleted: 0, registrationReviewsExpired: 0, errors: [] as string[],
   };
   const fail = (step: string, error: unknown) => {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
@@ -130,6 +130,23 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
     results.registrationReminders = typeof data === "number" ? data : 0;
   } catch (error) {
     fail("fleet_reminders", error);
+  }
+
+  // 6. Fleet renewals: screenshots that are no longer needed (decided reviews, abandoned
+  //    uploads), reviews nobody decided within 30 days, old renewal history.
+  try {
+    const {data, error} = await supabase.rpc("fleet_registration_cleanup");
+    if (error) throw error;
+    const cleanup = (data ?? {}) as {remove?: string[]; expired?: number};
+    const paths = cleanup.remove ?? [];
+    for (let i = 0; i < paths.length; i += 100) {
+      const {error: removeError} = await supabase.storage.from("fleet_registrations").remove(paths.slice(i, i + 100));
+      if (removeError) throw removeError;
+    }
+    results.registrationFilesDeleted = paths.length;
+    results.registrationReviewsExpired = cleanup.expired ?? 0;
+  } catch (error) {
+    fail("fleet_registrations", error);
   }
 
   console.log("[api/cron/daily-cleanup] done", results);

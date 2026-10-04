@@ -2,8 +2,9 @@
 
 Management hub ("MDT") for the San Fierro Sheriff's Department roleplay faction: MCB case
 management, HR (roster with one-click promotions, monthly duty time sheet, former members,
-the old Google Sheet's registry columns), logistics (requests and the vehicle fleet with
-registration reminders and vehicle warnings) and finance, penal code calculator, report
+the old Google Sheet's registry columns), logistics (requests, the vehicle fleet with key
+holders, registration renewals read from a screenshot of the in-game licence, vehicle warnings
+and tuning) and finance, penal code calculator, report
 generator, exams and academy training. The user interface is Hungarian.
 
 **Stack:** React 19 · Vite 8 (Rolldown) · TypeScript 6 · Tailwind CSS 4 · shadcn/Radix ·
@@ -158,10 +159,22 @@ it. Before applying a migration, replay the deployed client's queries against it
   `duty_time_entries` (monthly, staff), `former_members` (filled by `/api/admin/delete-user`).
   The HR page and the profile read all of it with one `get_hr_registry()` call
   (`SECURITY INVOKER`, so RLS decides what each caller gets).
-- Fleet: approving a vehicle request registers the vehicle (`fleet_vehicles`); owners record
-  renewed registrations with `fleet_renew_registration()`; the daily cron calls
-  `fleet_send_reminders()`. Three active `vehicle_warnings` of an owner become one personal
-  warning (`hr_records`) in a trigger.
+- Fleet (the old "Car Database" sheets): the stock in `fleet_vehicles` grouped by
+  `fleet_categories` (a bureau/unit category is reserved for its members, a vehicle can
+  override it with `allowed_units`/`min_rank`), key holders in `fleet_assignments` (capacity
+  per vehicle, null = unlimited; shared pools via `shared_label`). Supervisory staff manage
+  every vehicle, a bureau's leaders the vehicles of their bureau. Approving a vehicle request
+  hands out a key of the vehicle with that plate.
+- Registration renewals: the holder's browser reads a screenshot of the in-game licence
+  (`src/lib/license-ocr`, Tesseract.js from jsDelivr, nothing uploaded); a matching reading is
+  applied with `fleet_registration_apply()`, anything else goes to supervisory staff with the
+  screenshot (`fleet_registration_submit()` → Storage bucket `fleet_registrations` →
+  `fleet_registration_decide()`, which releases the file). Staff can set the date by hand
+  (`fleet_renew_registration()`). The daily cron sends reminders (`fleet_send_reminders()`)
+  and removes leftover screenshots (`fleet_registration_cleanup()`).
+- Vehicle warnings (`vehicle_warnings`): one decision may cover several people and several
+  points (rows share a `batch_id`); every three active points become one personal warning
+  (`hr_records`) in a statement trigger. Official tuning per model: `fleet_tuning_presets`.
 
 ```bash
 bun run db:types                   # generates src/types/database.types.ts from the local DB

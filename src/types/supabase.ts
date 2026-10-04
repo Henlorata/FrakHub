@@ -349,36 +349,134 @@ export interface FormerMember {
   updated_at: string;
 }
 
+/** Bureaus (divisions) and units (qualifications) a vehicle category can be reserved for. */
+export type FleetUnit = DepartmentDivision | Qualification;
+
+export type FleetTone =
+  | "orange" | "amber" | "yellow" | "lime" | "green" | "emerald" | "teal" | "cyan" | "sky" | "blue" | "indigo" | "violet"
+  | "rose" | "red" | "slate";
+
+/** A section of the old "Car Database" sheet (vehicle type or a sub-faction's fleet). */
+export interface FleetCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  /** Only members of this bureau or unit may hold its vehicles. */
+  unit: FleetUnit | null;
+  /** Only this rank and above. */
+  min_rank: string | null;
+  tone: FleetTone;
+  sort_order: number;
+}
+
+/** A key holder of a vehicle. */
+export interface FleetHolder {
+  user_id: string;
+  is_temporary: boolean;
+  note: string | null;
+  assigned_at: string;
+}
+
 export interface FleetVehicle {
   id: string;
   plate: string;
   model: string;
-  owner_id: string | null;
+  category_id: string | null;
+  /** In-game vehicle id. */
+  game_id: number | null;
+  station: string | null;
+  /** Radio call sign when it differs from the plate (AIR-001). */
+  callsign: string | null;
+  /** The vehicle's name on the in-game licence, when it differs from the model. */
+  license_name: string | null;
+  /** Number of personal keys; null: unlimited. */
+  capacity: number | null;
+  /** Shared pool ("Medical Unit"): everyone allowed may use it. */
+  shared_label: string | null;
+  /** Overrides the category's unit ([] = anybody, null = the category decides). */
+  allowed_units: FleetUnit[] | null;
+  /** Overrides the category's rank floor. */
+  min_rank: string | null;
+  is_unmarked: boolean;
+  registration_required: boolean;
   registration_expires_on: string | null;
   notes: string | null;
   is_active: boolean;
   created_at: string;
+  updated_at: string;
+  holders: FleetHolder[];
+}
+
+export type RegistrationRequestStatus = "pending" | "approved" | "rejected" | "cancelled";
+export type RegistrationRequestSource = "auto" | "manual" | "not_detected" | "mismatch" | "disputed";
+
+/** A registration renewal: applied from a matching licence reading, by hand, or reviewed by staff. */
+export interface RegistrationRequest {
+  id: string;
+  vehicle_id: string;
+  submitted_by: string | null;
+  status: RegistrationRequestStatus;
+  source: RegistrationRequestSource;
+  image_path: string | null;
+  detected_model: string | null;
+  detected_plate: string | null;
+  detected_expires_on: string | null;
+  proposed_expires_on: string | null;
+  note: string | null;
+  previous_expires_on: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decided_expires_on: string | null;
+  decision_note: string | null;
+  created_at: string;
+}
+
+/** Official tuning of a vehicle model ("Car Database #3 [Tuning]"). */
+export interface FleetTuningPreset {
+  id: string;
+  model: string;
+  settings: Record<string, string>;
+  note: string | null;
+  sort_order: number;
   updated_at: string;
 }
 
 export interface VehicleWarning {
   id: string;
   vehicle_id: string | null;
-  plate: string;
-  user_id: string | null;
+  plate: string | null;
+  user_id: string;
   reason: string;
   issued_by: string | null;
+  /** Rows of one decision (several people, several points) share it. */
+  batch_id: string;
   created_at: string;
   revoked_at: string | null;
   revoked_by: string | null;
   converted_record_id: string | null;
 }
 
+/** A vehicle in the registry RPC: what the HR page and the profile show. */
+export interface RegistryVehicle {
+  id: string;
+  plate: string;
+  model: string;
+  category_id: string | null;
+  callsign: string | null;
+  registration_expires_on: string | null;
+  registration_required: boolean;
+  is_unmarked: boolean;
+  shared_label: string | null;
+  holder_ids: string[];
+  /** A renewal waits for staff. */
+  pending_review?: boolean;
+}
+
 /** Result of get_hr_registry(): everything the caller may see, in one request. */
 export interface HrRegistry {
   details: MemberDetails[];
   duty: DutyTimeEntry[];
-  vehicles: FleetVehicle[];
+  vehicles: RegistryVehicle[];
   vehicle_warnings: VehicleWarning[];
   bank_accounts: {user_id: string; account_number: string}[];
 }

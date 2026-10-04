@@ -22,6 +22,11 @@ const ROUTES: {path: string; text: RegExp}[] = [
   {path: "/exams?tab=trash", text: /Törölt vizsgalapok/i},
   {path: "/exams/editor", text: /ÚJ VIZSGA LÉTREHOZÁSA/i},
   {path: "/logistics", text: /Flotta és ellátás/i},
+  {path: "/logistics?tab=fleet", text: /Marked Ford Explorer/i},
+  {path: "/logistics?tab=fleet&view=reviews", text: /Nincs ellenőrzésre váró forgalmi/i},
+  {path: "/logistics?tab=fleet&view=warnings", text: /Jármű-hibapontok/i},
+  {path: "/logistics?tab=fleet&view=tuning", text: /hivatalos tuning/i},
+  {path: "/logistics/fleet/v1", text: /Kulcsosok/i},
   {path: "/finance", text: /Költségtérítések/i},
   {path: "/profile", text: /Személyi Akta/i},
   {path: "/calculator", text: /kalkulátor|büntető/i},
@@ -43,6 +48,14 @@ test("every page renders without runtime errors", async ({page}) => {
         is_bureau_manager: true,
         qualifications: ["TB"],
       })],
+      fleet_categories: [{id: "explorer", name: "Marked Ford Explorer", description: null, unit: null, min_rank: null, tone: "orange",
+        sort_order: 20}],
+      fleet_vehicles: [{
+        id: "v1", plate: "SFSD-012", model: "Ford Explorer", category_id: "explorer", game_id: 250562, station: "Downtown",
+        callsign: null, license_name: null, capacity: 2, shared_label: null, allowed_units: null, min_rank: null, is_unmarked: true,
+        registration_required: true, registration_expires_on: null, notes: null, is_active: true,
+        created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-01T00:00:00Z", holders: [],
+      }],
     },
   });
   await login(page);

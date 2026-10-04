@@ -39,7 +39,15 @@ export function createCachedLoader<T>(load: () => Promise<T>, ttlMs: number): Ca
   return loader;
 }
 
+const resets = new Set<() => void>();
+
+/** Stores outside createCachedLoader (e.g. the fleet) forget their data on sign-out too. */
+export function onClientCachesCleared(reset: () => void) {
+  resets.add(reset);
+}
+
 /** Drops every cached list, e.g. on sign-out so the next user never sees stale data. */
 export function clearClientCaches() {
   registry.forEach((loader) => loader.invalidate());
+  resets.forEach((reset) => reset());
 }

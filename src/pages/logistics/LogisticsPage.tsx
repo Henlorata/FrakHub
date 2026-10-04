@@ -14,8 +14,12 @@ import {PageHeader} from "@/components/layout/PageHeader";
 import {StatCard} from "@/components/layout/StatCard";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {LicensePlate} from "@/components/fleet/LicensePlate";
+import {VehiclePicker} from "@/components/fleet/Pickers";
+import {canAssignVehicle, freeKeys, holdBlocker} from "@/lib/fleet";
+import {loadFleet, useFleet} from "@/lib/fleet-store";
+import {useProfileDirectory} from "@/lib/profile-directory";
 import {useDialogParam} from "@/lib/use-dialog-param";
-import {cn, isHighCommand, isSupervisory} from "@/lib/utils";
+import {cn, isStaff} from "@/lib/utils";
 import {formatDate} from "@/pages/hr/hr-utils";
 import type {VehicleRequest} from "@/types/supabase";
 import {NewVehicleRequestDialog} from "./components/NewVehicleRequestDialog";
@@ -75,7 +79,14 @@ export function LogisticsPage() {
     [requests, filter],
   );
 
-  const canManage = profile?.system_role === "admin" || isSupervisory(profile) || isHighCommand(profile);
+  const canManage = isStaff(profile);
+  // The stock is needed by the fleet tab and the approval only (the requests tab stays light).
+  const {vehicles, categories} = useFleet({enabled: tab === "fleet" || actionType === "approve"});
+  const {profiles} = useProfileDirectory();
+  const people = React.useMemo(() => new Map(profiles.map((person) => [person.id, person])), [profiles]);
+  const [pickedVehicle, setPickedVehicle] = React.useState<string | null>(null);
+  const requester = selectedRequest ? people.get(selectedRequest.user_id) ?? null : null;
+  const keysHanded = (vehicles ?? []).reduce((sum, vehicle) => sum + vehicle.holders.length, 0);
 
   const setTab = (value: "requests" | "fleet") => {
     const next = new URLSearchParams(searchParams);
@@ -88,25 +99,29 @@ export function LogisticsPage() {
     setActionType(null);
     setAdminPlate("");
     setAdminComment("");
+    setPickedVehicle(null);
   };
 
   const handleAdminAction = async () => {
     if (!selectedRequest || !actionType || !user) return;
-    if (actionType === "approve" && !adminPlate.trim()) return toast.error("Rendszám megadása kötelező!");
+    const stockPlate = vehicles?.find((vehicle) => vehicle.id === pickedVehicle)?.plate ?? null;
+    const plate = (stockPlate ?? adminPlate).trim().toUpperCase();
+    if (actionType === "approve" && !plate) return toast.error("Válassz járművet a járműparkból, vagy adj meg rendszámot.");
     if (actionType === "reject" && !adminComment.trim()) return toast.error("Indoklás megadása kötelező!");
     setIsProcessing(true);
     const updates: Record<string, string> = {
       status: actionType === "approve" ? "approved" : "rejected",
       processed_by: user.id,
       updated_at: new Date().toISOString(),
-      ...(actionType === "approve" ? {vehicle_plate: adminPlate.trim().toUpperCase()} : {admin_comment: adminComment.trim()}),
+      ...(actionType === "approve" ? {vehicle_plate: plate} : {admin_comment: adminComment.trim()}),
     };
     // The requester is notified and (on approval) the vehicle is registered by database triggers.
     const {error} = await supabase.from("vehicle_requests").update(updates).eq("id", selectedRequest.id);
     setIsProcessing(false);
     if (error) return toast.error("Hiba", {description: error.message});
-    toast.success(actionType === "approve" ? "Igénylés elfogadva, a jármű bekerült a járműparkba." : "Igénylés elutasítva.");
+    toast.success(actionType === "approve" ? `Igénylés elfogadva: ${plate} kulcsa a kérelmezőé.` : "Igénylés elutasítva.");
     void fetchRequests();
+    if (actionType === "approve") void loadFleet(true);
     closeAdminDialog();
   };
 
@@ -117,7 +132,7 @@ export function LogisticsPage() {
         tone="orange"
         eyebrow="Flotta és ellátás"
         title="Logisztika"
-        description={`${stats.pending} igénylés vár elbírálásra · ${stats.approved} jármű kiadva`}
+        description={`${stats.pending} igénylés vár elbírálásra${vehicles ? ` · ${vehicles.length} jármű a járműparkban · ${keysHanded} kiadott kulcs` : ""}`}
         actions={<Button onClick={() => setIsNewOpen(true)} className="bg-orange-500 text-black hover:bg-orange-400"><Plus/> Új igénylés</Button>}
       />
 
@@ -134,7 +149,7 @@ export function LogisticsPage() {
       </div>
 
       {tab === "fleet" ? (
-        <div key="fleet" className="animate-fade"><FleetPanel canManage={canManage}/></div>
+        <div key="fleet" className="animate-fade"><FleetPanel/></div>
       ) : (
         <div key="requests" className="animate-fade space-y-6">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -213,7 +228,7 @@ export function LogisticsPage() {
       <NewVehicleRequestDialog open={isNewOpen} onOpenChange={setIsNewOpen} onSuccess={fetchRequests}/>
 
       <Dialog open={!!selectedRequest} onOpenChange={(open) => !open && closeAdminDialog()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className={actionType === "approve" ? "sm:max-w-3xl" : "sm:max-w-md"}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wrench className={cn("size-5", actionType === "approve" ? "text-emerald-400" : "text-red-400")}/>
@@ -222,11 +237,34 @@ export function LogisticsPage() {
             <DialogDescription>{selectedRequest?.profiles?.full_name} · {selectedRequest?.vehicle_type}</DialogDescription>
           </DialogHeader>
           {actionType === "approve" ? (
-            <div className="space-y-2">
-              <Label>Kiosztott rendszám</Label>
-              <Input placeholder="Pl. SFSD-01" value={adminPlate} maxLength={16} autoFocus
-                     className="h-12 text-center font-mono text-xl tracking-[0.2em] uppercase" onChange={(event) => setAdminPlate(event.target.value)}/>
-              <p className="text-xs text-slate-500">A jármű automatikusan bekerül a járműparkba a kérelmező nevére.</p>
+            <div className="space-y-3">
+              <p className="text-xs text-slate-400">
+                Válassz járművet a járműparkból: látod, kinél van már kulcs, és hogy {requester?.full_name ?? "a kérelmező"} megkaphatja-e.
+              </p>
+              <VehiclePicker vehicles={vehicles ?? []} categories={categories} people={people} autoFocus
+                             selected={pickedVehicle ? [pickedVehicle] : []}
+                             onToggle={(vehicle) => {
+                               setPickedVehicle((prev) => (prev === vehicle.id ? null : vehicle.id));
+                               setAdminPlate("");
+                             }}
+                             blocker={(vehicle, category) => {
+                               if (!canAssignVehicle(profile, category)) return "Nem kezelheted ennek a járműnek a kulcsait.";
+                               if (requester && vehicle.holders.some((holder) => holder.user_id === requester.id)) return "Már kulcsos.";
+                               if (freeKeys(vehicle) === 0) return vehicle.capacity === 0 ? "Közös jármű, nincs személyes kulcs." : "Nincs szabad kulcs.";
+                               return requester ? holdBlocker(requester, vehicle, category) : null;
+                             }}/>
+              <details className="rounded-xl bg-white/[0.02] px-3 py-2 ring-1 ring-white/5">
+                <summary className="cursor-pointer text-xs text-slate-400">Nincs a járműparkban? Új rendszám megadása</summary>
+                <div className="mt-2 space-y-1.5">
+                  <Input placeholder="Pl. SFSD-401" value={adminPlate} maxLength={16}
+                         className="h-10 text-center font-mono text-lg tracking-[0.2em] uppercase"
+                         onChange={(event) => {
+                           setAdminPlate(event.target.value);
+                           setPickedVehicle(null);
+                         }}/>
+                  <p className="text-xs text-slate-500">Az új jármű az „Egyéb” kategóriába kerül, a kulcsa a kérelmezőé.</p>
+                </div>
+              </details>
             </div>
           ) : (
             <div className="space-y-2">

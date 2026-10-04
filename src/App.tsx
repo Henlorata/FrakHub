@@ -35,6 +35,7 @@ const ExamHub = lazyPage(() => import("@/pages/exams/ExamHub"), "ExamHub");
 const ExamEditor = lazyPage(() => import("@/pages/exams/ExamEditor"), "ExamEditor");
 const ExamGradingPage = lazyPage(() => import("@/pages/exams/grading/ExamGradingPage"), "ExamGradingPage");
 const LogisticsPage = lazyPage(() => import("@/pages/logistics/LogisticsPage"), "LogisticsPage");
+const VehiclePage = lazyPage(() => import("@/pages/logistics/VehiclePage"), "VehiclePage");
 const FinancePage = lazyPage(() => import("@/pages/logistics/FinancePage"), "FinancePage");
 const ProfilePage = lazyPage(() => import("@/pages/profile/ProfilePage"), "ProfilePage");
 const CalculatorPage = lazyPage(() => import("@/pages/calculator/CalculatorPage"), "CalculatorPage");
@@ -75,6 +76,7 @@ function App() {
                     <Route path="/exams/editor/:examId" element={<ExamEditor/>}/>
                     <Route path="/exams/grading/:submissionId" element={<ExamGradingPage/>}/>
                     <Route path="/logistics" element={<LogisticsPage/>}/>
+                    <Route path="/logistics/fleet/:vehicleId" element={<VehiclePage/>}/>
                     <Route path="/finance" element={<FinancePage/>}/>
                     <Route path="/profile" element={<ProfilePage/>}/>
                     <Route path="/calculator" element={<CalculatorPage/>}/>

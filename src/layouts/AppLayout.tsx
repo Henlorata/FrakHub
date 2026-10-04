@@ -162,7 +162,8 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
         )}
 
         <main className="relative flex min-w-0 flex-1 flex-col p-4 md:p-6 lg:p-8">
-          <div key={location.pathname.split("/")[1]} className="page-enter flex min-w-0 flex-1 flex-col">
+          {/* Pages never stretch past ~1800 px; sparse pages set a narrower width themselves. */}
+          <div key={location.pathname.split("/")[1]} className="page-enter mx-auto flex w-full max-w-[1800px] min-w-0 flex-1 flex-col">
             <Suspense fallback={<PageLoader/>}>
               <Outlet/>
             </Suspense>

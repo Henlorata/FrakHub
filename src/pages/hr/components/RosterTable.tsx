@@ -51,7 +51,8 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
       if (status === "inactive" && (daysSince(member.lastSeen) ?? 999) < INACTIVE_DAYS) return false;
       if (status === "flagged" && (member.details?.activity_status ?? "active") === "active") return false;
       if (status === "vehicle" && member.vehicleWarnings === 0
-          && !member.vehicles.some((vehicle) => registrationStatus(vehicle.registration_expires_on).state !== "ok")) return false;
+          && !member.vehicles.some((vehicle) => vehicle.registration_required
+            && registrationStatus(vehicle.registration_expires_on).state !== "ok")) return false;
       return true;
     });
     const byRank = (a: HrMember, b: HrMember) => getRankPriority(a.faction_rank) - getRankPriority(b.faction_rank)
@@ -216,7 +217,8 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
   const serviceDays = daysSince(member.details?.joined_on ?? member.created_at);
   const seenDays = daysSince(member.lastSeen);
   const activity = ACTIVITY_META[member.details?.activity_status ?? "active"];
-  const states = member.vehicles.map((vehicle) => registrationStatus(vehicle.registration_expires_on).state);
+  const states = member.vehicles.filter((vehicle) => vehicle.registration_required)
+    .map((vehicle) => registrationStatus(vehicle.registration_expires_on).state);
   const vehicleIssue = states.includes("expired") ? "expired" : states.find((state) => state === "soon" || state === "missing");
   const division = DIVISION_META[member.division] ?? DIVISION_META.TSB;
 

@@ -1,6 +1,7 @@
-import {useState, type ReactNode} from "react";
+import {useMemo, useState, type ReactNode} from "react";
+import {Link} from "react-router";
 import {toast} from "sonner";
-import {Car, Clock, Landmark, Loader2, Save, UserMinus} from "lucide-react";
+import {Car, Clock, KeyRound, Landmark, Loader2, Save, UserMinus} from "lucide-react";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Button} from "@/components/ui/button";
@@ -10,6 +11,11 @@ import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, Di
 import {DutyChart} from "@/components/hr/DutyChart";
 import {StrikeDots} from "@/components/hr/StrikeDots";
 import {RegistrationBadge} from "@/components/fleet/RegistrationBadge";
+import {LicensePlate} from "@/components/fleet/LicensePlate";
+import {AssignVehiclesDialog} from "@/components/fleet/AssignDialogs";
+import {canAssignAnyVehicle} from "@/lib/fleet";
+import {useFleet} from "@/lib/fleet-store";
+import {useProfileDirectory} from "@/lib/profile-directory";
 import {
   ACTIVITY_META, formatAccountNumber, isValidAccountNumber, JOIN_TYPE_LABELS, LEAVE_TYPE_META, REHIRE_META, STATIONS,
 } from "@/lib/registry";
@@ -47,6 +53,14 @@ export function MemberRegistryTab({member, viewer, onSaveDetails, onSaveBankAcco
 }) {
   const editable = canManageMemberDetails(viewer, member);
   const staff = isStaff(viewer);
+  const {vehicles: stock, categories} = useFleet();
+  const {profiles} = useProfileDirectory();
+  const [assigning, setAssigning] = useState(false);
+  const canAssign = canAssignAnyVehicle(viewer, categories);
+  // The live stock once loaded (keys handed out here show up at once), the registry until then.
+  const vehicles = useMemo(() => stock
+    ? stock.filter((vehicle) => vehicle.holders.some((holder) => holder.user_id === member.id))
+    : member.vehicles, [stock, member]);
   const [form, setForm] = useState(() => toForm(member));
   const [saving, setSaving] = useState(false);
   const initial = toForm(member);
@@ -164,22 +178,35 @@ export function MemberRegistryTab({member, viewer, onSaveDetails, onSaveBankAcco
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><Car className="size-4 text-primary"/> Járművek</h3>
-          {staff && <span className="flex items-center gap-2 text-xs text-slate-400">Jármű-hibapont <StrikeDots count={member.vehicleWarnings}/></span>}
+          <div className="flex items-center gap-3">
+            {staff && <span className="flex items-center gap-2 text-xs text-slate-400">Jármű-hibapont <StrikeDots count={member.vehicleWarnings}/></span>}
+            {canAssign && member.system_role !== "pending" && (
+              <Button size="sm" variant="outline" onClick={() => setAssigning(true)}><KeyRound/> Jármű kiosztása</Button>
+            )}
+          </div>
         </div>
-        {member.vehicles.length === 0 ? (
+        {vehicles.length === 0 ? (
           <p className="text-sm text-slate-500">Nincs hozzárendelt jármű.</p>
         ) : (
           <ul className="space-y-2">
-            {member.vehicles.map((vehicle) => (
-              <li key={vehicle.id} className="flex flex-wrap items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/5">
-                <span className="rounded bg-gradient-to-b from-slate-100 to-slate-300 px-2 py-0.5 font-mono text-xs font-bold tracking-widest text-slate-900">
-                  {vehicle.plate}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm text-slate-200">{vehicle.model}</span>
-                <RegistrationBadge expiresOn={vehicle.registration_expires_on}/>
+            {vehicles.map((vehicle) => (
+              <li key={vehicle.id}>
+                <Link to={`/logistics/fleet/${vehicle.id}`}
+                      className="flex flex-wrap items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/5 transition-colors hover:bg-white/[0.06]">
+                  <LicensePlate plate={vehicle.plate} size="sm"/>
+                  <span className="min-w-0 flex-1 truncate text-sm text-slate-200">{vehicle.model}</span>
+                  {vehicle.registration_required
+                    ? <RegistrationBadge expiresOn={vehicle.registration_expires_on}/>
+                    : <span className="text-[11px] text-teal-200">Nem kell forgalmi</span>}
+                </Link>
               </li>
             ))}
           </ul>
+        )}
+        {assigning && (
+          <AssignVehiclesDialog open person={profiles.find((person) => person.id === member.id) ?? null} vehicles={stock ?? []}
+                                categories={categories} people={profiles} viewer={profiles.find((person) => person.id === viewer.id) ?? null}
+                                onOpenChange={setAssigning}/>
         )}
       </section>
     </div>

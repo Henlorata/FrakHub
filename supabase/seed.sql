@@ -138,11 +138,28 @@ insert into public.former_members (full_name, badge_number, faction_rank, divisi
   ('Pending Teszt', '1004', 'Deputy Sheriff I.', 'TSB', current_date - 500, current_date - 200, 'inactivity', 'Három hónapig nem jelentkezett.',
    'conditional', 'Újra felvételi vizsga szükséges.');
 
--- Fleet: one vehicle about to expire, one expired, with vehicle warnings.
-insert into public.fleet_vehicles (id, plate, model, owner_id, registration_expires_on, notes) values
-  ('40000000-0000-4000-8000-000000000001', 'SFSD-12', 'Buffalo STX', '00000000-0000-4000-8000-000000000003', current_date + 2, null),
-  ('40000000-0000-4000-8000-000000000002', 'SFSD-07', 'Granger', '00000000-0000-4000-8000-000000000006', current_date - 3, 'MCB terepjáró'),
-  ('40000000-0000-4000-8000-000000000003', 'SFSD-01', 'Police Cruiser', '00000000-0000-4000-8000-000000000001', current_date + 60, null);
-insert into public.vehicle_warnings (vehicle_id, plate, reason, issued_by) values
-  ('40000000-0000-4000-8000-000000000001', 'SFSD-12', 'Szabálytalan parkolás a kapitányság előtt', '00000000-0000-4000-8000-000000000002'),
-  ('40000000-0000-4000-8000-000000000001', 'SFSD-12', 'Sérülten leadott jármű', '00000000-0000-4000-8000-000000000002');
+-- Fleet (the stock comes from the import migration): keys for the test accounts, one
+-- registration about to expire, one expired, and vehicle warnings.
+select set_config('app.fleet_auto', '1', false);
+insert into public.fleet_assignments (vehicle_id, user_id, assigned_by)
+select v.id, k.user_id, '00000000-0000-4000-8000-000000000002'
+from (values
+  ('SFSD-012', '00000000-0000-4000-8000-000000000003'::uuid),
+  ('SFSD-012', '00000000-0000-4000-8000-000000000006'::uuid),
+  ('OKI-226', '00000000-0000-4000-8000-000000000006'::uuid),
+  ('SEB-004', '00000000-0000-4000-8000-000000000007'::uuid),
+  ('SFSD-063', '00000000-0000-4000-8000-000000000002'::uuid),
+  ('SFSD-100', '00000000-0000-4000-8000-000000000001'::uuid),
+  ('SFSD-302', '00000000-0000-4000-8000-000000000001'::uuid),
+  ('SFSD-302', '00000000-0000-4000-8000-000000000007'::uuid)
+) as k(plate, user_id)
+join public.fleet_vehicles v on v.plate = k.plate;
+select set_config('app.fleet_auto', '', false);
+update public.fleet_vehicles set registration_expires_on = current_date + 2 where plate = 'SFSD-012';
+update public.fleet_vehicles set registration_expires_on = current_date - 3 where plate = 'OKI-226';
+update public.fleet_vehicles set registration_expires_on = current_date + 40 where plate in ('SEB-004', 'SFSD-063', 'SFSD-100');
+insert into public.vehicle_warnings (vehicle_id, user_id, reason, issued_by)
+select v.id, '00000000-0000-4000-8000-000000000003', w.reason, '00000000-0000-4000-8000-000000000002'
+from public.fleet_vehicles v
+cross join (values ('Szabálytalan parkolás a kapitányság előtt'), ('Sérülten leadott jármű')) as w(reason)
+where v.plate = 'SFSD-012';

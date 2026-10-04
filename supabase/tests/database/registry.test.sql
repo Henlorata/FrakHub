@@ -1,7 +1,7 @@
--- HR registry and fleet tests: bank accounts, member details, duty time, former members,
--- fleet vehicles and vehicle warnings. Run with: bunx supabase test db
+-- HR registry tests: bank accounts, member details, duty time and former members (the fleet
+-- has its own file). Run with: bunx supabase test db
 begin;
-select plan(41);
+select plan(23);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,
@@ -28,8 +28,6 @@ end $$;
 
 -- Start from empty registry tables (the seed fills them for local development).
 select pg_temp.act_postgres();
-delete from public.vehicle_warnings;
-delete from public.fleet_vehicles;
 delete from public.duty_time_entries;
 delete from public.member_details;
 delete from public.member_bank_accounts;
@@ -105,76 +103,6 @@ select pg_temp.act_as((select deputy_id from ids));
 select is((select count(*) from public.former_members), 0::bigint, 'members cannot see former members');
 select throws_ok($$insert into public.former_members (full_name, recorded_by) values ('Hamis Henrik', (select deputy_id from ids))$$,
   '42501', null, 'members cannot record former members');
-
--- --- Fleet ------------------------------------------------------------------
-select pg_temp.act_as((select sergeant_id from ids));
-update public.vehicle_requests set status = 'approved', vehicle_plate = ' sfsd 77 ', processed_by = (select sergeant_id from ids)
-where user_id = (select deputy_id from ids) and status = 'pending';
-select is((select owner_id from public.fleet_vehicles where plate = 'SFSD 77'), (select deputy_id from ids),
-  'approved vehicle requests register the vehicle to the requester');
-
-select pg_temp.act_as((select deputy_id from ids));
-select is((public.get_dashboard_summary() ->> 'my_vehicles_due')::int, 1, 'a vehicle without registration date is due');
-select lives_ok($$select public.fleet_renew_registration((select id from public.fleet_vehicles where plate = 'SFSD 77'),
-                                                        current_date + 30)$$,
-  'owners renew their registration');
-select is((public.get_dashboard_summary() ->> 'my_vehicles_due')::int, 0, 'a renewed vehicle is no longer due');
-select pg_temp.act_as((select operator_id from ids));
-select throws_ok($$select public.fleet_renew_registration((select id from public.fleet_vehicles where plate = 'SFSD 77'),
-                                                         current_date + 30)$$,
-  '42501', null, 'members cannot renew a vehicle they do not own');
-update public.fleet_vehicles set owner_id = (select operator_id from ids) where plate = 'SFSD 77';
-select is((select owner_id from public.fleet_vehicles where plate = 'SFSD 77'), (select deputy_id from ids),
-  'members cannot reassign vehicles');
-
--- --- Vehicle warnings: three become one personal warning ----------------------
-select pg_temp.act_as((select deputy_id from ids));
-select throws_ok($$insert into public.vehicle_warnings (vehicle_id, plate, reason)
-                   select id, plate, 'Önfeljelentés' from public.fleet_vehicles where plate = 'SFSD 77'$$,
-  '42501', null, 'members cannot issue vehicle warnings');
-
-select pg_temp.act_as((select sergeant_id from ids));
-insert into public.vehicle_warnings (vehicle_id, plate, reason)
-select id, plate, 'Szabálytalan parkolás' from public.fleet_vehicles where plate = 'SFSD 77';
-insert into public.vehicle_warnings (vehicle_id, plate, reason)
-select id, plate, 'Sérült jármű leadása' from public.fleet_vehicles where plate = 'SFSD 77';
-select is((select count(*) from public.hr_records
-           where user_id = (select deputy_id from ids) and title = 'Figyelmeztetés: 3 jármű-hibapont'), 0::bigint,
-  'two vehicle warnings do not make a personal warning yet');
-insert into public.vehicle_warnings (vehicle_id, plate, reason)
-select id, plate, 'Engedély nélküli használat' from public.fleet_vehicles where plate = 'SFSD 77';
-select is((select count(*) from public.hr_records
-           where user_id = (select deputy_id from ids) and title = 'Figyelmeztetés: 3 jármű-hibapont'
-             and kind = 'warning' and status = 'active'), 1::bigint,
-  'the third vehicle warning becomes a personal warning');
-select is((select count(*) from public.vehicle_warnings
-           where user_id = (select deputy_id from ids) and converted_record_id is not null), 3::bigint,
-  'the three vehicle warnings are linked to the personal warning');
-select throws_ok($$update public.vehicle_warnings set revoked_at = now() where converted_record_id is not null$$,
-  '42501', null, 'converted vehicle warnings cannot be revoked');
-
-insert into public.vehicle_warnings (vehicle_id, plate, reason)
-select id, plate, 'Gyorshajtás' from public.fleet_vehicles where plate = 'SFSD 77';
-update public.vehicle_warnings set revoked_at = now() where reason = 'Gyorshajtás';
-select is((select revoked_by from public.vehicle_warnings where reason = 'Gyorshajtás'), (select sergeant_id from ids),
-  'revocations record who revoked the warning');
-
-select pg_temp.act_as((select deputy_id from ids));
-select is((select count(*) from public.vehicle_warnings), 4::bigint, 'owners see their vehicle warnings');
-select is((public.get_dashboard_summary() ->> 'my_vehicle_warnings')::int, 0,
-  'converted and revoked vehicle warnings are not counted as active');
-
-select pg_temp.act_postgres();
-select is((select count(*) from public.notifications
-           where user_id = (select deputy_id from ids) and title = 'Jármű-hibapont'), 4::bigint,
-  'the owner is notified about every vehicle warning');
-
--- --- Registration reminders (daily cron) --------------------------------------
-update public.fleet_vehicles set registration_expires_on = current_date + 2 where plate = 'SFSD 77';
-select is(public.fleet_send_reminders(), 1, 'owners are reminded before the registration expires');
-select is(public.fleet_send_reminders(), 0, 'each reminder is sent only once');
-update public.fleet_vehicles set registration_expires_on = current_date - 1 where plate = 'SFSD 77';
-select is(public.fleet_send_reminders(), 1, 'expired registrations get a final reminder');
 
 -- --- One-request registry (RLS scoped) ------------------------------------------
 select pg_temp.act_as((select operator_id from ids));

@@ -70,6 +70,7 @@ export const pageTitleFor = (pathname: string): string => {
   if (pathname.startsWith("/mcb/case")) return "Akta";
   if (pathname.startsWith("/mcb/suspects")) return "Gyanúsítottak";
   if (pathname.startsWith("/mcb/admin")) return "MCB adminisztráció";
+  if (pathname.startsWith("/logistics/fleet/")) return "Jármű";
   const match = NAV_SECTIONS.flatMap((section) => section.items)
     .filter((item) => pathname.startsWith(item.path))
     .sort((a, b) => b.path.length - a.path.length)[0];

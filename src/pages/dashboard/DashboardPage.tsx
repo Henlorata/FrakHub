@@ -5,7 +5,7 @@ import {format, formatDistanceToNowStrict} from "date-fns";
 import {hu} from "date-fns/locale";
 import {
   AlertOctagon, AlertTriangle, ArrowRight, Banknote, CalendarOff, Car, CheckCircle2, ChevronDown, ClipboardCheck,
-  EyeOff, FileText, Fingerprint, Gavel, GraduationCap, Info, Megaphone, Pin, Plus, Receipt, ScrollText, Trash2,
+  EyeOff, FileSearch, FileText, Fingerprint, Gavel, GraduationCap, Info, Megaphone, Pin, Plus, Receipt, ScrollText, Trash2,
   Truck, UserPlus, Users,
 } from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
@@ -41,6 +41,7 @@ interface DashboardSummary {
   my_vehicle_warnings?: number;
   my_vehicles_due?: number;
   fleet_registration_due?: number | null;
+  fleet_registration_reviews?: number | null;
   members_total: number;
   members_on_leave: number;
 }
@@ -120,6 +121,7 @@ export function DashboardPage() {
     {label: "Szabadságkérelem", value: summary?.pending_leave_requests, icon: CalendarOff, tone: "blue", to: "/hr?tab=requests"},
     {label: "Járműigénylés", value: summary?.pending_vehicle_requests, icon: Truck, tone: "orange", to: "/logistics"},
     {label: "Költségtérítés", value: summary?.pending_budget_requests, icon: Receipt, tone: "emerald", to: "/finance"},
+    {label: "Forgalmi ellenőrzésre vár", value: summary?.fleet_registration_reviews, icon: FileSearch, tone: "orange", to: "/logistics?tab=fleet&view=reviews"},
     {label: "Lejáró forgalmi a flottában", value: summary?.fleet_registration_due, icon: Car, tone: "orange", to: "/logistics?tab=fleet"},
     {label: "Nyitott aktám", value: summary?.my_open_cases, icon: Fingerprint, tone: "blue", to: "/mcb"},
     {label: "Járművem forgalmija", value: summary?.my_vehicles_due, icon: Car, tone: "gold", to: "/logistics?tab=fleet"},
@@ -127,7 +129,8 @@ export function DashboardPage() {
   const openTasks = tasks.filter((task) => (task.value ?? 0) > 0);
 
   return (
-    <div className="space-y-6">
+    // Few blocks: kept to a readable width on large screens instead of being stretched apart.
+    <div className="mx-auto w-full max-w-[1440px] space-y-6">
       <NewAnnouncementDialog open={isAnnouncementOpen} onOpenChange={setIsAnnouncementOpen} onCreated={loadAnnouncements}/>
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
@@ -145,12 +148,12 @@ export function DashboardPage() {
       <Hero summary={summary} openTasks={openTasks.length}/>
 
       {openTasks.length > 0 && (
-        <section aria-label="Teendők" className="flex flex-wrap gap-3">
+        <section aria-label="Teendők" className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-3">
           {openTasks.map((task, index) => {
             const tone = TONE_CLASSES[task.tone];
             return (
               <button key={task.label} type="button" onClick={() => navigate(task.to)} style={{"--i": index} as CSSProperties}
-                      className="panel lift animate-rise group flex min-w-[220px] flex-1 items-center gap-3 px-4 py-3 text-left sm:flex-none">
+                      className="panel lift animate-rise group flex min-w-0 items-center gap-3 px-4 py-3 text-left">
                 <div className={cn("grid size-10 shrink-0 place-items-center rounded-xl ring-1", tone.tile)}><task.icon className="size-5"/></div>
                 <div className="min-w-0 flex-1">
                   <div className="text-xl font-semibold leading-tight text-white tabular-nums">{task.value}</div>

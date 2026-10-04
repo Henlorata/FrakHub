@@ -21,8 +21,11 @@ const RAYS = Array.from({length: POINTS}, (_, i) => polar(70, i, POINTS));
 
 interface SheriffStarProps {
   className?: string;
-  /** "emblem": solid gold badge. "hologram": glowing outline for backgrounds. */
-  variant?: "emblem" | "hologram";
+  /**
+   * "emblem": solid gold badge. "hologram": glowing outline (hero cards). "watermark": the
+   * app background's faint engraved outline with a light running along it.
+   */
+  variant?: "emblem" | "hologram" | "watermark";
   /** Slow rotation (disabled automatically for reduced motion). */
   spin?: boolean;
   /** Text in the centre seal of the emblem. */
@@ -34,6 +37,36 @@ export function SheriffStar({className, variant = "emblem", spin = false, label 
   const id = useId().replace(/:/g, "");
   const gold = `star-gold-${id}`;
   const shine = `star-shine-${id}`;
+
+  if (variant === "watermark") {
+    return (
+      <svg viewBox="0 0 200 200" fill="none" aria-hidden className={className}>
+        <defs>
+          <linearGradient id={gold} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#fde68a"/>
+            <stop offset="60%" stopColor="#eab308"/>
+            <stop offset="100%" stopColor="#92400e"/>
+          </linearGradient>
+          <radialGradient id={shine} cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0%" stopColor="#facc15" stopOpacity="0.16"/>
+            <stop offset="100%" stopColor="#facc15" stopOpacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx={CENTER} cy={CENTER} r="96" fill={`url(#${shine})`} className="emblem-breathe"/>
+        <circle cx={CENTER} cy={CENTER} r="97" stroke={`url(#${gold})`} strokeOpacity="0.18" strokeWidth="0.4" strokeDasharray="1 3"/>
+        <path d={OUTER} stroke={`url(#${gold})`} strokeOpacity="0.32" strokeWidth="0.7" strokeLinejoin="round" fill="rgb(234 179 8 / 0.025)"/>
+        <path d={INNER} stroke={`url(#${gold})`} strokeOpacity="0.18" strokeWidth="0.35" strokeDasharray="2 3"/>
+        {TIPS.map(([x, y], index) => <circle key={index} cx={x} cy={y} r="4.5" stroke={`url(#${gold})`} strokeOpacity="0.3" strokeWidth="0.6"/>)}
+        <circle cx={CENTER} cy={CENTER} r="27" stroke={`url(#${gold})`} strokeOpacity="0.28" strokeWidth="0.6"/>
+        <circle cx={CENTER} cy={CENTER} r="21" stroke={`url(#${gold})`} strokeOpacity="0.16" strokeWidth="0.35" strokeDasharray="1.5 2.5"/>
+        {/* A short bright segment travelling around the outline and the seal. */}
+        <path d={OUTER} pathLength={1000} stroke="#fde68a" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"
+              strokeDasharray="70 930" className="emblem-glint"/>
+        <circle cx={CENTER} cy={CENTER} r="27" pathLength={1000} stroke="#fde68a" strokeWidth="0.8" strokeLinecap="round"
+                strokeDasharray="90 910" className="emblem-glint emblem-glint-slow"/>
+      </svg>
+    );
+  }
 
   if (variant === "hologram") {
     return (
