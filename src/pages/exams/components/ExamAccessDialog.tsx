@@ -11,9 +11,10 @@ import {ScrollArea} from "@/components/ui/scroll-area";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {Badge} from "@/components/ui/badge";
-import type {Profile} from "@/types/supabase";
-import type {Exam} from "@/types/exams";
+import type {Exam, ExamOverride} from "@/types/exams";
 import {cn} from "@/lib/utils";
+import {getProfileDirectory, type DirectoryProfile} from "@/lib/profile-directory";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 
 interface ExamAccessDialogProps {
   open: boolean;
@@ -25,36 +26,34 @@ interface ExamAccessDialogProps {
 export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAccessDialogProps) {
   const {supabase, user} = useAuth();
   const [searchTerm, setSearchTerm] = React.useState("");
-  const [allUsers, setAllUsers] = React.useState<Profile[]>([]);
-  const [overrides, setOverrides] = React.useState<any[]>([]);
+  const [allUsers, setAllUsers] = React.useState<DirectoryProfile[]>([]);
+  const [overrides, setOverrides] = React.useState<ExamOverride[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const examId = exam?.id;
+
+  const fetchOverrides = React.useCallback(async () => {
+    if (!examId) return;
+    const {data, error} = await supabase.from('exam_overrides')
+      .select('*, profile:profiles(full_name, badge_number, avatar_url, faction_rank)')
+      .eq('exam_id', examId);
+    if (error) throw error;
+    setOverrides((data ?? []) as ExamOverride[]);
+  }, [examId, supabase]);
 
   const fetchData = React.useCallback(async () => {
-    if (!exam) return;
+    if (!examId) return;
     setLoading(true);
     try {
-      // JAVÍTÁS: profile reláció helyes behúzása (user_id -> profiles)
-      // Ha a user_id foreign key az auth.users-re mutat, akkor a profiles táblát explicit kell joinolni
-      const {data: ovData, error} = await supabase.from('exam_overrides')
-        .select('*, access_type, profile:profiles(full_name, badge_number, avatar_url, faction_rank)')
-        .eq('exam_id', exam.id);
-
-      if (error) throw error;
-      setOverrides(ovData || []);
-
-      const {data: userData} = await supabase.from('profiles')
-        .select('*')
-        .neq('system_role', 'pending')
-        .order('full_name');
-      setAllUsers(userData || []);
-
-    } catch (e: any) {
+      // The member list comes from the shared cache instead of a full profiles query.
+      const [directory] = await Promise.all([getProfileDirectory(), fetchOverrides()]);
+      setAllUsers(directory.filter(member => member.system_role !== 'pending'));
+    } catch (e) {
       console.error(e);
-      toast.error("Hiba az adatok betöltésekor: " + e.message);
+      toast.error("Hiba az adatok betöltésekor.");
     } finally {
       setLoading(false);
     }
-  }, [exam?.id, supabase]);
+  }, [examId, fetchOverrides]);
 
   React.useEffect(() => {
     if (open) {
@@ -82,22 +81,22 @@ export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAcces
       });
       if (error) throw error;
       toast.success(`Kivétel rögzítve: ${type === 'allow' ? 'ENGEDÉLY' : 'TILTÁS'}`);
-      fetchData();
+      void fetchOverrides();
       if (onUpdate) onUpdate();
-    } catch (e) {
+    } catch {
       toast.error("Hiba a mentéskor.");
     }
   };
 
   const removeOverride = async (id: string) => {
-    try {
-      await supabase.from('exam_overrides').delete().eq('id', id);
-      toast.success("Kivétel törölve.");
-      fetchData();
-      if (onUpdate) onUpdate();
-    } catch (e) {
+    const {error} = await supabase.from('exam_overrides').delete().eq('id', id);
+    if (error) {
       toast.error("Hiba a törléskor.");
+      return;
     }
+    toast.success("Kivétel törölve.");
+    setOverrides(prev => prev.filter(ov => ov.id !== id));
+    if (onUpdate) onUpdate();
   };
 
   if (!exam) return null;
@@ -160,7 +159,7 @@ export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAcces
                            className="flex items-center justify-between p-3 rounded hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all group">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8 border border-slate-700"><AvatarImage
-                            src={u.avatar_url}/><AvatarFallback
+                            src={getOptimizedAvatarUrl(u.avatar_url, 64) || undefined}/><AvatarFallback
                             className="bg-slate-900 text-[10px] font-bold">{u.full_name.charAt(0)}</AvatarFallback></Avatar>
                           <div>
                             <p className="text-sm font-medium text-slate-200">{u.full_name}</p>
@@ -193,7 +192,7 @@ export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAcces
                        className="flex items-center justify-between p-3 bg-slate-900/50 rounded border border-slate-800">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8 border border-slate-700"><AvatarImage
-                        src={ov.profile?.avatar_url}/><AvatarFallback
+                        src={getOptimizedAvatarUrl(ov.profile?.avatar_url, 64) || undefined}/><AvatarFallback
                         className="bg-slate-950 text-[10px]">{ov.profile?.full_name?.charAt(0)}</AvatarFallback></Avatar>
                       <div>
                         <p className="text-sm font-bold text-white">{ov.profile?.full_name}</p>

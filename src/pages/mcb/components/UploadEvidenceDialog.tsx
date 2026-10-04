@@ -11,7 +11,8 @@ import {Button} from "@/components/ui/button";
 import {Label} from "@/components/ui/label";
 import {Loader2, UploadCloud, FileType, X, Image as ImageIcon, CheckCircle2} from "lucide-react";
 import {toast} from "sonner";
-import {cn} from "@/lib/utils";
+import {cn, errorMessage} from "@/lib/utils";
+import {uploadToCloudinary} from "@/lib/cloudinary";
 
 interface UploadEvidenceDialogProps {
   open: boolean;
@@ -38,11 +39,6 @@ export function UploadEvidenceDialog({
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  React.useEffect(() => {
-    if (open && initialFile) {
-      handleFileSelect(initialFile);
-    }
-  }, [open, initialFile]);
 
   React.useEffect(() => {
     if (!open) {
@@ -57,21 +53,26 @@ export function UploadEvidenceDialog({
     }
   }, [open]);
 
-  const handleFileSelect = (selectedFile: File) => {
+  // Release the blob URL of the previous preview (each one pins the file in memory).
+  React.useEffect(() => {
+    if (!previewUrl) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  const handleFileSelect = React.useCallback((selectedFile: File) => {
     if (selectedFile.size > 10 * 1024 * 1024) {
       toast.error("A fájl túl nagy! Maximum 10MB engedélyezett.");
       return;
     }
 
     setFile(selectedFile);
+    setPreviewUrl(selectedFile.type.startsWith("image/") ? URL.createObjectURL(selectedFile) : null);
+  }, []);
 
-    if (selectedFile.type.startsWith("image/")) {
-      const url = URL.createObjectURL(selectedFile);
-      setPreviewUrl(url);
-    } else {
-      setPreviewUrl(null);
-    }
-  };
+  // A file dropped anywhere on the case page opens the dialog pre-filled.
+  React.useEffect(() => {
+    if (open && initialFile) handleFileSelect(initialFile);
+  }, [open, initialFile, handleFileSelect]);
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -107,30 +108,11 @@ export function UploadEvidenceDialog({
       return;
     }
 
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
-    if (!cloudName || !uploadPreset) {
-      toast.error("Rendszerhiba: Hiányzó Cloudinary konfiguráció.");
-      return;
-    }
-
     setIsUploading(true);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", uploadPreset);
-
-      const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
-      const response = await fetch(uploadUrl, {method: "POST", body: formData});
-
-      if (!response.ok) {
-        throw new Error("Cloudinary feltöltési hiba");
-      }
-
-      const data = await response.json();
-      const secureUrl = data.secure_url;
+      // Images are resized/converted to WebP in the browser before upload.
+      const secureUrl = await uploadToCloudinary(file, 'evidence');
 
       const {error: dbError} = await supabase
         .from('case_evidence')
@@ -148,9 +130,9 @@ export function UploadEvidenceDialog({
       onOpenChange(false);
       onUploadComplete();
 
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      toast.error(error.message || "Hiba történt a mentés során.");
+      toast.error(errorMessage(error, "Hiba történt a mentés során."));
     } finally {
       setIsUploading(false);
     }
@@ -170,7 +152,6 @@ export function UploadEvidenceDialog({
 
         <div
           className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-sky-500 to-transparent opacity-50"></div>
-        <div className="absolute inset-0 pointer-events-none bg-[url('/grid.svg')] opacity-10"></div>
 
         <div className="p-6 pb-2 relative z-10">
           <DialogHeader>

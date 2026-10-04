@@ -13,7 +13,8 @@ import {Textarea} from "@/components/ui/textarea";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Loader2, FolderPlus, Terminal} from "lucide-react";
 import {toast} from "sonner";
-import {useNavigate} from "react-router-dom";
+import {useNavigate} from "react-router";
+import {errorMessage} from "@/lib/utils";
 
 interface NewCaseDialogProps {
   open: boolean;
@@ -26,24 +27,25 @@ export function NewCaseDialog({open, onOpenChange, onCaseCreated}: NewCaseDialog
   const navigate = useNavigate();
   const [loading, setLoading] = React.useState(false);
   const [formData, setFormData] = React.useState({title: "", description: "", priority: "medium"});
+  const navigateToCase = (id: string) => navigate(`/mcb/case/${id}`);
 
   const handleSubmit = async () => {
-    if (!formData.title) return toast.error("Az akta címét kötelező megadni.");
+    if (!formData.title.trim()) return toast.error("Az akta címét kötelező megadni.");
     setLoading(true);
     try {
       const {data, error} = await supabase.from('cases').insert({
-        title: formData.title, description: formData.description, priority: formData.priority as any,
+        title: formData.title.trim(), description: formData.description, priority: formData.priority,
         status: 'open', owner_id: profile?.id, body: []
-      }).select().single();
+      }).select('id').single();
 
       if (error) throw error;
       toast.success("Akta inicializálva.");
       setFormData({title: "", description: "", priority: "medium"});
       onOpenChange(false);
       if (onCaseCreated) onCaseCreated();
-      navigate(`/mcb/case/${data.id}`);
-    } catch (error: any) {
-      toast.error("Hiba történt:", {description: error.message});
+      navigateToCase(data.id);
+    } catch (error) {
+      toast.error("Hiba történt:", {description: errorMessage(error)});
     } finally {
       setLoading(false);
     }

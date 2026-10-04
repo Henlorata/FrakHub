@@ -33,13 +33,13 @@ function NewSuspectDialog({open, onOpenChange, onSuccess}: {
     }
     setLoading(true);
     try {
-      const {error} = await supabase.from('suspects').insert({...formData, created_by: user?.id} as any);
+      const {error} = await supabase.from('suspects').insert({...formData, created_by: user?.id});
       if (error) throw error;
       toast.success("Adatlap létrehozva.");
-      setFormData({full_name: "", alias: "", status: "free", description: "", gender: "male"});
+      setFormData({full_name: "", alias: "", status: "free", gang_affiliation: "", description: "", gender: "male"});
       onSuccess();
       onOpenChange(false);
-    } catch (error: any) {
+    } catch {
       toast.error("Hiba történt.");
     } finally {
       setLoading(false);
@@ -88,7 +88,7 @@ function NewSuspectDialog({open, onOpenChange, onSuccess}: {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Jelenlegi Státusz</Label>
-              <Select value={formData.status} onValueChange={(val: any) => setFormData({...formData, status: val})}>
+              <Select value={formData.status} onValueChange={(val) => setFormData({...formData, status: val as Suspect['status']})}>
                 <SelectTrigger className="bg-slate-950 border-slate-800 h-10 text-sm"><SelectValue/></SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-800 text-white">
                   <SelectItem value="free" className="text-green-400">SZABADLÁBON</SelectItem>

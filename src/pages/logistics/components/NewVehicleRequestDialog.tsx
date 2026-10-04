@@ -100,7 +100,7 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
 
     setIsLoading(true);
     try {
-      const {error} = await (supabase.from('vehicle_requests') as any).insert({
+      const {error} = await supabase.from('vehicle_requests').insert({
         user_id: user.id, vehicle_type: finalType, reason: reason, status: 'pending'
       });
       if (error) throw error;
@@ -146,7 +146,7 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
         <form onSubmit={handleSubmit} className="p-6 space-y-6 relative">
           {/* Háttér minta */}
           <div
-            className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/graphy.png')] opacity-10 pointer-events-none"></div>
+            className="absolute inset-0 tex-grid opacity-10 pointer-events-none"></div>
 
           {/* JÁRMŰ LISTA */}
           <div className="space-y-2 relative z-10">

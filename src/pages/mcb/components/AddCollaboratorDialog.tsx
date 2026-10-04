@@ -15,6 +15,7 @@ import {toast} from "sonner";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import type {Profile} from "@/types/supabase";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 
 interface AddCollaboratorDialogProps {
   open: boolean;
@@ -39,25 +40,35 @@ export function AddCollaboratorDialog({
   const [role, setRole] = React.useState("editor");
 
   React.useEffect(() => {
-    const searchUsers = async () => {
-      if (search.length < 2) {
-        setResults([]);
-        return;
-      }
+    const term = search.trim();
+    if (term.length < 2) {
+      setResults([]);
+      return;
+    }
+    let active = true;
+    const debounce = setTimeout(async () => {
       setLoading(true);
+      // Digits search the badge number, anything else the name (as the placeholder promises).
+      const column = /^\d+$/.test(term) ? 'badge_number' : 'full_name';
       const {data} = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, full_name, badge_number, faction_rank, avatar_url')
         .eq('division', 'MCB')
-        .ilike('full_name', `%${search}%`)
-        .limit(5);
-
-      if (data) setResults(data.filter(u => !existingUserIds.includes(u.id)));
-      setLoading(false);
+        .ilike(column, `%${term}%`)
+        .limit(10);
+      if (active) {
+        setResults((data ?? []) as Profile[]);
+        setLoading(false);
+      }
+    }, 400);
+    return () => {
+      active = false;
+      clearTimeout(debounce);
     };
-    const debounce = setTimeout(searchUsers, 500);
-    return () => clearTimeout(debounce);
-  }, [search, supabase, existingUserIds]);
+  }, [search, supabase]);
+
+  // Filtered at render time, so a parent re-render does not trigger a new query.
+  const visibleResults = results.filter(u => !existingUserIds.includes(u.id));
 
   const handleAdd = async () => {
     if (!selectedUser) return;
@@ -71,7 +82,7 @@ export function AddCollaboratorDialog({
       toast.success(`${selectedUser.full_name} hozzáadva.`);
       onCollaboratorAdded();
       handleClose();
-    } catch (e) {
+    } catch {
       toast.error("Hiba történt.");
     }
   };
@@ -111,15 +122,15 @@ export function AddCollaboratorDialog({
                 {loading ?
                   <div className="flex justify-center p-4"><Loader2 className="animate-spin w-5 h-5 text-blue-500"/>
                   </div> :
-                  results.length === 0 ? <p
+                  visibleResults.length === 0 ? <p
                     className="text-center text-xs text-slate-500 p-4 font-mono">{search.length < 2 ? "KERESÉS..." : "NINCS TALÁLAT"}</p> : (
                     <div className="space-y-1">
-                      {results.map(user => (
+                      {visibleResults.map(user => (
                         <button key={user.id}
                                 className="w-full flex items-center gap-3 p-2 rounded hover:bg-blue-500/10 hover:border-blue-500/30 border border-transparent transition-all text-left group"
                                 onClick={() => setSelectedUser(user)}>
                           <Avatar className="h-8 w-8 border border-slate-700 group-hover:border-blue-500"><AvatarImage
-                            src={user.avatar_url}/><AvatarFallback
+                            src={getOptimizedAvatarUrl(user.avatar_url, 64) || undefined}/><AvatarFallback
                             className="bg-slate-900 text-[10px]">{user.full_name.charAt(0)}</AvatarFallback></Avatar>
                           <div>
                             <p className="text-sm font-bold text-white group-hover:text-blue-400">{user.full_name}</p>
@@ -138,7 +149,7 @@ export function AddCollaboratorDialog({
                 className="flex items-center gap-4 p-4 bg-slate-950/80 rounded border border-blue-500/30 relative overflow-hidden">
                 <div className="absolute inset-0 bg-blue-500/5 pointer-events-none"></div>
                 <Avatar className="h-12 w-12 border-2 border-blue-500/50"><AvatarImage
-                  src={selectedUser.avatar_url}/><AvatarFallback
+                  src={getOptimizedAvatarUrl(selectedUser.avatar_url, 96) || undefined}/><AvatarFallback
                   className="bg-slate-900 font-bold">{selectedUser.full_name.charAt(0)}</AvatarFallback></Avatar>
                 <div>
                   <p className="font-black text-white text-lg">{selectedUser.full_name}</p>

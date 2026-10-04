@@ -3,7 +3,9 @@ import {
   prepareData,
   formatCurrency,
   formatJailTime,
+  LEGACY_ITEM_IDS,
 } from "@/lib/penalcode-processor";
+import {useLocalStorage} from "@/hooks/use-local-storage";
 import type {
   PenalCodeItem,
   KategoriaData,
@@ -117,28 +119,14 @@ ALL_KATEGORIA_GROUPS.forEach((kat) => {
   });
 });
 
-// --- Hook ---
-function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T) => void] {
-  const [storedValue, setStoredValue] = React.useState<T>(() => {
-    try {
-      const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      console.error(error);
-      return initialValue;
-    }
-  });
+// --- Mentett adatok migrálása (régi, sorszám alapú tétel azonosítók) ---
+const migrateItemId = (id: string) => LEGACY_ITEM_IDS.get(id) ?? id;
 
-  const setValue = (value: T) => {
-    try {
-      setStoredValue(value);
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch (error) {
-      console.error(error);
-    }
-  };
-  return [storedValue, setValue];
-}
+/** Saved carts (history/templates) get the current penal code data for their items. */
+const refreshCart = (cart: CartItem[]): CartItem[] => cart.map(({item, quantity}) => {
+  const current = ALL_ITEMS_MAP.get(migrateItemId(item.id));
+  return {item: current ?? item, quantity};
+});
 
 // --- Segédfüggvények ---
 function getRelativeTime(timestamp: string) {
@@ -386,6 +374,13 @@ export function CalculatorPage() {
 
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [favorites, setFavorites] = useLocalStorage<string[]>("sfsd_favorites", []);
+
+  // One-time migration of favorites saved with the old sequential ids.
+  React.useEffect(() => {
+    if (favorites.some(id => LEGACY_ITEM_IDS.has(id))) {
+      setFavorites(previous => [...new Set(previous.map(migrateItemId))]);
+    }
+  }, [favorites, setFavorites]);
   const [history, setHistory] = useLocalStorage<HistorySnapshot[]>("sfsd_history", []);
   const [templates, setTemplates] = useLocalStorage<Template[]>("sfsd_templates", []);
 
@@ -676,7 +671,9 @@ export function CalculatorPage() {
     setIsArrestCopied(true);
     setTimeout(() => setIsArrestCopied(false), 2000);
 
-    logActionToDb('arrest', `${summary.minJail} perc - Indokok: ${ticketReasons}`);
+    // Log the time actually issued (the selected value), not the minimum.
+    const issuedJail = Math.min(selectedJail, summary.maxJail > 0 ? summary.maxJail : Infinity);
+    logActionToDb('arrest', `${issuedJail} perc - Indokok: ${ticketReasons}`);
   };
 
   const copyReasons = () => {
@@ -717,7 +714,7 @@ export function CalculatorPage() {
   }
 
   const loadFromHistory = (snapshot: HistorySnapshot) => {
-    setCart(snapshot.cart);
+    setCart(refreshCart(snapshot.cart));
     setSelectedFine(snapshot.finalFine);
     setSelectedJail(snapshot.finalJail);
     setIsHistoryOpen(false);
@@ -743,7 +740,7 @@ export function CalculatorPage() {
   const loadFromTemplate = (template: Template) => {
     setCart(currentCart => {
       const newCart = [...currentCart];
-      template.cart.forEach(templateItem => {
+      refreshCart(template.cart).forEach(templateItem => {
         const existingIndex = newCart.findIndex(cartItem => cartItem.item.id === templateItem.item.id);
         if (existingIndex !== -1) newCart[existingIndex] = {
           ...newCart[existingIndex],
@@ -1187,7 +1184,7 @@ export function CalculatorPage() {
           {/* 1. BAL OSZLOP (Kategóriák) */}
           {isCategorySidebarVisible && (
             <div
-              className="hidden xl:flex flex-col sticky top-6 h-fit max-h-[calc(100vh-3rem)] overflow-y-auto scrollbar-hide bg-slate-900/40 rounded-xl border border-slate-800/50 backdrop-blur-sm transition-all duration-300">
+              className="hidden xl:flex flex-col sticky top-20 h-fit max-h-[calc(100dvh-6rem)] overflow-y-auto scrollbar-hide bg-slate-900/40 rounded-xl border border-slate-800/50 backdrop-blur-sm transition-all duration-300">
               <div className="p-4 border-b border-slate-800/50 sticky top-0 bg-slate-950/80 backdrop-blur-md z-10">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
                   <ClipboardList className="w-3 h-3"/> Kategóriák
@@ -1217,7 +1214,7 @@ export function CalculatorPage() {
           <div className="min-w-0 flex flex-col gap-6 pb-20 lg:pb-0 w-full">
             {/* LEBEGŐ KERESŐ (Glassmorphism) */}
             <div
-              className="sticky top-4 z-30 rounded-xl border border-white/10 bg-slate-950/80 backdrop-blur-md shadow-2xl flex items-center gap-2 p-2 transition-all duration-300 hover:bg-slate-950/90 hover:border-white/20">
+              className="sticky top-[4.5rem] z-20 rounded-xl border border-white/10 bg-slate-950/80 backdrop-blur-md shadow-2xl flex items-center gap-2 p-2 transition-all duration-300 hover:bg-slate-950/90 hover:border-white/20">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500"/>
                 <Input
@@ -1271,7 +1268,7 @@ export function CalculatorPage() {
           </div>
 
           {/* 3. JOBB OSZLOP (Sticky Calculator) */}
-          <div className="hidden lg:flex flex-col sticky top-6 h-[calc(100vh-2rem)] pl-2">
+          <div className="hidden lg:flex flex-col sticky top-20 h-[calc(100dvh-6rem)] pl-2">
             <div className="flex-1 overflow-y-auto pr-2 scrollbar-hide pb-10">
               {renderRightSidebar()}
             </div>

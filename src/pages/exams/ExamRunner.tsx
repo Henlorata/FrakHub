@@ -1,7 +1,7 @@
 import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import {useAuth} from '@/context/AuthContext';
 import {toast} from 'sonner';
-import type {Exam} from '@/types/exams';
+import type {Exam, ExamQuestion} from '@/types/exams';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -24,15 +24,15 @@ import {
   AlertTriangle, Clock, Save, ChevronLeft, ChevronRight,
   Play, CheckCircle2, Copy, Terminal, Shield, ShieldAlert, Activity
 } from 'lucide-react';
-import {useNavigate} from 'react-router-dom';
-import {cn} from '@/lib/utils';
+import {useNavigate} from "react-router";
+import {cn, errorMessage} from '@/lib/utils';
 
 const getStorageKey = (examId: string, userId: string) => `exam_session_${userId}_${examId}`;
 
-const generateClaimToken = () => {
-  const part = () => Math.random().toString(36).substr(2, 4).toUpperCase();
-  return `TR-${part()}-${part()}`;
-};
+type AnswerValue = string | string[];
+
+const isAnswered = (value: AnswerValue | undefined) =>
+  typeof value === 'string' ? value.trim().length > 0 : Array.isArray(value) && value.length > 0;
 
 // --- STÍLUS KONSTANSOK (Tech UI) ---
 const HUD_HEADER = "sticky top-0 z-50 bg-[#0b1221]/95 backdrop-blur border-b border-slate-800 shadow-2xl";
@@ -40,20 +40,22 @@ const QUESTION_CARD = "bg-slate-900/50 border border-slate-800 relative overflow
 const OPTION_ITEM = "flex items-center space-x-3 p-4 rounded border transition-all cursor-pointer group bg-slate-950/50 hover:bg-slate-900";
 const INPUT_STYLE = "bg-slate-950 border-slate-800 focus-visible:ring-yellow-500/30 focus-visible:border-yellow-500/50 font-mono text-sm text-white placeholder:text-slate-600";
 
-const QuestionList = React.memo(({
+type NumberedQuestion = ExamQuestion & {globalIndex: number};
+
+const QuestionList = React.memo(function QuestionList({
                                    questions,
                                    answers,
                                    onAnswerChange,
                                    onCheckboxChange
                                  }: {
-  questions: any[],
-  answers: Record<string, any>,
-  onAnswerChange: (qid: string, val: any) => void,
+  questions: NumberedQuestion[],
+  answers: Record<string, AnswerValue>,
+  onAnswerChange: (qid: string, val: AnswerValue) => void,
   onCheckboxChange: (qid: string, oid: string, checked: boolean) => void
-}) => {
+}) {
   return (
     <div className="space-y-8">
-      {questions.map((q, index) => (
+      {questions.map((q) => (
         <Card key={q.id} className={QUESTION_CARD}>
           <div className={cn("absolute top-0 left-0 w-1 h-full", q.is_required ? "bg-yellow-600" : "bg-slate-700")}/>
 
@@ -75,7 +77,7 @@ const QuestionList = React.memo(({
                         {q.question_type === 'text' ? 'SZÖVEGES' : q.question_type === 'single_choice' ? 'EGY VÁLASZ' : 'TÖBB VÁLASZ'}
                      </span>
                     <span className="text-[10px] font-mono text-yellow-500/80 uppercase tracking-wider">
-                        {q.points} PTS
+                        {q.points > 0 ? `${q.points} PONT` : 'NEM PONTOZOTT'}
                      </span>
                   </div>
                 </div>
@@ -92,7 +94,7 @@ const QuestionList = React.memo(({
                   <Textarea
                     className={cn(INPUT_STYLE, "min-h-[120px] resize-none text-base p-4 leading-relaxed break-all")}
                     placeholder="Írd ide a válaszod..."
-                    value={answers[q.id] || ''}
+                    value={typeof answers[q.id] === 'string' ? answers[q.id] as string : ''}
                     onChange={e => onAnswerChange(q.id, e.target.value)}
                   />
                 </div>
@@ -101,10 +103,10 @@ const QuestionList = React.memo(({
               {q.question_type === 'single_choice' && (
                 <RadioGroup
                   onValueChange={(val) => onAnswerChange(q.id, val)}
-                  value={answers[q.id] || ""}
+                  value={typeof answers[q.id] === 'string' ? answers[q.id] as string : ""}
                   className="space-y-3"
                 >
-                  {q.exam_options.map((opt: any) => (
+                  {q.exam_options.map((opt) => (
                     <div
                       key={opt.id}
                       onClick={() => onAnswerChange(q.id, opt.id)}
@@ -123,8 +125,9 @@ const QuestionList = React.memo(({
 
               {q.question_type === 'multiple_choice' && (
                 <div className="space-y-3">
-                  {q.exam_options.map((opt: any) => {
-                    const isChecked = (answers[q.id] || []).includes(opt.id);
+                  {q.exam_options.map((opt) => {
+                    const current = answers[q.id];
+                    const isChecked = Array.isArray(current) && current.includes(opt.id);
                     return (
                       <div
                         key={opt.id}
@@ -167,7 +170,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
 
   const [successToken, setSuccessToken] = useState<string | null>(null);
 
-  const [answers, setAnswers] = useState<Record<string, any>>(() => {
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>(() => {
     const saved = localStorage.getItem(storageKey);
     return saved ? JSON.parse(saved).answers : {};
   });
@@ -205,6 +208,10 @@ export function ExamRunner({exam}: { exam: Exam }) {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   const hasWarnedRef = useRef(false);
+  // Guards against double submission (timer firing while a manual submit is in flight).
+  const submittingRef = useRef(false);
+  // Always points at the latest executeSubmit, so the timer never submits stale answers.
+  const submitRef = useRef<(forceSubmit?: boolean) => Promise<void>>(async () => {});
 
   // --- LOCALSTORAGE SYNC ---
   useEffect(() => {
@@ -282,7 +289,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
 
       if (remaining <= 0) {
         clearInterval(timer);
-        executeSubmit(true);
+        void submitRef.current(true);
       }
     }, 1000);
     return () => clearInterval(timer);
@@ -290,7 +297,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
 
   // --- KÉRDÉSEK ÉS LAPOZÁS ---
   const allQuestions = useMemo(() => {
-    const sorted = (exam.exam_questions || []).sort((a, b) => {
+    const sorted = [...(exam.exam_questions || [])].sort((a, b) => {
       if ((a.page_number || 1) !== (b.page_number || 1)) {
         return (a.page_number || 1) - (b.page_number || 1);
       }
@@ -305,13 +312,14 @@ export function ExamRunner({exam}: { exam: Exam }) {
     [allQuestions, currentPage]);
 
   // --- HANDLERS ---
-  const handleAnswerChange = useCallback((questionId: string, value: any) => {
+  const handleAnswerChange = useCallback((questionId: string, value: AnswerValue) => {
     setAnswers(prev => ({...prev, [questionId]: value}));
   }, []);
 
   const handleCheckboxChange = useCallback((questionId: string, optionId: string, checked: boolean) => {
     setAnswers(prev => {
-      const current = (prev[questionId] || []) as string[];
+      const existing = prev[questionId];
+      const current = Array.isArray(existing) ? existing : [];
       if (checked) {
         return {...prev, [questionId]: [...current, optionId]};
       } else {
@@ -322,13 +330,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
   }, []);
 
   const handleNextPage = () => {
-    const missingOnPage = currentQuestions.filter(q => {
-      if (!q.is_required) return false;
-      const val = answers[q.id];
-      if (val === undefined || val === null) return true;
-      if (typeof val === 'string' && val.trim() === '') return true;
-      return Array.isArray(val) && val.length === 0;
-    });
+    const missingOnPage = currentQuestions.filter(q => q.is_required && !isAnswered(answers[q.id]));
 
     if (missingOnPage.length > 0) {
       toast.error(`Kérlek válaszold meg a kötelező kérdéseket ezen az oldalon!`);
@@ -364,13 +366,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
       return false;
     }
 
-    const missing = exam.exam_questions?.filter(q => {
-      if (!q.is_required) return false;
-      const val = answers[q.id];
-      if (val === undefined || val === null) return true;
-      if (typeof val === 'string' && val.trim() === '') return true;
-      return Array.isArray(val) && val.length === 0;
-    });
+    const missing = exam.exam_questions?.filter(q => q.is_required && !isAnswered(answers[q.id]));
 
     if (missing && missing.length > 0) {
       toast.error(`Még ${missing.length} kötelező kérdésre nem válaszoltál!`);
@@ -385,6 +381,8 @@ export function ExamRunner({exam}: { exam: Exam }) {
   };
 
   const executeSubmit = async (forceSubmit = false) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     if (forceSubmit) {
       toast.info("Lejárt az idő! A vizsga automatikusan beadásra került.");
     }
@@ -393,44 +391,26 @@ export function ExamRunner({exam}: { exam: Exam }) {
     const toastId = toast.loading("Vizsga beküldése...");
 
     try {
-      const token = !user ? generateClaimToken() : null;
-
-      const {data: submission, error: subError} = await supabase
-        .from('exam_submissions')
-        .insert({
-          exam_id: exam.id,
-          user_id: user?.id || null,
-          applicant_name: user?.user_metadata?.full_name || applicantName,
-          start_time: new Date(startTime).toISOString(),
-          end_time: new Date().toISOString(),
-          tab_switch_count: tabSwitches,
-          status: 'pending',
-          max_score: exam.exam_questions?.reduce((acc, q) => acc + q.points, 0) || 0,
-          claim_token: token
-        })
-        .select()
-        .single();
-
-      if (subError) throw subError;
-
-      const answersToInsert = exam.exam_questions?.map(q => {
+      // The server validates access, computes the maximum score and stores the sheet with
+      // its answers in one transaction; guests get their claim code back.
+      const payload: Record<string, {text?: string; options?: string[]}> = {};
+      exam.exam_questions?.forEach(q => {
         const val = answers[q.id];
-        let payload: any = {submission_id: submission.id, question_id: q.id};
-
-        if (q.question_type === 'text') {
-          payload.answer_text = val || "";
-        } else if (q.question_type === 'single_choice') {
-          payload.selected_option_ids = val ? [val] : [];
-        } else if (q.question_type === 'multiple_choice') {
-          payload.selected_option_ids = val || [];
-        }
-        return payload;
+        if (q.question_type === 'text') payload[q.id] = {text: typeof val === 'string' ? val : ""};
+        else if (q.question_type === 'single_choice') payload[q.id] = {options: typeof val === 'string' && val ? [val] : []};
+        else payload[q.id] = {options: Array.isArray(val) ? val : []};
       });
 
-      if (answersToInsert && answersToInsert.length > 0) {
-        const {error: ansError} = await supabase.from('exam_answers').insert(answersToInsert);
-        if (ansError) throw ansError;
-      }
+      const {data: result, error: submitError} = await supabase.rpc('submit_exam', {
+        _exam_id: exam.id,
+        _answers: payload,
+        _applicant_name: user ? null : applicantName,
+        _started_at: new Date(startTime).toISOString(),
+        _tab_switch_count: tabSwitches,
+        _allow_incomplete: forceSubmit,
+      });
+      if (submitError) throw submitError;
+      const token = (result as {claim_token: string | null} | null)?.claim_token ?? null;
 
       localStorage.removeItem(storageKey);
       toast.dismiss(toastId);
@@ -445,14 +425,19 @@ export function ExamRunner({exam}: { exam: Exam }) {
       if (user) navigate('/exams');
       else navigate('/login');
 
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
       toast.dismiss(toastId);
-      toast.error("Hiba történt a beküldéskor: " + error.message);
+      toast.error("Hiba történt a beküldéskor: " + errorMessage(error));
+      submittingRef.current = false;
       setIsSubmitting(false);
       setIsConfirmOpen(false);
     }
   };
+
+  useEffect(() => {
+    submitRef.current = executeSubmit;
+  });
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -460,14 +445,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const answeredCount = exam.exam_questions?.reduce((acc, q) => {
-    const val = answers[q.id];
-    const hasValue =
-      (typeof val === 'string' && val.trim().length > 0) ||
-      (Array.isArray(val) && val.length > 0) ||
-      (val !== undefined && val !== null && !Array.isArray(val) && typeof val !== 'string');
-    return acc + (hasValue ? 1 : 0);
-  }, 0) || 0;
+  const answeredCount = exam.exam_questions?.reduce((acc, q) => acc + (isAnswered(answers[q.id]) ? 1 : 0), 0) || 0;
 
   const totalQuestions = exam.exam_questions?.length || 0;
   const progress = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
@@ -478,7 +456,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
         {/* Background Grid */}
         <div
-          className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 pointer-events-none"></div>
+          className="absolute inset-0 tex-carbon opacity-20 pointer-events-none"></div>
         <div className="absolute inset-0 bg-gradient-to-b from-slate-900/80 to-slate-950 z-0"></div>
 
         <Card
@@ -538,7 +516,7 @@ export function ExamRunner({exam}: { exam: Exam }) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
         <div
-          className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-5 pointer-events-none"></div>
+          className="absolute inset-0 tex-diamonds opacity-5 pointer-events-none"></div>
 
         <Card
           className="max-w-md w-full bg-[#0b1221] border border-green-500/30 shadow-[0_0_60px_rgba(34,197,94,0.15)] animate-in zoom-in duration-300">

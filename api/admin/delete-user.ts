@@ -1,51 +1,40 @@
-import type {VercelRequest, VercelResponse} from '@vercel/node';
-import {createClient} from '@supabase/supabase-js';
+import {canManageUserRank} from "../../shared/ranks.js";
+import {destroyAssets, toOwnAssets} from "../_lib/cloudinary.js";
+import {handle, HttpError, json, readJsonObject, requireUuid} from "../_lib/http.js";
+import {getSupabaseAdmin, isStaffRole, PERMISSION_COLUMNS, requireCaller, type PermissionProfile} from "../_lib/supabase.js";
 
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+/** Rejects a pending registration or dismisses (deletes) a member. */
+export const POST = handle("admin/delete-user", async (request) => {
+  const caller = await requireCaller(request);
+  const body = await readJsonObject(request);
+  const userId = requireUuid(body.userId, "Hiányzó felhasználó azonosító.");
+  if (userId === caller.id) throw new HttpError(400, "A saját fiókodat nem törölheted.");
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  },
+  const supabase = getSupabaseAdmin();
+  const {data, error: fetchError} = await supabase
+    .from("profiles")
+    .select(`${PERMISSION_COLUMNS}, avatar_url`)
+    .eq("id", userId)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!data) throw new HttpError(404, "A felhasználó nem található.");
+  const target = data as PermissionProfile & {avatar_url: string | null};
+
+  const isManager = !!caller.is_bureau_manager;
+  if (target.system_role === "pending") {
+    if (!isManager && !isStaffRole(caller)) throw new HttpError(403, "Nincs jogosultságod elutasítani a regisztrációt.");
+  } else if (!isManager && !(isStaffRole(caller) && canManageUserRank(caller, target))) {
+    throw new HttpError(403, "Nincs jogosultságod elbocsátani ezt a felhasználót.");
+  }
+
+  const {error: deleteError} = await supabase.auth.admin.deleteUser(userId);
+  if (deleteError) throw deleteError;
+
+  // Best effort clean-up. The profile row normally cascades with the auth user;
+  // the explicit delete covers schemas without that foreign key.
+  const {error: profileError} = await supabase.from("profiles").delete().eq("id", userId);
+  if (profileError) console.warn("[api/admin/delete-user] profile clean-up failed", profileError);
+  if (target.avatar_url) await destroyAssets(toOwnAssets([target.avatar_url]));
+
+  return json({success: true});
 });
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({error: 'Method Not Allowed'});
-  }
-
-  try {
-    const {userId} = req.body;
-    const token = req.headers.authorization?.split(' ')[1];
-
-    if (!token) {
-      return res.status(401).json({error: 'Unauthorized: No token provided.'});
-    }
-
-    const {data: {user}, error: userError} = await supabaseAdmin.auth.getUser(token);
-    if (userError || !user) return res.status(401).json({error: 'User not found'});
-
-    const {data: adminProfile} = await supabaseAdmin
-      .from('profiles')
-      .select('system_role')
-      .eq('id', user.id)
-      .single();
-
-    if (!adminProfile || (adminProfile.system_role !== 'admin' && adminProfile.system_role !== 'supervisor')) {
-      return res.status(403).json({error: 'Nincs jogosultságod törölni felhasználót.'});
-    }
-
-    const {error: deleteError} = await supabaseAdmin.auth.admin.deleteUser(userId);
-
-    if (deleteError) throw deleteError;
-
-    return res.status(200).json({success: true});
-
-  } catch (err) {
-    const error = err as Error;
-    console.error('Delete error:', error.message);
-    return res.status(500).json({error: error.message});
-  }
-}

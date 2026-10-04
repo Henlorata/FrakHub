@@ -1,113 +1,133 @@
-import type {VercelRequest, VercelResponse} from '@vercel/node';
-import {createClient} from '@supabase/supabase-js';
+import {createHash, timingSafeEqual} from "node:crypto";
+import {serverEnv} from "../_lib/env.js";
+import {getBearerToken, handle, HttpError, json} from "../_lib/http.js";
+import {getSupabaseAdmin} from "../_lib/supabase.js";
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const RETENTION_DAYS = {closedRequests: 40, actionLogs: 1, readNotifications: 30, notifications: 120};
+const BATCH_LIMIT = 500;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error("HIBA: Hiányzó Supabase URL vagy Service Key!");
+const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+const sameSecret = (provided: string, expected: string) => {
+  // Hashing first makes the comparison constant-time regardless of input length.
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(provided), digest(expected));
+};
+
+/** `proof_image_path` holds an array, a JSON-encoded array or (legacy) a single path. */
+function toStoragePaths(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((path): path is string => typeof path === "string" && path.length > 0);
+  if (typeof raw !== "string" || raw.length === 0) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) return toStoragePaths(parsed);
+  } catch {
+    // Not JSON: a plain storage path.
+  }
+  return [raw];
 }
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {autoRefreshToken: false, persistSession: false}
-});
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid CRON secret' });
+/**
+ * Daily maintenance, invoked by Vercel Cron (see vercel.json) with
+ * `Authorization: Bearer <CRON_SECRET>`. Keeps the database and the Storage bucket
+ * small enough for the free tier, and its daily activity keeps the free Supabase
+ * project from being paused for inactivity.
+ */
+export const GET = handle("cron/daily-cleanup", async (request) => {
+  const secret = serverEnv.cronSecret();
+  if (!secret) {
+    console.error("[api/cron/daily-cleanup] CRON_SECRET is not set; refusing to run.");
+    throw new HttpError(503, "A karbantartás nincs konfigurálva.");
   }
-  
+  if (!sameSecret(getBearerToken(request) ?? "", secret)) throw new HttpError(401, "Unauthorized");
+
+  const supabase = getSupabaseAdmin();
   const results = {
-    financeDeleted: 0,
-    vehicleDeleted: 0,
-    actionsDeleted: 0,
-    errors: [] as string[]
+    financeDeleted: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0,
+    errors: [] as string[],
+  };
+  const fail = (step: string, error: unknown) => {
+    const message = error instanceof Error ? error.message : JSON.stringify(error);
+    console.error(`[api/cron/daily-cleanup] ${step}:`, error);
+    results.errors.push(`${step}: ${message}`);
   };
 
+  // 1. Closed budget requests older than the retention period, with their proof images.
   try {
-    console.log("--- Napi karbantartás indítása ---");
+    const {data: oldRequests, error} = await supabase
+      .from("budget_requests")
+      .select("id, proof_image_path")
+      .neq("status", "pending")
+      .lt("created_at", daysAgo(RETENTION_DAYS.closedRequests))
+      .limit(BATCH_LIMIT);
+    if (error) throw error;
 
-    // 1. Pénzügyi kérelmek (40 napnál régebbi lezártak)
-    try {
-      const financeThreshold = new Date();
-      financeThreshold.setDate(financeThreshold.getDate() - 40);
-
-      const {data: oldRequests, error: fetchError} = await supabaseAdmin
-        .from('budget_requests')
-        .select('id, proof_image_path')
-        .neq('status', 'pending')
-        .lt('created_at', financeThreshold.toISOString());
-
-      if (fetchError) throw fetchError;
-
-      if (oldRequests && oldRequests.length > 0) {
-        // Képek törlése
-        const filePaths = oldRequests.map(req => req.proof_image_path).filter(Boolean);
-        if (filePaths.length > 0) {
-          await supabaseAdmin.storage.from('finance_proofs').remove(filePaths);
-        }
-        // Rekordok törlése
-        const idsToDelete = oldRequests.map(req => req.id);
-        if (idsToDelete.length > 0) {
-          await supabaseAdmin.from('budget_requests').delete().in('id', idsToDelete);
-          results.financeDeleted = idsToDelete.length;
-          console.log(`Pénzügy: ${idsToDelete.length} régi elem törölve.`);
-        }
+    if (oldRequests && oldRequests.length > 0) {
+      const paths = oldRequests.flatMap((row) => toStoragePaths(row.proof_image_path));
+      for (let i = 0; i < paths.length; i += 100) {
+        const {error: removeError} = await supabase.storage.from("finance_proofs").remove(paths.slice(i, i + 100));
+        // Keep the rows when the files could not be removed, so they are retried tomorrow
+        // instead of leaving orphaned files behind.
+        if (removeError) throw removeError;
       }
-    } catch (err: any) {
-      console.error("Pénzügyi takarítás hiba:", err.message);
-      results.errors.push(`Finance error: ${err.message}`);
+      results.financeFilesDeleted = paths.length;
+
+      const {error: deleteError, count} = await supabase
+        .from("budget_requests")
+        .delete({count: "exact"})
+        .in("id", oldRequests.map((row) => row.id));
+      if (deleteError) throw deleteError;
+      results.financeDeleted = count ?? 0;
     }
-
-    // 2. Járműigénylések (40 napnál régebbi lezártak)
-    try {
-      const vehicleThreshold = new Date();
-      vehicleThreshold.setDate(vehicleThreshold.getDate() - 40);
-
-      const {error: vehicleError, count} = await supabaseAdmin
-        .from('vehicle_requests')
-        .delete({count: 'exact'})
-        .neq('status', 'pending')
-        .lt('created_at', vehicleThreshold.toISOString());
-
-      if (vehicleError) throw vehicleError;
-      results.vehicleDeleted = count || 0;
-      console.log(`Jármű: ${count} régi elem törölve.`);
-
-    } catch (err: any) {
-      console.error("Jármű takarítás hiba:", err.message);
-      results.errors.push(`Vehicle error: ${err.message}`);
-    }
-
-    // 3. Action Logs (24 óránál régebbi)
-    try {
-      const actionThreshold = new Date();
-      actionThreshold.setDate(actionThreshold.getDate() - 1); // -1 nap
-
-      const {error: actionDeleteError, count} = await supabaseAdmin
-        .from('action_logs')
-        .delete({count: 'exact'})
-        .lt('created_at', actionThreshold.toISOString());
-
-      if (actionDeleteError) throw actionDeleteError;
-      results.actionsDeleted = count || 0;
-      console.log(`Action Log: ${count} régi bejegyzés törölve.`);
-
-    } catch (err: any) {
-      console.error("Action log takarítás hiba:", err.message);
-      results.errors.push(`Action log error: ${err.message}`);
-    }
-
-    return res.status(200).json({
-      success: results.errors.length === 0,
-      message: "Karbantartás lefutott.",
-      timestamp: new Date().toISOString(),
-      results
-    });
-
-  } catch (err: any) {
-    console.error("Kritikus hiba:", err.message);
-    return res.status(500).json({error: err.message});
+  } catch (error) {
+    fail("finance", error);
   }
-}
+
+  // 2. Closed vehicle requests older than the retention period.
+  try {
+    const {error, count} = await supabase
+      .from("vehicle_requests")
+      .delete({count: "exact"})
+      .neq("status", "pending")
+      .lt("created_at", daysAgo(RETENTION_DAYS.closedRequests));
+    if (error) throw error;
+    results.vehicleDeleted = count ?? 0;
+  } catch (error) {
+    fail("vehicle", error);
+  }
+
+  // 3. Dashboard activity feed entries older than a day.
+  try {
+    const {error, count} = await supabase
+      .from("action_logs")
+      .delete({count: "exact"})
+      .lt("created_at", daysAgo(RETENTION_DAYS.actionLogs));
+    if (error) throw error;
+    results.actionsDeleted = count ?? 0;
+  } catch (error) {
+    fail("action_logs", error);
+  }
+
+  // 4. Notifications: read ones after a month, everything after four months.
+  try {
+    const [read, old] = await Promise.all([
+      supabase.from("notifications").delete({count: "exact"})
+        .eq("is_read", true).lt("created_at", daysAgo(RETENTION_DAYS.readNotifications)),
+      supabase.from("notifications").delete({count: "exact"})
+        .lt("created_at", daysAgo(RETENTION_DAYS.notifications)),
+    ]);
+    if (read.error) throw read.error;
+    if (old.error) throw old.error;
+    results.notificationsDeleted = (read.count ?? 0) + (old.count ?? 0);
+  } catch (error) {
+    fail("notifications", error);
+  }
+
+  console.log("[api/cron/daily-cleanup] done", results);
+  return json({
+    success: results.errors.length === 0,
+    message: "Karbantartás lefutott.",
+    timestamp: new Date().toISOString(),
+    results,
+  });
+});

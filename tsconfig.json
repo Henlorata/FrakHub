@@ -1,34 +1,18 @@
 {
+  // Solution-style root config: `tsc -b` type-checks every referenced project.
+  // `paths` is repeated here so the shadcn CLI and IDEs resolve the `@/` alias, and
+  // `types` because Vercel's builder type-checks api/ functions against this file.
+  "files": [],
+  "references": [
+    {"path": "./tsconfig.app.json"},
+    {"path": "./tsconfig.api.json"},
+    {"path": "./tsconfig.node.json"}
+  ],
   "compilerOptions": {
-    /* A Vite-től örökölt beállítások (tsconfig.app.json-ból) */
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "types": ["vite/client", "node"], /* EZT A SORT JAVÍTOTTUK */
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force",
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true,
-
-    /* A ShadCN beállításai (az eredeti tsconfig.json-ból) */
-    "baseUrl": ".",
+    "types": ["node"],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"],
+      "@shared/*": ["./shared/*"]
     }
-  },
-  /* Most már ide vesszük fel az összes forrásfájlt */
-  "include": ["src", "vite.config.ts"]
+  }
 }

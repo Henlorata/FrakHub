@@ -1,39 +1,34 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+// Domain types for the rows the app reads and writes.
+//
+// Hand-maintained: keep them in sync with the database. `bun run db:types` generates
+// the authoritative schema types (src/types/database.types.ts) for comparison.
 
-// --- RANGOK ---
-export const FACTION_RANKS = [
-  'Commander', 'Deputy Commander', // Executive
-  'Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.', // Command
-  'Sergeant II.', 'Sergeant I.', // Supervisory
-  'Corporal', 'Staff Deputy Sheriff', 'Senior Deputy Sheriff',
-  'Deputy Sheriff III+.', 'Deputy Sheriff III.', 'Deputy Sheriff II.', 'Deputy Sheriff I.', 'Deputy Sheriff Trainee' // Field
-] as const;
+export type Json = string | number | boolean | null | {[key: string]: Json | undefined} | Json[];
 
-export type FactionRank = typeof FACTION_RANKS[number];
+// --- RANGOK (forrás: shared/ranks.ts, a kliens és az API közös szabályai) ---
+export {FACTION_RANKS, DIVISIONS, QUALIFICATIONS} from "@shared/ranks";
+export type {FactionRank, DepartmentDivision, Qualification, SystemRole} from "@shared/ranks";
+import type {DepartmentDivision, FactionRank, Qualification, SystemRole} from "@shared/ranks";
 
-// Alosztály Rangok
-export type InvestigatorRank = 'Investigator III.' | 'Investigator II.' | 'Investigator I.';
-export type OperatorRank = 'Operator III.' | 'Operator II.' | 'Operator I.';
-export type DivisionRank = InvestigatorRank | OperatorRank | null; // Null, ha csak TSB
-
-export type DepartmentDivision = 'TSB' | 'SEB' | 'MCB';
-
-// Képesítések
-export type Qualification = 'SAHP' | 'AB' | 'MU' | 'GW' | 'FAB' | 'SIB' | 'TB';
-
-// Rendszer jogosultság (Weboldal adminisztráció)
-export type SystemRole = 'admin' | 'supervisor' | 'user' | 'pending';
+// Alosztály rangok
+export type InvestigatorRank = "Investigator III." | "Investigator II." | "Investigator I.";
+export type OperatorRank = "Operator III." | "Operator II." | "Operator I.";
+export type DivisionRank = InvestigatorRank | OperatorRank | null; // null, ha csak TSB
 
 // --- PROFIL ---
+
+/**
+ * Profile columns the client reads. Never `*`: the e-mail address column is reserved for
+ * the account owner (it comes from the auth session instead) and is not readable by others.
+ */
+export const PROFILE_COLUMNS =
+  "id, full_name, badge_number, faction_rank, division, division_rank, qualifications, is_bureau_manager, " +
+  "is_bureau_commander, commanded_divisions, system_role, avatar_url, onboarding_completed, created_at, last_promotion_date";
+
 export interface Profile {
   id: string;
-  email: string;
+  /** Only set for the signed-in user (from the auth session). */
+  email?: string;
   full_name: string;
   badge_number: string;
   faction_rank: FactionRank;
@@ -44,13 +39,22 @@ export interface Profile {
   is_bureau_commander?: boolean;
   commanded_divisions?: Qualification[];
   system_role: SystemRole;
-  avatar_url?: string;
+  avatar_url?: string | null;
+  onboarding_completed?: boolean;
   created_at: string;
   last_promotion_date?: string | null;
 }
 
+/** Embedded author/requester shape returned by `profiles(...)` joins. */
+export interface ProfileSummary {
+  full_name: string;
+  badge_number: string;
+  faction_rank: string;
+  avatar_url?: string | null;
+}
+
 // --- LOGISZTIKA ---
-export type RequestStatus = 'pending' | 'approved' | 'rejected';
+export type RequestStatus = "pending" | "approved" | "rejected";
 
 export interface VehicleRequest {
   id: string;
@@ -63,11 +67,7 @@ export interface VehicleRequest {
   processed_by?: string | null;
   created_at: string;
   updated_at: string;
-  profiles?: {
-    full_name: string;
-    badge_number: string;
-    faction_rank: string;
-  } | null;
+  profiles?: Pick<ProfileSummary, "full_name" | "badge_number" | "faction_rank"> | null;
 }
 
 // --- PÉNZÜGY ---
@@ -76,30 +76,24 @@ export interface BudgetRequest {
   user_id: string;
   amount: number;
   reason: string;
-  proof_images: string[];
+  /** Paths in the `finance_proofs` bucket. Legacy rows may hold a JSON string or a single path. */
+  proof_image_path: string[] | string | null;
   status: RequestStatus;
   admin_comment?: string | null;
   processed_by?: string | null;
   created_at: string;
   updated_at: string;
-  profiles?: {
-    full_name: string;
-    badge_number: string;
-    faction_rank: string;
-  } | null;
+  profiles?: Pick<ProfileSummary, "full_name" | "badge_number" | "faction_rank"> | null;
 }
 
 // --- ACTION LOG ---
 export interface ActionLog {
   id: string;
   user_id: string;
-  action_type: 'ticket' | 'arrest' | 'other';
+  action_type: "ticket" | "arrest" | "other";
   details: string;
   created_at: string;
-  profiles?: {
-    full_name: string;
-    badge_number: string;
-  } | null;
+  profiles?: Pick<ProfileSummary, "full_name" | "badge_number"> | null;
 }
 
 // --- HÍREK ---
@@ -107,35 +101,39 @@ export interface Announcement {
   id: string;
   title: string;
   content: string;
-  type: 'info' | 'alert' | 'training';
+  type: "info" | "alert" | "training";
   is_pinned: boolean;
+  show_author?: boolean;
   created_by: string;
   created_at: string;
+  profiles?: Pick<ProfileSummary, "full_name" | "faction_rank"> | null;
 }
 
 // --- MCB / NYOMOZÁS ---
+export type CaseStatus = "open" | "closed" | "archived";
+export type CasePriority = "low" | "medium" | "high" | "critical";
 
 export interface Case {
   id: string;
-  case_number: string;
+  case_number: number | string;
   title: string;
   description: string | null;
   body: Json;
-  status: 'open' | 'closed' | 'archived';
-  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: CaseStatus;
+  priority: CasePriority;
   owner_id: string;
   created_at: string;
   updated_at: string;
   theme?: string;
-  owner?: { full_name: string; badge_number: string; };
+  owner?: {full_name: string; badge_number?: string} | null;
 }
 
 export interface CaseCollaborator {
   id: string;
   case_id: string;
   user_id: string;
-  role: 'viewer' | 'editor';
-  profile?: Profile;
+  role: "viewer" | "editor";
+  profile?: ProfileSummary | null;
 }
 
 export interface CaseEvidence {
@@ -149,7 +147,7 @@ export interface CaseEvidence {
 }
 
 // --- GYANÚSÍTOTTAK ---
-export type SuspectStatus = 'free' | 'wanted' | 'jailed' | 'deceased' | 'unknown';
+export type SuspectStatus = "free" | "wanted" | "jailed" | "deceased" | "unknown";
 
 export interface Suspect {
   id: string;
@@ -178,7 +176,7 @@ export interface SuspectProperty {
   id: string;
   suspect_id: string;
   address: string;
-  property_type: 'house' | 'garage' | 'business' | 'warehouse' | 'other';
+  property_type: "house" | "garage" | "business" | "warehouse" | "other";
   notes: string | null;
 }
 
@@ -188,7 +186,9 @@ export interface CaseSuspect {
   suspect_id: string;
   involvement_type: string;
   notes: string | null;
-  suspect?: Suspect;
+  added_at?: string;
+  suspect?: Suspect | null;
+  case?: Pick<Case, "id" | "case_number" | "title" | "status" | "created_at"> | null;
 }
 
 export interface SuspectAssociate {
@@ -197,7 +197,7 @@ export interface SuspectAssociate {
   associate_id: string;
   relationship: string;
   notes: string | null;
-  associate?: Suspect;
+  associate?: Pick<Suspect, "full_name" | "alias" | "mugshot_url"> | null;
 }
 
 export interface CaseNote {
@@ -206,11 +206,11 @@ export interface CaseNote {
   user_id: string;
   content: string;
   created_at: string;
-  profile?: { full_name: string; avatar_url?: string; };
+  profile?: {full_name: string; avatar_url?: string | null; faction_rank?: string} | null;
 }
 
-export type WarrantType = 'arrest' | 'search';
-export type WarrantStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'expired';
+export type WarrantType = "arrest" | "search";
+export type WarrantStatus = "pending" | "approved" | "rejected" | "executed" | "expired";
 
 export interface CaseWarrant {
   id: string;
@@ -226,159 +226,78 @@ export interface CaseWarrant {
   approved_by: string | null;
   created_at: string;
   updated_at: string;
-  requester?: { full_name: string; badge_number: string; };
-  approver?: { full_name: string; badge_number: string; };
-  suspect?: { full_name: string; };
-  property?: { address: string; type: string; };
+  requester?: {full_name: string; badge_number: string} | null;
+  approver?: {full_name: string; badge_number: string} | null;
+  suspect?: {full_name: string} | null;
+  property?: {address: string} | null;
+  case?: {title: string; case_number: number | string} | null;
 }
+
+export type NotificationType = "info" | "success" | "warning" | "alert";
+export type NotificationCategory = "system" | "hr" | "mcb" | "logistics" | "finance" | "exam" | "academy" | "announcement";
 
 export interface Notification {
   id: string;
-  user_id: string;
+  user_id?: string;
   title: string;
   message: string;
-  type: 'info' | 'success' | 'warning' | 'alert';
+  type: NotificationType;
+  category: NotificationCategory;
   is_read: boolean;
   created_at: string;
-  link?: string;
+  link?: string | null;
+  actor_id?: string | null;
 }
 
-// --- ADATBÁZIS DEFINÍCIÓ ---
-export interface Database {
-  public: {
-    Tables: {
-      profiles: {
-        Row: Profile;
-        Insert: Omit<Profile, 'created_at'>;
-        Update: Partial<Profile>;
-      };
-      vehicle_requests: {
-        Row: VehicleRequest;
-        Insert: Omit<VehicleRequest, 'id' | 'created_at' | 'updated_at' | 'profiles' | 'status' | 'vehicle_plate' | 'admin_comment' | 'processed_by'> & {
-          status?: RequestStatus;
-        };
-        Update: Partial<VehicleRequest>;
-      };
-      budget_requests: {
-        Row: BudgetRequest;
-        Insert: Omit<BudgetRequest, 'id' | 'created_at' | 'updated_at' | 'profiles' | 'status' | 'admin_comment' | 'processed_by'> & {
-          status?: RequestStatus;
-        };
-        Update: Partial<BudgetRequest>;
-      };
-      system_status: {
-        Row: {
-          id: string;
-          alert_level: string;
-          recruitment_open: boolean;
-          updated_at: string;
-          updated_by: string | null;
-        };
-        Insert: {
-          id?: string;
-          alert_level?: string;
-          recruitment_open?: boolean;
-          updated_at?: string;
-          updated_by?: string | null;
-        };
-        Update: {
-          alert_level?: string;
-          recruitment_open?: boolean;
-          updated_at?: string;
-          updated_by?: string | null;
-        };
-      };
-      exam_overrides: {
-        Row: {
-          id: string;
-          exam_id: string;
-          user_id: string;
-          access_type: 'allow' | 'deny';
-          created_by: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          exam_id: string;
-          user_id: string;
-          access_type: 'allow' | 'deny';
-          created_by?: string | null;
-          created_at?: string;
-        };
-        Update: Partial<{
-          id: string;
-          exam_id: string;
-          user_id: string;
-          access_type: 'allow' | 'deny';
-          created_by: string | null;
-          created_at: string;
-        }>;
-      };
-      cases: {
-        Row: Case;
-        Insert: Omit<Case, 'id' | 'case_number' | 'created_at' | 'updated_at' | 'owner'>;
-        Update: Partial<Case>;
-      };
-      case_collaborators: {
-        Row: CaseCollaborator;
-        Insert: Omit<CaseCollaborator, 'id' | 'created_at' | 'profile'>;
-        Update: Partial<CaseCollaborator>;
-      };
-      case_evidence: {
-        Row: CaseEvidence;
-        Insert: Omit<CaseEvidence, 'id' | 'created_at'>;
-        Update: Partial<CaseEvidence>;
-      };
-      suspects: {
-        Row: Suspect;
-        Insert: Omit<Suspect, 'id' | 'created_at' | 'updated_at' | 'created_by'>;
-        Update: Partial<Suspect>;
-      };
-      suspect_vehicles: {
-        Row: SuspectVehicle;
-        Insert: Omit<SuspectVehicle, 'id' | 'created_at'>;
-        Update: Partial<SuspectVehicle>;
-      };
-      suspect_properties: {
-        Row: SuspectProperty;
-        Insert: Omit<SuspectProperty, 'id' | 'created_at'>;
-        Update: Partial<SuspectProperty>;
-      };
-      case_suspects: {
-        Row: CaseSuspect;
-        Insert: Omit<CaseSuspect, 'id' | 'added_at' | 'suspect'>;
-        Update: Partial<CaseSuspect>;
-      };
-      action_logs: {
-        Row: ActionLog;
-        Insert: Omit<ActionLog, 'id' | 'created_at' | 'profiles'>;
-        Update: never;
-      };
-      announcements: {
-        Row: Announcement;
-        Insert: Omit<Announcement, 'id' | 'created_at'>;
-        Update: Partial<Announcement>;
-      };
-      suspect_associates: {
-        Row: SuspectAssociate;
-        Insert: Omit<SuspectAssociate, 'id' | 'created_at' | 'associate'>;
-        Update: Partial<SuspectAssociate>;
-      };
-      case_notes: {
-        Row: CaseNote;
-        Insert: Omit<CaseNote, 'id' | 'created_at' | 'profile'>;
-        Update: Partial<CaseNote>;
-      };
-      case_warrants: {
-        Row: CaseWarrant;
-        Insert: Omit<CaseWarrant, 'id' | 'created_at' | 'updated_at' | 'approved_by' | 'requester' | 'approver' | 'suspect' | 'property'>;
-        Update: Partial<CaseWarrant>;
-      };
-      notifications: {
-        Row: Notification;
-        Insert: Omit<Notification, 'id' | 'created_at' | 'is_read'>;
-        Update: Partial<Notification>;
-      };
-    };
-  };
+/** Columns of a notification the client displays. */
+export const NOTIFICATION_COLUMNS = "id, title, message, type, category, is_read, created_at, link, actor_id";
+
+// --- HR ---
+export type MemberEventKind =
+  | "joined" | "rank" | "division" | "division_rank" | "qualifications" | "bureau_role"
+  | "name" | "badge" | "award" | "award_revoked";
+
+/** One entry of a member's service history (written by database triggers). */
+export interface MemberEvent {
+  id: string;
+  user_id: string;
+  actor_id: string | null;
+  kind: MemberEventKind;
+  from_value: string | null;
+  to_value: string | null;
+  detail: string | null;
+  created_at: string;
+}
+
+export type HrRecordKind = "warning" | "commendation" | "note" | "leave";
+export type HrRecordStatus = "pending" | "active" | "rejected" | "revoked";
+
+/** Warnings, commendations, internal notes and leave (requests). */
+export interface HrRecord {
+  id: string;
+  user_id: string;
+  kind: HrRecordKind;
+  title: string;
+  details: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
+  status: HrRecordStatus;
+  created_by: string | null;
+  created_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+}
+
+export interface ActiveLeave {
+  user_id: string;
+  starts_on: string;
+  ends_on: string;
+}
+
+export interface Ribbon {
+  id: string;
+  name: string;
+  description: string | null;
+  color_hex: string | null;
+  image_url: string | null;
 }

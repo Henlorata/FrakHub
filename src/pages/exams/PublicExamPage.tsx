@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {useParams, useNavigate} from "react-router-dom";
+import {useParams, useNavigate} from "react-router";
 import {useAuth} from "@/context/AuthContext";
 import {supabase} from "@/lib/supabaseClient";
 import {ExamRunner} from "./ExamRunner";
@@ -38,7 +38,7 @@ export function PublicExamPage() {
         }
 
         if (user) {
-          const {data: lastSub} = await supabase.from('exam_submissions').select('retry_allowed_at, status').eq('exam_id', examId).eq('user_id', user.id).order('start_time', {ascending: false}).limit(1).maybeSingle();
+          const {data: lastSub} = await supabase.from('exam_submissions').select('retry_allowed_at, status').eq('exam_id', examId).eq('user_id', user.id).is('deleted_at', null).order('start_time', {ascending: false}).limit(1).maybeSingle();
           if (lastSub && lastSub.status === 'failed' && lastSub.retry_allowed_at) {
             if (new Date(lastSub.retry_allowed_at) > new Date()) {
               setIsBlocked(true);

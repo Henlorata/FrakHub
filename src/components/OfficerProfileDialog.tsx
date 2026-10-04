@@ -26,7 +26,23 @@ import {
   UserCheck,
   UserX
 } from "lucide-react";
-import {cn} from "@/lib/utils";
+import {cn, getStaffCategory} from "@/lib/utils";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
+import type {LucideIcon} from "lucide-react";
+import {PROFILE_COLUMNS, type Profile, type Ribbon} from "@/types/supabase";
+
+interface AwardRow {
+  id: string;
+  awarded_at: string;
+  ribbon: Ribbon | null;
+}
+
+const STAFF_DISPLAY = {
+  executive: 'EXECUTIVE STAFF',
+  command: 'COMMAND STAFF',
+  supervisory: 'SUPERVISORY STAFF',
+  field: 'FIELD STAFF',
+} as const;
 
 interface OfficerProfileDialogProps {
   open: boolean;
@@ -37,50 +53,45 @@ interface OfficerProfileDialogProps {
 
 export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: OfficerProfileDialogProps) {
   const {supabase} = useAuth();
-  const [profile, setProfile] = useState<any>(null);
-  const [awards, setAwards] = useState<any[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [awards, setAwards] = useState<AwardRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [accessInfo, setAccessInfo] = useState<{ code: string, label: string, color: string, icon: any }>({
+  const [accessInfo, setAccessInfo] = useState<{ code: string, label: string, color: string, icon: LucideIcon }>({
     code: "...", label: "ELLENŐRZÉS...", color: "text-slate-500 border-slate-700", icon: Loader2
   });
 
-  const getDivisionDisplay = (p: any) => {
+  const getDivisionDisplay = (p: Profile) => {
     const div = p.division || "ISMERETLEN";
-    if (div !== 'TSB') return div;
-    const rank = p.faction_rank || "";
-    if (['Commander', 'Deputy Commander'].includes(rank)) return 'EXECUTIVE STAFF';
-    if (rank.includes('Captain') || rank.includes('Lieutenant')) return 'COMMAND STAFF';
-    if (rank.includes('Sergeant')) return 'SUPERVISORY STAFF';
-    return 'FIELD STAFF';
+    return div !== 'TSB' ? div : STAFF_DISPLAY[getStaffCategory(p.faction_rank)];
   };
 
+  const loadedUserId = profile?.id;
+
   useEffect(() => {
-    if (!open || !userId) return;
-
-    if (profile && profile.id === userId && !loading) return;
-
+    if (!open || !userId || loadedUserId === userId) return;
+    let active = true;
     setLoading(true);
 
-    const fetchData = async () => {
-      try {
-        const {data: profileData} = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (profileData) {
-          setProfile(profileData);
-          const {data: awardsData} = await supabase.from('user_ribbons').select('*, ribbon:ribbons(*)').eq('user_id', userId);
-          setAwards(awardsData || []);
-        } else {
-          setProfile(null);
-        }
-      } catch (e) {
-        console.error("Profile fetch error:", e);
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Profile and awards in parallel.
+    Promise.all([
+      supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', userId).maybeSingle(),
+      supabase.from('user_ribbons').select('*, ribbon:ribbons(*)').eq('user_id', userId),
+    ])
+      .then(([profileResult, awardResult]) => {
+        if (!active) return;
+        setProfile((profileResult.data ?? null) as Profile | null);
+        setAwards((awardResult.data ?? []) as AwardRow[]);
+      })
+      .catch((e) => console.error("Profile fetch error:", e))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
 
-    fetchData();
-  }, [open, userId]);
+    return () => {
+      active = false;
+    };
+  }, [open, userId, loadedUserId, supabase]);
 
   // ACCESS LOGIC
   useEffect(() => {
@@ -107,7 +118,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
         return;
       }
 
-      const {data: caseData} = await supabase.from('cases').select('owner_id').eq('id', caseId).single();
+      const {data: caseData} = await supabase.from('cases').select('owner_id').eq('id', caseId).maybeSingle();
       if (caseData?.owner_id === profile.id) {
         setAccessInfo({
           code: "OWNER",
@@ -149,7 +160,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
     };
 
     calculateAccess();
-  }, [profile, caseId]);
+  }, [profile, caseId, supabase]);
 
   if (!open) return null;
 
@@ -202,7 +213,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
                 <div
                   className="w-32 h-32 rounded-lg bg-slate-900 border-2 border-slate-700 p-1 shadow-2xl relative overflow-hidden">
                   <Avatar className="w-full h-full rounded bg-slate-950">
-                    <AvatarImage src={profile?.avatar_url} className="object-cover"/>
+                    <AvatarImage src={getOptimizedAvatarUrl(profile?.avatar_url, 256) || undefined} className="object-cover"/>
                     <AvatarFallback className="text-3xl font-bold bg-slate-900 text-slate-600 rounded">
                       {profile?.full_name?.charAt(0) || "?"}
                     </AvatarFallback>
@@ -220,7 +231,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
                 <h2
                   className="text-2xl font-black text-white uppercase tracking-tight flex items-center gap-3 drop-shadow-md truncate">
                   {profile.full_name}
-                  {profile.faction_rank === 'Sheriff' &&
+                  {profile.faction_rank === 'Commander' &&
                     <Shield className="w-5 h-5 text-yellow-500 fill-yellow-500/20"/>}
                 </h2>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">

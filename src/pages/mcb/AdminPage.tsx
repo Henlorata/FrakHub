@@ -4,8 +4,10 @@ import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/c
 import {Badge} from "@/components/ui/badge";
 import {ShieldAlert, Loader2, UserCog, Search} from "lucide-react";
 import {toast} from "sonner";
-import {Navigate} from "react-router-dom";
+import {Navigate} from "react-router";
 import {Input} from "@/components/ui/input";
+import {getRankPriority} from "@/lib/utils";
+import {PROFILE_COLUMNS} from "@/types/supabase";
 
 // --- RANK SÚLYOZÁS A SORRENDEZÉSHEZ ---
 const MCB_RANK_ORDER: Record<string, number> = {
@@ -14,16 +16,17 @@ const MCB_RANK_ORDER: Record<string, number> = {
   'Investigator I.': 1
 };
 
-const FACTION_RANK_ORDER: Record<string, number> = {
-  'Commander': 100, 'Deputy Commander': 99,
-  'Captain III.': 90, 'Captain II.': 89, 'Captain I.': 88,
-  'Lieutenant II.': 80, 'Lieutenant I.': 79,
-  'Sergeant II.': 70, 'Sergeant I.': 69,
-  'Corporal': 60,
-  'Staff Deputy Sheriff': 50, 'Senior Deputy Sheriff': 40,
-  'Deputy Sheriff III+.': 35, 'Deputy Sheriff III.': 30, 'Deputy Sheriff II.': 20, 'Deputy Sheriff I.': 10,
-  'Deputy Sheriff Trainee': 0
-};
+interface McbMemberRow {
+  id: string;
+  full_name: string;
+  badge_number: string;
+  faction_rank: string;
+  division: string;
+  division_rank: string | null;
+  /** Legacy column, read as a fallback for old rows. */
+  investigator_rank?: string | null;
+  system_role: string;
+}
 
 const SYSTEM_ROLE_ORDER: Record<string, number> = {
   'admin': 3,
@@ -34,58 +37,40 @@ const SYSTEM_ROLE_ORDER: Record<string, number> = {
 
 export function AdminPage() {
   const {supabase, profile} = useAuth();
-  const [users, setUsers] = React.useState<any[]>([]);
+  const [users, setUsers] = React.useState<McbMemberRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
+  const isAllowed = !!profile && (profile.system_role === 'admin' || profile.system_role === 'supervisor');
 
-  if (profile && profile.system_role !== 'admin' && profile.system_role !== 'supervisor') {
+  // Hooks must run in the same order on every render: the access guard comes after them.
+  React.useEffect(() => {
+    if (!isAllowed) return;
+    let active = true;
+    (async () => {
+      setLoading(true);
+      try {
+        const {data, error} = await supabase
+          .from('profiles')
+          .select(PROFILE_COLUMNS)
+          .eq('division', 'MCB')
+          .neq('system_role', 'pending');
+
+        if (error) throw error;
+        if (active) setUsers(sortMembers((data ?? []) as unknown as McbMemberRow[]));
+      } catch {
+        toast.error("Hiba a felhasználók betöltésekor.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [supabase, isAllowed]);
+
+  if (profile && !isAllowed) {
     return <Navigate to="/mcb" replace/>;
   }
-
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const {data, error} = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('division', 'MCB')
-        .neq('system_role', 'pending');
-
-      if (error) throw error;
-
-      // SORRENDEZÉS LOGIKA
-      const sorted = (data || []).sort((a, b) => {
-        // 1. MCB RANG (Elsődleges) - division_rank vagy investigator_rank
-        const rankNameA = a.division_rank || a.investigator_rank;
-        const rankNameB = b.division_rank || b.investigator_rank;
-
-        const rankA = a.division === 'MCB' ? (MCB_RANK_ORDER[rankNameA] || 0) : -1;
-        const rankB = b.division === 'MCB' ? (MCB_RANK_ORDER[rankNameB] || 0) : -1;
-
-        if (rankA !== rankB) return rankB - rankA; // Csökkenő (Magasabb rang elöl)
-
-        // 2. FACTION RANK
-        const fRankA = FACTION_RANK_ORDER[a.faction_rank] || 0;
-        const fRankB = FACTION_RANK_ORDER[b.faction_rank] || 0;
-        if (fRankA !== fRankB) return fRankB - fRankA;
-
-        // 3. ACCESS LEVEL
-        const roleA = SYSTEM_ROLE_ORDER[a.system_role] || 0;
-        const roleB = SYSTEM_ROLE_ORDER[b.system_role] || 0;
-        return roleB - roleA;
-      });
-
-      setUsers(sorted);
-    } catch (error: any) {
-      toast.error("Hiba a felhasználók betöltésekor.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    fetchUsers();
-  }, []);
 
   const filteredUsers = users.filter(u =>
     u.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -93,7 +78,7 @@ export function AdminPage() {
   );
 
   // Helper a rang megjelenítéshez
-  const getMcbRank = (user: any) => {
+  const getMcbRank = (user: McbMemberRow) => {
     if (user.division !== 'MCB') return null;
     // Először a division_rank-ot nézzük, ha nincs, akkor a régit
     const rank = user.division_rank || user.investigator_rank;
@@ -101,7 +86,45 @@ export function AdminPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto h-[calc(100vh-100px)] flex flex-col">
+    <AdminPageView users={users} filteredUsers={filteredUsers} loading={loading} search={search}
+                   setSearch={setSearch} getMcbRank={getMcbRank}/>
+  );
+}
+
+// SORRENDEZÉS LOGIKA: MCB rang, majd frakció rang, majd rendszer jogosultság szerint.
+function sortMembers(rows: McbMemberRow[]): McbMemberRow[] {
+      return [...rows].sort((a, b) => {
+        // 1. MCB RANG (Elsődleges) - division_rank vagy investigator_rank
+        const rankNameA = a.division_rank || a.investigator_rank || '';
+        const rankNameB = b.division_rank || b.investigator_rank || '';
+
+        const rankA = a.division === 'MCB' ? (MCB_RANK_ORDER[rankNameA] || 0) : -1;
+        const rankB = b.division === 'MCB' ? (MCB_RANK_ORDER[rankNameB] || 0) : -1;
+
+        if (rankA !== rankB) return rankB - rankA; // Csökkenő (Magasabb rang elöl)
+
+        // 2. FACTION RANK (kisebb prioritás = magasabb rang)
+        const fRankA = getRankPriority(a.faction_rank);
+        const fRankB = getRankPriority(b.faction_rank);
+        if (fRankA !== fRankB) return fRankA - fRankB;
+
+        // 3. ACCESS LEVEL
+        const roleA = SYSTEM_ROLE_ORDER[a.system_role] || 0;
+        const roleB = SYSTEM_ROLE_ORDER[b.system_role] || 0;
+        return roleB - roleA;
+      });
+}
+
+function AdminPageView({users, filteredUsers, loading, search, setSearch, getMcbRank}: {
+  users: McbMemberRow[];
+  filteredUsers: McbMemberRow[];
+  loading: boolean;
+  search: string;
+  setSearch: (value: string) => void;
+  getMcbRank: (user: McbMemberRow) => string | null;
+}) {
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto h-shell-mcb flex flex-col">
 
       {/* Header Panel */}
       <div

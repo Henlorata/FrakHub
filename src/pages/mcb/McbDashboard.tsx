@@ -15,21 +15,30 @@ import {
   FolderOpen,
   LayoutList
 } from "lucide-react";
-import {useNavigate} from "react-router-dom";
+import {useNavigate} from "react-router";
 import {Input} from "@/components/ui/input";
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
 import {toast} from "sonner";
 import {NewCaseDialog} from "./components/NewCaseDialog";
+import {useDialogParam} from "@/lib/use-dialog-param";
 import {canApproveWarrant} from "@/lib/utils";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {Tabs, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {Badge} from "@/components/ui/badge";
+import type {LucideIcon} from "lucide-react";
+import type {Case, CaseWarrant} from "@/types/supabase";
+
+/** List columns only: the case document body (often tens of KB) is loaded on the detail page. */
+const CASE_LIST_COLUMNS = 'id, case_number, title, status, priority, updated_at, owner:owner_id(full_name)';
+const PENDING_WARRANT_COLUMNS = 'id, type, reason, target_name, created_at, case:case_id(title, case_number), suspect:suspect_id(full_name)';
 
 // --- KOMPONENSEK ---
 
-const StatCard = ({title, value, icon: Icon, colorClass, gradient}: any) => (
+const StatCard = ({title, value, icon: Icon, colorClass, gradient}: {
+  title: string, value: number, icon: LucideIcon, colorClass: string, gradient: string
+}) => (
   <div
     className={`relative overflow-hidden rounded-2xl border border-slate-800/60 p-6 group transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl ${gradient}`}>
     <div
@@ -52,13 +61,13 @@ const StatCard = ({title, value, icon: Icon, colorClass, gradient}: any) => (
 );
 
 const PriorityBadge = ({prio}: { prio: string }) => {
-  const styles: any = {
+  const styles: Record<string, string> = {
     critical: "bg-red-500/20 text-red-400 border-red-500/50 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.2)]",
     high: "bg-orange-500/10 text-orange-400 border-orange-500/30",
     medium: "bg-yellow-500/10 text-yellow-500 border-yellow-500/30",
     low: "bg-slate-500/10 text-slate-400 border-slate-500/30"
   };
-  const labels: any = {critical: "KRITIKUS", high: "MAGAS", medium: "KÖZEPES", low: "ALACSONY"};
+  const labels: Record<string, string> = {critical: "KRITIKUS", high: "MAGAS", medium: "KÖZEPES", low: "ALACSONY"};
 
   return <span
     className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${styles[prio] || styles.low}`}>{labels[prio] || "NORMÁL"}</span>
@@ -79,77 +88,58 @@ export function McbDashboard() {
   const navigate = useNavigate();
 
   const [stats, setStats] = React.useState({myOpen: 0, totalOpen: 0, critical: 0});
-  const [cases, setCases] = React.useState<any[]>([]);
-  const [pendingWarrants, setPendingWarrants] = React.useState<any[]>([]);
+  const [cases, setCases] = React.useState<Case[]>([]);
+  const [pendingWarrants, setPendingWarrants] = React.useState<CaseWarrant[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
-  const [isNewCaseOpen, setIsNewCaseOpen] = React.useState(false);
+  const [isNewCaseOpen, setIsNewCaseOpen] = useDialogParam('new');
   const [activeTab, setActiveTab] = React.useState("open");
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 6) return "Jó éjszakát";
-    if (hour < 10) return "Jó reggelt";
-    if (hour < 18) return "Jó napot";
-    return "Jó estét";
-  };
+  const profileId = profile?.id;
+  const canApprove = canApproveWarrant(profile);
 
-  const fetchData = React.useCallback(async () => {
+  // Overview figures and pending warrants: loaded once, not on every tab switch.
+  const fetchOverview = React.useCallback(async () => {
+    if (!profileId) return;
+    const [myOpen, totalOpen, crit, warrants] = await Promise.all([
+      supabase.from('cases').select('id', {count: 'exact', head: true}).eq('status', 'open').eq('owner_id', profileId),
+      supabase.from('cases').select('id', {count: 'exact', head: true}).eq('status', 'open'),
+      supabase.from('cases').select('id', {count: 'exact', head: true}).eq('status', 'open').eq('priority', 'critical'),
+      canApprove
+        ? supabase.from('case_warrants').select(PENDING_WARRANT_COLUMNS).eq('status', 'pending').order('created_at', {ascending: true})
+        : Promise.resolve({data: [] as unknown[]}),
+    ]);
+    setStats({
+      myOpen: myOpen.count || 0,
+      totalOpen: totalOpen.count || 0,
+      critical: crit.count || 0
+    });
+    setPendingWarrants((warrants.data ?? []) as unknown as CaseWarrant[]);
+  }, [supabase, profileId, canApprove]);
+
+  const fetchCases = React.useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Statisztikák
-      const [myOpen, totalOpen, crit] = await Promise.all([
-        supabase.from('cases').select('id', {
-          count: 'exact',
-          head: true
-        }).eq('status', 'open').eq('owner_id', profile?.id),
-        supabase.from('cases').select('id', {count: 'exact', head: true}).eq('status', 'open'),
-        supabase.from('cases').select('id', {
-          count: 'exact',
-          head: true
-        }).eq('status', 'open').eq('priority', 'critical')
-      ]);
-
-      setStats({
-        myOpen: myOpen.count || 0,
-        totalOpen: totalOpen.count || 0,
-        critical: crit.count || 0
-      });
-
-      // 2. Akták
-      let query = supabase
-        .from('cases')
-        .select('*, owner:owner_id(full_name)')
-        .order('updated_at', {ascending: false});
-
-      if (activeTab !== 'all') {
-        query = query.eq('status', activeTab);
-      }
-      query = query.limit(50);
-
-      const {data: caseData} = await query;
-      setCases(caseData || []);
-
-      // 3. Warrants
-      if (canApproveWarrant(profile)) {
-        const {data: wData} = await supabase
-          .from('case_warrants')
-          .select(`*, requester:requested_by(full_name), case:case_id(title, case_number), property:property_id(address), suspect:suspect_id(full_name)`)
-          .eq('status', 'pending')
-          .order('created_at', {ascending: true});
-        setPendingWarrants(wData || []);
-      }
-
+      let query = supabase.from('cases').select(CASE_LIST_COLUMNS).order('updated_at', {ascending: false});
+      if (activeTab !== 'all') query = query.eq('status', activeTab);
+      const {data, error} = await query.limit(50);
+      if (error) throw error;
+      setCases((data ?? []) as unknown as Case[]);
     } catch (err) {
       console.error(err);
+      toast.error("Hiba az akták betöltésekor.");
     } finally {
       setLoading(false);
     }
-  }, [supabase, profile?.id, activeTab]);
+  }, [supabase, activeTab]);
 
   React.useEffect(() => {
-    if (profile) fetchData();
-  }, [fetchData]);
+    void fetchOverview();
+  }, [fetchOverview]);
+
+  React.useEffect(() => {
+    void fetchCases();
+  }, [fetchCases]);
 
   const handleWarrantAction = async (id: string, status: 'approved' | 'rejected') => {
     const {error} = await supabase.from('case_warrants').update({
@@ -158,32 +148,20 @@ export function McbDashboard() {
 
     if (!error) {
       toast.success(status === 'approved' ? 'Parancs jóváhagyva.' : 'Parancs elutasítva.');
-      fetchData();
+      setPendingWarrants(prev => prev.filter(w => w.id !== id));
     } else toast.error("Hiba történt.");
   }
 
+  const term = search.toLowerCase();
   const filteredCases = cases.filter(c =>
-    c.title.toLowerCase().includes(search.toLowerCase()) ||
+    c.title.toLowerCase().includes(term) ||
     c.case_number.toString().includes(search) ||
-    (c.owner?.full_name || "").toLowerCase().includes(search.toLowerCase())
+    (c.owner?.full_name || "").toLowerCase().includes(term)
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <NewCaseDialog open={isNewCaseOpen} onOpenChange={setIsNewCaseOpen} onCaseCreated={fetchData}/>
-
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-white tracking-tighter uppercase mb-1">
-            <span className="text-sky-500">MCB</span> DASHBOARD
-          </h1>
-          <p className="text-slate-400 font-mono text-sm">
-            {getGreeting()}, <span className="text-white font-bold">{profile?.full_name}</span>.
-            <span className="ml-2 opacity-50"> // {new Date().toLocaleDateString('hu-HU')}</span>
-          </p>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <NewCaseDialog open={isNewCaseOpen} onOpenChange={setIsNewCaseOpen} onCaseCreated={fetchOverview}/>
 
       {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -193,7 +171,6 @@ export function McbDashboard() {
           icon={FolderSearch}
           colorClass="text-sky-400"
           gradient="bg-gradient-to-br from-slate-900 via-slate-900 to-sky-900/20"
-          borderClass="border-sky-500/20"
         />
         <StatCard
           title="TELJES ÜGYSZÁM"
@@ -201,7 +178,6 @@ export function McbDashboard() {
           icon={Clock}
           colorClass="text-blue-400"
           gradient="bg-gradient-to-br from-slate-900 via-slate-900 to-blue-900/20"
-          borderClass="border-blue-500/20"
         />
         <StatCard
           title="KRITIKUS RIASZTÁS"
@@ -209,15 +185,13 @@ export function McbDashboard() {
           icon={Siren}
           colorClass="text-red-500"
           gradient="bg-gradient-to-br from-slate-900 via-slate-900 to-red-900/20"
-          borderClass="border-red-500/30"
         />
       </div>
 
       {/* WARRANTS ALERT */}
-      {pendingWarrants.length > 0 && canApproveWarrant(profile) && (
+      {pendingWarrants.length > 0 && canApprove && (
         <div
           className="border border-red-500/40 bg-red-950/20 rounded-xl overflow-hidden shadow-[0_0_30px_rgba(239,68,68,0.15)] relative group">
-          <div className="absolute inset-0 bg-[url('/stripes.png')] opacity-10"></div>
           <div
             className="bg-red-900/20 px-4 py-3 border-b border-red-500/30 flex items-center justify-between relative z-10">
             <div className="flex items-center gap-3">

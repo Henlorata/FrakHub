@@ -1,5 +1,5 @@
 import * as React from "react";
-import {useParams, useNavigate} from "react-router-dom";
+import {useParams, useNavigate} from "react-router";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -17,8 +17,10 @@ import {CaseChat} from "./components/CaseChat";
 import {CaseWarrants} from "./components/CaseWarrants";
 import {Badge} from "@/components/ui/badge";
 import {AddCollaboratorDialog} from "./components/AddCollaboratorDialog";
-import {canViewCaseDetails, canEditCase, cn} from "@/lib/utils";
-import type {Case, CaseCollaborator, CaseEvidence} from "@/types/supabase";
+import {canViewCaseDetails, canEditCase, cn, errorMessage} from "@/lib/utils";
+import type {Case, CaseCollaborator, CaseEvidence, CaseSuspect, Suspect} from "@/types/supabase";
+import {postApi} from "@/lib/api";
+import {deleteCloudinaryAssets} from "@/lib/cloudinary";
 import {SuspectDetailDialog} from "@/pages/mcb/components/SuspectDetailDialog";
 import {ImageViewerDialog} from "@/pages/mcb/components/ImageViewerDialog";
 import {OfficerProfileDialog} from "@/components/OfficerProfileDialog";
@@ -41,25 +43,14 @@ import {
 
 let globalLastEventTime = 0;
 
-// JAVÍTÁS 1: Segédfüggvény a Public ID kinyeréséhez (ugyanaz, mint a tananyagnál)
-const getPublicIdFromUrl = (url: string) => {
-  try {
-    if (!url.includes('/upload/')) return null;
-    const splitUrl = url.split('/upload/');
-    let path = splitUrl[1];
+const CASE_COLUMNS = '*, owner:owner_id(full_name, badge_number)';
 
-    // Verziószám eltávolítása (v123456/)
-    path = path.replace(/^v\d+\//, '');
+interface LinkedCasePreview {
+  case: Case;
+  owner?: {full_name: string} | null;
+}
 
-    // Kiterjesztés eltávolítása
-    const lastDotIndex = path.lastIndexOf('.');
-    if (lastDotIndex !== -1) path = path.substring(0, lastDotIndex);
-
-    return path;
-  } catch (e) {
-    return null;
-  }
-};
+type ViewedEvidence = CaseEvidence & {url: string};
 
 export function CaseDetailPage() {
   const {caseId} = useParams<{ caseId: string }>();
@@ -72,7 +63,7 @@ export function CaseDetailPage() {
   const [evidence, setEvidence] = React.useState<CaseEvidence[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [caseSuspects, setCaseSuspects] = React.useState<any[]>([]);
+  const [caseSuspects, setCaseSuspects] = React.useState<CaseSuspect[]>([]);
   const [isDeleting, setIsDeleting] = React.useState(false);
 
   // UI STATE
@@ -96,15 +87,15 @@ export function CaseDetailPage() {
 
   // DIALOGS STATE
   const [isAddSuspectOpen, setIsAddSuspectOpen] = React.useState(false);
-  const [viewSuspect, setViewSuspect] = React.useState<any>(null);
+  const [viewSuspect, setViewSuspect] = React.useState<Suspect | null>(null);
   const [isUploadOpen, setIsUploadOpen] = React.useState(false);
   const [isAddCollabOpen, setIsAddCollabOpen] = React.useState(false);
-  const [viewEvidence, setViewEvidence] = React.useState<any>(null);
+  const [viewEvidence, setViewEvidence] = React.useState<ViewedEvidence | null>(null);
   const [viewOfficerId, setViewOfficerId] = React.useState<string | null>(null);
 
   // Case Link Preview State
   const [previewCaseId, setPreviewCaseId] = React.useState<string | null>(null);
-  const [previewCaseData, setPreviewCaseData] = React.useState<any>(null);
+  const [previewCaseData, setPreviewCaseData] = React.useState<LinkedCasePreview | null>(null);
   const [previewError, setPreviewError] = React.useState<string | null>(null);
 
   // Global Drag & Drop File
@@ -138,8 +129,8 @@ export function CaseDetailPage() {
         if (found?.suspect) {
           setViewSuspect(found.suspect);
         } else {
-          supabase.from('suspects').select('*').eq('id', customEvent.detail.id).single().then(({data}) => {
-            if (data) setViewSuspect(data);
+          supabase.from('suspects').select('*').eq('id', customEvent.detail.id).maybeSingle().then(({data}) => {
+            if (data) setViewSuspect(data as Suspect);
           });
         }
       }
@@ -160,19 +151,15 @@ export function CaseDetailPage() {
           // RLS alapú lekérdezés a kompatibilitás miatt
           const {data, error} = await supabase
             .from('cases')
-            .select('*, owner:owner_id(full_name, badge_number)')
+            .select('id, case_number, title, description, status, owner:owner_id(full_name)')
             .eq('id', id)
             .single();
 
           if (error) throw error;
 
-          setPreviewCaseData({
-            caseDetails: {
-              case: data,
-              owner: data.owner
-            }
-          });
-        } catch (err: any) {
+          const linked = data as unknown as Case;
+          setPreviewCaseData({case: linked, owner: linked.owner});
+        } catch (err) {
           console.error("Linkelt akta hiba:", err);
           setPreviewError("Hozzáférés megtagadva. Nincs jogosultságod megtekinteni ezt az aktát.");
         }
@@ -228,6 +215,9 @@ export function CaseDetailPage() {
   const isCaseClosed = caseData?.status !== 'open';
   const isReadOnly = isCaseClosed || !canEdit;
 
+  const existingSuspectIds = React.useMemo(() => caseSuspects.map(s => s.suspect_id), [caseSuspects]);
+  const existingCollaboratorIds = React.useMemo(() => collaborators.map(c => c.user_id), [collaborators]);
+
   const handleRenameSave = async () => {
     if (!tempTitle.trim() || !caseId) return;
     const {error} = await supabase.from('cases').update({title: tempTitle}).eq('id', caseId);
@@ -245,21 +235,12 @@ export function CaseDetailPage() {
     setIsDeleting(true);
     const toastId = toast.loading("Akta és csatolt fájlok törlése...");
     try {
-      const response = await fetch('/api/case/delete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify({caseId})
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Hiba történt a törlés során.");
+      await postApi('/api/case/delete', {caseId});
       toast.success("Akta és minden adat véglegesen törölve.", {id: toastId});
       navigate('/mcb');
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      toast.error("Törlés sikertelen: " + e.message, {id: toastId});
+      toast.error("Törlés sikertelen: " + errorMessage(e), {id: toastId});
     } finally {
       setIsDeleting(false);
     }
@@ -299,37 +280,51 @@ export function CaseDetailPage() {
     }
   };
 
-  const fetchData = React.useCallback(async () => {
+  // Targeted loaders: after a change only the affected list is re-read, instead of the
+  // whole case (including its potentially large document body) behind a full-page spinner.
+  const fetchCollaborators = React.useCallback(async () => {
     if (!caseId) return;
-    setLoading(true);
-    try {
-      const {
-        data: cData,
-        error: cError
-      } = await supabase.from('cases').select('*, owner:owner_id(full_name, badge_number)').eq('id', caseId).single();
-      if (cError) throw cError;
-      setCaseData(cData as unknown as Case);
-      setTempTitle(cData.title);
+    const {data} = await supabase.from('case_collaborators')
+      .select('*, profile:user_id(full_name, badge_number, faction_rank, avatar_url)').eq('case_id', caseId);
+    setCollaborators((data ?? []) as unknown as CaseCollaborator[]);
+  }, [caseId, supabase]);
 
-      const {data: colData} = await supabase.from('case_collaborators').select('*, profile:user_id(full_name, badge_number, faction_rank)').eq('case_id', caseId);
-      setCollaborators(colData as unknown as CaseCollaborator[] || []);
+  const fetchEvidence = React.useCallback(async () => {
+    if (!caseId) return;
+    const {data} = await supabase.from('case_evidence').select('*').eq('case_id', caseId).order('created_at');
+    setEvidence((data ?? []) as CaseEvidence[]);
+  }, [caseId, supabase]);
 
-      const {data: evData} = await supabase.from('case_evidence').select('*').eq('case_id', caseId);
-      setEvidence(evData as CaseEvidence[] || []);
-
-      const {data: susData} = await supabase.from('case_suspects').select('*, suspect:suspect_id(*)').eq('case_id', caseId);
-      setCaseSuspects(susData || []);
-
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  const fetchSuspects = React.useCallback(async () => {
+    if (!caseId) return;
+    const {data} = await supabase.from('case_suspects').select('*, suspect:suspect_id(*)').eq('case_id', caseId);
+    setCaseSuspects((data ?? []) as unknown as CaseSuspect[]);
   }, [caseId, supabase]);
 
   React.useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!caseId) return;
+    let active = true;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const {data, error: caseError} = await supabase.from('cases').select(CASE_COLUMNS).eq('id', caseId).single();
+        if (caseError) throw caseError;
+        if (!active) return;
+        const loadedCase = data as unknown as Case;
+        setCaseData(loadedCase);
+        setTempTitle(loadedCase.title);
+        await Promise.all([fetchCollaborators(), fetchEvidence(), fetchSuspects()]);
+      } catch (err) {
+        if (active) setError(errorMessage(err));
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [caseId, supabase, fetchCollaborators, fetchEvidence, fetchSuspects]);
 
   React.useEffect(() => {
     if (!loading && profile && caseData) {
@@ -350,45 +345,39 @@ export function CaseDetailPage() {
 
   const handleDeleteSuspect = (id: string) => {
     showAlert("Gyanúsított eltávolítása", "Biztosan eltávolítod ezt a személyt az aktából?", async () => {
-      await supabase.from('case_suspects').delete().eq('id', id);
-      fetchData();
+      const {error: deleteError} = await supabase.from('case_suspects').delete().eq('id', id);
+      if (deleteError) return void toast.error("Hiba az eltávolításkor.");
+      setCaseSuspects(prev => prev.filter(item => item.id !== id));
       toast.success("Eltávolítva.");
     }, "Eltávolítás", "destructive");
   };
 
   const handleDeleteCollaborator = (id: string) => {
     showAlert("Közreműködő eltávolítása", "Biztosan visszavonod a hozzáférést ettől a személytől?", async () => {
-      await supabase.from('case_collaborators').delete().eq('id', id);
-      fetchData();
+      const {error: deleteError} = await supabase.from('case_collaborators').delete().eq('id', id);
+      if (deleteError) return void toast.error("Hiba a hozzáférés visszavonásakor.");
+      setCollaborators(prev => prev.filter(item => item.id !== id));
       toast.success("Hozzáférés visszavonva.");
     }, "Visszavonás", "destructive");
   };
 
-  // JAVÍTÁS 2: Cloudinary törlés beépítése az MCB bizonyíték törlésbe
   const handleDeleteEvidence = (id: string) => {
-    // Megkeressük a bizonyíték objektumot a listából, hogy megkapjuk a file_path-ot
     const targetEv = evidence.find(e => e.id === id);
 
     showAlert("Bizonyíték törlése", "Ez a művelet nem vonható vissza. Biztosan törlöd a fájlt?", async () => {
-
-      // 1. Törlés Cloudinary-ról (ha van file_path)
-      if (targetEv?.file_path) {
-        const publicId = getPublicIdFromUrl(targetEv.file_path);
-        if (publicId) {
-          console.log("Deleting evidence from cloud:", publicId);
-          // Nem várjuk meg a választ (fire and forget), hogy a UI gyors maradjon
-          fetch('/api/delete-image', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({publicId}) // Legacy hívás
-          }).catch(err => console.error("Cloudinary delete error:", err));
-        }
-      }
-
-      // 2. Törlés DB-ből
-      await supabase.from('case_evidence').delete().eq('id', id);
-      fetchData();
+      // 1. Database row first (RLS decides whether this user may delete it).
+      const {error: deleteError} = await supabase.from('case_evidence').delete().eq('id', id);
+      if (deleteError) return void toast.error("Hiba a bizonyíték törlésekor.");
+      setEvidence(prev => prev.filter(item => item.id !== id));
       toast.success("Bizonyíték törölve.");
+
+      // 2. Then the now-unreferenced file. Background clean-up: never blocks the UI.
+      const path = targetEv?.file_path;
+      if (path?.startsWith('http')) {
+        void deleteCloudinaryAssets([path]);
+      } else if (path) {
+        void supabase.storage.from('case_evidence').remove([path]);
+      }
     }, "Törlés", "destructive");
   };
 
@@ -398,8 +387,10 @@ export function CaseDetailPage() {
       `${labels[newStatus]} megerősítése`,
       `Biztosan módosítani szeretnéd az akta státuszát erre: ${labels[newStatus]}?`,
       async () => {
-        const {error} = await supabase.from('cases').update({status: newStatus}).eq('id', caseId!);
-        if (!error) {
+        const {error: updateError} = await supabase.from('cases').update({status: newStatus}).eq('id', caseId!);
+        if (updateError) {
+          toast.error("Nem sikerült módosítani az akta státuszát.");
+        } else {
           toast.success("Státusz frissítve!");
           setCaseData(prev => prev ? ({...prev, status: newStatus} as Case) : null);
         }
@@ -411,16 +402,17 @@ export function CaseDetailPage() {
   const handleThemeChange = async (newTheme: string) => {
     if (!caseData) return;
     setCaseData({...caseData, theme: newTheme});
-    const {error} = await supabase.from('cases').update({theme: newTheme} as any).eq('id', caseId!);
-    if (error) {
+    const previousTheme = caseData.theme;
+    const {error: updateError} = await supabase.from('cases').update({theme: newTheme}).eq('id', caseId!);
+    if (updateError) {
       toast.error("Nem sikerült menteni a témát");
-      fetchData();
+      setCaseData(prev => prev ? {...prev, theme: previousTheme} : prev);
     } else {
       toast.success("Téma módosítva");
     }
   };
 
-  const openEvidenceViewer = async (file: any) => {
+  const openEvidenceViewer = async (file: CaseEvidence) => {
     if (file.file_type === 'image') {
       if (file.file_path.startsWith('http')) {
         setViewEvidence({...file, url: file.file_path});
@@ -428,6 +420,9 @@ export function CaseDetailPage() {
         const {data} = await supabase.storage.from('case_evidence').createSignedUrl(file.file_path, 3600);
         if (data) setViewEvidence({...file, url: data.signedUrl});
       }
+    } else if (file.file_path.startsWith('http')) {
+      // Documents (PDF, DOCX) open in a new tab instead of the image viewer.
+      window.open(file.file_path, '_blank', 'noopener,noreferrer');
     } else toast.info("Ez a fájltípus nem támogatott.");
   };
 
@@ -439,7 +434,7 @@ export function CaseDetailPage() {
   </div>;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] overflow-hidden space-y-4">
+    <div className="flex flex-col h-shell-mcb overflow-hidden space-y-4">
       <AlertDialog open={alertConfig.open} onOpenChange={(open) => setAlertConfig(prev => ({...prev, open}))}>
         <AlertDialogContent className="bg-slate-950 border-slate-800 text-white">
           <AlertDialogHeader>
@@ -460,10 +455,10 @@ export function CaseDetailPage() {
       </AlertDialog>
 
       <AddSuspectDialog open={isAddSuspectOpen} onOpenChange={setIsAddSuspectOpen} caseId={caseId!}
-                        onSuspectAdded={fetchData} existingSuspectIds={caseSuspects.map(s => s.suspect_id)}/>
+                        onSuspectAdded={fetchSuspects} existingSuspectIds={existingSuspectIds}/>
       <SuspectDetailDialog open={!!viewSuspect} onOpenChange={(o) => !o && setViewSuspect(null)} suspect={viewSuspect}
                            onUpdate={() => {
-                             fetchData();
+                             void fetchSuspects();
                              setViewSuspect(null);
                            }}/>
 
@@ -485,14 +480,14 @@ export function CaseDetailPage() {
           }
         }}
         caseId={caseId!}
-        onUploadComplete={fetchData}
+        onUploadComplete={fetchEvidence}
         initialFile={draggedFile}
       />
 
       <AddCollaboratorDialog open={isAddCollabOpen} onOpenChange={setIsAddCollabOpen} caseId={caseId!}
-                             onCollaboratorAdded={fetchData} existingUserIds={collaborators.map(c => c.user_id)}/>
+                             onCollaboratorAdded={fetchCollaborators} existingUserIds={existingCollaboratorIds}/>
       <ImageViewerDialog open={!!viewEvidence} onOpenChange={(o) => !o && setViewEvidence(null)}
-                         imageUrl={viewEvidence?.url} fileName={viewEvidence?.file_name}/>
+                         imageUrl={viewEvidence?.url ?? null} fileName={viewEvidence?.file_name ?? ""}/>
 
       <Dialog open={!!previewCaseId} onOpenChange={(open) => !open && setPreviewCaseId(null)}>
         <DialogContent className="bg-slate-950 border-slate-800 text-white">
@@ -515,20 +510,20 @@ export function CaseDetailPage() {
             <div className="space-y-4">
               <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-800">
                 <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-bold text-lg text-white">{previewCaseData.caseDetails.case.title}</h3>
-                  <Badge variant="outline" className="font-mono">{previewCaseData.caseDetails.case.case_number}</Badge>
+                  <h3 className="font-bold text-lg text-white">{previewCaseData.case.title}</h3>
+                  <Badge variant="outline" className="font-mono">{previewCaseData.case.case_number}</Badge>
                 </div>
                 <p
-                  className="text-sm text-slate-400 line-clamp-3 mb-3">{previewCaseData.caseDetails.case.description || "Nincs leírás."}</p>
+                  className="text-sm text-slate-400 line-clamp-3 mb-3">{previewCaseData.case.description || "Nincs leírás."}</p>
 
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                             <span className={cn("px-2 py-0.5 rounded font-bold uppercase",
-                              previewCaseData.caseDetails.case.status === 'open' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                              previewCaseData.case.status === 'open' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                             )}>
-                                {previewCaseData.caseDetails.case.status}
+                                {previewCaseData.case.status}
                             </span>
                   <span>•</span>
-                  <span>Tulajdonos: {previewCaseData.caseDetails.owner.full_name}</span>
+                  <span>Tulajdonos: {previewCaseData.owner?.full_name ?? "Ismeretlen"}</span>
                 </div>
               </div>
             </div>

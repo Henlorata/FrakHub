@@ -12,6 +12,11 @@ import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
 import {toast} from "sonner";
 import {Loader2, DollarSign, X, Receipt, UploadCloud} from "lucide-react";
+import {compressImage} from "@/lib/image-compression";
+import {errorMessage} from "@/lib/utils";
+
+// Proof screenshots: 1920px WebP keeps them readable and ~10x smaller in Storage.
+const PROOF_COMPRESSION = {maxDimension: 1920, quality: 0.85};
 
 interface NewBudgetRequestDialogProps {
   open: boolean;
@@ -38,22 +43,32 @@ export function NewBudgetRequestDialog({open, onOpenChange, onSuccess}: NewBudge
       toast.error("Minden mező és bizonyíték kötelező!");
       return;
     }
+    const parsedAmount = Number.parseInt(amount, 10);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast.error("Adj meg egy pozitív összeget!");
+      return;
+    }
 
     setIsLoading(true);
     try {
-      const uploadPromises = files.map(async (file) => {
+      const uploadPromises = files.map(async (original) => {
+        const file = await compressImage(original, PROOF_COMPRESSION);
         const fileExt = file.name.split('.').pop();
-        const fileName = `${user.id}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const {error} = await supabase.storage.from('finance_proofs').upload(fileName, file);
+        const fileName = `${user.id}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}.${fileExt}`;
+        const {error} = await supabase.storage.from('finance_proofs').upload(fileName, file, {contentType: file.type});
         if (error) throw error;
         return fileName;
       });
       const paths = await Promise.all(uploadPromises);
 
-      const {error} = await (supabase.from('budget_requests') as any).insert({
-        user_id: user.id, amount: parseInt(amount), reason: reason, proof_image_path: paths, status: 'pending'
+      const {error} = await supabase.from('budget_requests').insert({
+        user_id: user.id, amount: parsedAmount, reason: reason, proof_image_path: paths, status: 'pending'
       });
-      if (error) throw error;
+      if (error) {
+        // Do not leave orphaned proof images in the bucket.
+        void supabase.storage.from('finance_proofs').remove(paths);
+        throw error;
+      }
 
       toast.success("Kérelem rögzítve.");
       setAmount("");
@@ -62,7 +77,7 @@ export function NewBudgetRequestDialog({open, onOpenChange, onSuccess}: NewBudge
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      toast.error("Hiba történt");
+      toast.error("Hiba történt", {description: errorMessage(error)});
     } finally {
       setIsLoading(false);
     }

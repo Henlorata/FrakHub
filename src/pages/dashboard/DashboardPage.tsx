@@ -1,603 +1,441 @@
-import * as React from "react";
-import {useAuth} from "@/context/AuthContext";
-import {useSystemStatus, type AlertLevelId} from "@/context/SystemStatusContext";
-import {Card, CardHeader, CardTitle} from "@/components/ui/card";
-import {Button} from "@/components/ui/button";
-import {Badge} from "@/components/ui/badge";
-import {ScrollArea} from "@/components/ui/scroll-area";
+import {useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
+import {useNavigate} from "react-router";
+import {toast} from "sonner";
+import {formatDistanceToNowStrict} from "date-fns";
+import {hu} from "date-fns/locale";
 import {
-  Dialog, DialogContent, DialogTitle, DialogFooter, DialogDescription
-} from "@/components/ui/dialog";
+  Activity, AlertOctagon, AlertTriangle, ArrowRight, Banknote, Bell, CalendarOff, ClipboardCheck, EyeOff, FileText,
+  Fingerprint, Gavel, GraduationCap, Info, Megaphone, Pin, Plus, Receipt, ScrollText, ShieldCheck, Ticket, Trash2,
+  TrendingUp, Truck, UserPlus, Users,
+} from "lucide-react";
+import {useAuth} from "@/context/AuthContext";
+import {useSystemStatus} from "@/context/SystemStatusContext";
+import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
+import {Switch} from "@/components/ui/switch";
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {
-  Shield,
-  Activity,
-  Users,
-  Radio,
-  CloudRain,
-  Sun,
-  Cloud,
-  Wind,
-  Clock,
-  Bell,
-  ChevronRight,
-  AlertTriangle,
-  FileText,
-  Terminal,
-  Truck,
-  Siren,
-  Database,
-  Lock,
-  Gavel,
-  Plus,
-  Megaphone,
-  Check,
-  Ticket,
-  AlertOctagon,
-  Info,
-  Podcast,
-  Pin,
-  Trash2,
-  EyeOff,
-  User,
-  Eye, GraduationCap, Signal
-} from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {useNavigate} from "react-router-dom";
-import {SheriffBackground} from "@/components/SheriffBackground";
-import {cn, isMcbMember, isSupervisory, isHighCommand, isCommand, isExecutive} from "@/lib/utils";
-import {formatDistanceToNow} from "date-fns";
-import {hu} from "date-fns/locale";
-import {toast} from "sonner";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {TONE_CLASSES, type Tone} from "@/components/layout/PageHeader";
+import {ALERT_LEVELS} from "@/lib/alert-levels";
+import {canViewCaseList, cn, errorMessage, getAdjacentRank, isStaff, STAFF_CATEGORY_LABELS, type StaffCategory} from "@/lib/utils";
+import type {ActionLog, MemberEvent} from "@/types/supabase";
+import {describeEvent} from "@/pages/hr/components/MemberSheet";
+import {daysSince, formatSpan} from "@/pages/hr/hr-utils";
 
-// --- KONFIGURÁCIÓ ---
-const ALERT_LEVELS: Record<AlertLevelId, { label: string, color: string, icon: any }> = {
-  'normal': {label: 'NORMÁL', color: 'text-green-500', icon: Shield},
-  'traffic': {label: 'FOKOZOTT ELLENŐRZÉS', color: 'text-yellow-500', icon: Activity},
-  'border': {label: 'HATÁRZÁR', color: 'text-orange-500', icon: AlertTriangle},
-  'tactical': {label: 'TAKTIKAI RIADÓ', color: 'text-red-500', icon: Siren},
-};
+interface DashboardSummary {
+  unread_notifications: number;
+  pending_exam_sheets: number;
+  pending_registrations: number | null;
+  pending_leave_requests: number | null;
+  pending_vehicle_requests: number | null;
+  pending_budget_requests: number | null;
+  pending_warrants: number | null;
+  my_open_cases: number | null;
+  my_pending_requests: number;
+  my_active_warnings: number;
+  members_total: number;
+  members_on_leave: number;
+}
 
-// --- SEGÉD: RANG KATEGÓRIA ---
-const getStaffCategory = (rank: string) => {
-  const EXECUTIVE = ['Commander', 'Deputy Commander'];
-  const COMMAND = ['Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.'];
-  const SUPERVISORY = ['Sergeant II.', 'Sergeant I.'];
+interface FeedAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  type: "info" | "alert" | "training";
+  is_pinned: boolean;
+  show_author: boolean;
+  created_at: string;
+  created_by: string | null;
+  author_name: string | null;
+  author_rank: string | null;
+  author_category: StaffCategory;
+  can_delete: boolean;
+}
 
-  if (EXECUTIVE.includes(rank)) return "EXECUTIVE STAFF";
-  if (COMMAND.includes(rank)) return "COMMAND STAFF";
-  if (SUPERVISORY.includes(rank)) return "SUPERVISORY STAFF";
-  return "SHERIFF'S DEPARTMENT";
-};
+const ANNOUNCEMENT_TYPES = {
+  info: {label: "Információ", icon: Info, tone: "text-sky-300 bg-sky-500/10 ring-sky-500/30"},
+  alert: {label: "Riasztás", icon: AlertTriangle, tone: "text-red-300 bg-red-500/10 ring-red-500/30"},
+  training: {label: "Képzés", icon: GraduationCap, tone: "text-emerald-300 bg-emerald-500/10 ring-emerald-500/30"},
+} as const;
 
-// --- WIDGETEK ---
-const WeatherWidget = () => {
-  const weather = React.useMemo(() => {
-    const types = [
-      {icon: Sun, label: "Tiszta", temp: "24°C", color: "text-yellow-500"},
-      {icon: Cloud, label: "Felhős", temp: "19°C", color: "text-slate-400"},
-      {icon: CloudRain, label: "Esős", temp: "16°C", color: "text-blue-400"},
-      {icon: Wind, label: "Szeles", temp: "18°C", color: "text-slate-300"},
-    ];
-    return types[Math.floor(Math.random() * types.length)];
-  }, []);
-  const Icon = weather.icon;
-  return (
-    <div
-      className="flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border border-slate-800 backdrop-blur-md shadow-lg group hover:border-slate-700 transition-all">
-      <div className={`p-2 rounded-lg bg-slate-900 ${weather.color}`}><Icon className="w-6 h-6"/></div>
-      <div>
-        <div className="text-lg font-bold text-white leading-none">{weather.temp}</div>
-        <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{weather.label}</div>
-      </div>
-    </div>
-  );
-};
-
-const ClockWidget = () => {
-  const [time, setTime] = React.useState(new Date());
-  React.useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return (
-    <div
-      className="flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border border-slate-800 backdrop-blur-md shadow-lg group hover:border-slate-700 transition-all">
-      <div className="p-2 rounded-lg bg-slate-900 text-blue-500"><Clock className="w-6 h-6"/></div>
-      <div>
-        <div className="text-lg font-mono font-bold text-white leading-none">{time.toLocaleTimeString('hu-HU', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })}</div>
-        <div
-          className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{time.toLocaleDateString('hu-HU', {
-          month: 'short',
-          day: 'numeric'
-        })}</div>
-      </div>
-    </div>
-  );
-};
-
-// --- MODUL KÁRTYA ---
-const ModuleCard = ({title, desc, icon: Icon, colorClass, onClick, locked = false}: any) => (
-  <div onClick={!locked ? onClick : undefined}
-       className={cn("relative overflow-hidden rounded-xl border p-6 transition-all group cursor-pointer flex flex-col justify-between h-[160px]",
-         locked ? "bg-slate-950/40 border-slate-800/50 opacity-50 cursor-not-allowed" : "bg-slate-900/80 border-slate-700/50 hover:border-yellow-500/50 hover:bg-slate-900 hover:shadow-lg hover:shadow-yellow-500/10 backdrop-blur-sm")}
-  >
-    <div
-      className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
-    <div
-      className={`absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-3xl transition-opacity opacity-0 group-hover:opacity-20 ${colorClass.replace('text-', 'bg-')}`}></div>
-    <div className="relative z-10">
-      <div
-        className={cn("w-10 h-10 rounded-lg flex items-center justify-center mb-3 transition-all group-hover:scale-110", locked ? "bg-slate-900 text-slate-600" : "bg-slate-950 border border-slate-800", colorClass)}>
-        {locked ? <Lock className="w-5 h-5"/> : <Icon className="w-5 h-5"/>}
-      </div>
-      <h3
-        className={cn("text-base font-black uppercase tracking-tight mb-1", locked ? "text-slate-500" : "text-white group-hover:text-yellow-500 transition-colors")}>{title}</h3>
-      <p className="text-[10px] text-slate-400 font-medium line-clamp-2 leading-relaxed">{desc}</p>
-    </div>
-    {!locked && (<div className="relative z-10 mt-auto pt-2 flex justify-end"><ChevronRight
-      className="w-4 h-4 text-slate-600 group-hover:text-yellow-500 group-hover:translate-x-1 transition-all"/></div>)}
-  </div>
-);
-
-// --- HIRDETÉS DIALÓGUS ---
-const NewAnnouncementDialog = ({open, onOpenChange, onSuccess}: {
-  open: boolean,
-  onOpenChange: (o: boolean) => void,
-  onSuccess: () => void
-}) => {
-  const {supabase, user} = useAuth();
-  const [title, setTitle] = React.useState("");
-  const [content, setContent] = React.useState("");
-  const [type, setType] = React.useState("info");
-  const [isPinned, setIsPinned] = React.useState(false);
-  const [showAuthor, setShowAuthor] = React.useState(true);
-  const [loading, setLoading] = React.useState(false);
-
-  const handleSubmit = async () => {
-    if (!title || !content) return toast.error("Minden mező kötelező!");
-    setLoading(true);
-    try {
-      const {error} = await supabase.from('announcements').insert({
-        title, content, type, created_by: user?.id,
-        is_pinned: isPinned, show_author: showAuthor
-      });
-      if (error) throw error;
-      toast.success("Hirdetés közzétéve!");
-      onSuccess();
-      onOpenChange(false);
-      setTitle("");
-      setContent("");
-      setIsPinned(false);
-      setShowAuthor(true);
-    } catch (e) {
-      toast.error("Hiba történt.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const TypeCard = ({id, label, icon: Icon, colorClass, activeClass, borderColor}: any) => (
-    <div onClick={() => setType(id)}
-         className={cn("flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all flex-1 select-none", type === id ? cn("bg-slate-900/80", borderColor, activeClass) : "bg-slate-950 border-slate-800 text-slate-500 hover:bg-slate-900 hover:border-slate-700")}>
-      <Icon className={cn("w-6 h-6 mb-2 transition-colors", type === id ? colorClass : "text-slate-600")}/>
-      <span className="text-[10px] font-black uppercase tracking-wider">{label}</span>
-    </div>
-  );
-
-  // Jól látható Toggle Kártya
-  const ToggleOption = ({label, description, active, onChange, icon: Icon, activeColor, activeText}: any) => (
-    <div onClick={() => onChange(!active)}
-         className={cn("flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all select-none", active ? cn("bg-slate-900/80", activeColor) : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700")}>
-      <div className="flex items-center gap-3">
-        <div className={cn("p-2 rounded-md", active ? "bg-white/10 text-white" : "bg-slate-900 text-slate-600")}><Icon
-          className="w-5 h-5"/></div>
-        <div>
-          <div
-            className={cn("text-xs font-bold uppercase tracking-wider", active ? "text-white" : "text-slate-500")}>{label}</div>
-          <div className="text-[9px] text-slate-600 font-bold">{description}</div>
-        </div>
-      </div>
-      <div
-        className={cn("px-2 py-1 rounded text-[9px] font-black uppercase", active ? activeText : "bg-slate-900 text-slate-600")}>
-        {active ? "AKTÍV" : "KI"}
-      </div>
-    </div>
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="bg-[#0b1221] border border-yellow-500/30 text-white sm:max-w-lg shadow-[0_0_40px_rgba(234,179,8,0.15)] p-0 overflow-hidden">
-        <div className="bg-yellow-500/10 border-b border-yellow-500/20 p-5 flex items-center gap-3">
-          <div className="p-2 rounded bg-yellow-500/10 border border-yellow-500/30 text-yellow-500"><Podcast
-            className="w-5 h-5"/></div>
-          <div><DialogTitle className="text-lg font-black uppercase tracking-tight">ADÁS
-            INDÍTÁSA</DialogTitle><DialogDescription
-            className="text-[10px] text-yellow-500/60 font-mono uppercase tracking-widest font-bold">Secure Broadcast
-            Terminal</DialogDescription></div>
-        </div>
-        <div className="p-6 space-y-5">
-          <div className="space-y-2"><Label
-            className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">Kategória</Label>
-            <div className="flex gap-3"><TypeCard id="info" label="INFO" icon={Info} colorClass="text-blue-400"
-                                                  activeClass="text-blue-100" borderColor="border-blue-500"/><TypeCard
-              id="alert" label="RIASZTÁS" icon={AlertTriangle} colorClass="text-red-500" activeClass="text-red-100"
-              borderColor="border-red-500"/><TypeCard id="training" label="KÉPZÉS" icon={GraduationCap}
-                                                      colorClass="text-green-500" activeClass="text-green-100"
-                                                      borderColor="border-green-500"/></div>
-          </div>
-          <div className="space-y-1.5"><Label
-            className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">Címsor</Label><Input
-            value={title} onChange={e => setTitle(e.target.value)}
-            className="bg-slate-950 border-slate-800 focus-visible:ring-yellow-500/50 font-bold"
-            placeholder="Rövid cím..."/></div>
-          <div className="space-y-1.5"><Label
-            className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">Üzenet</Label><Textarea
-            value={content} onChange={e => setContent(e.target.value)}
-            className="bg-slate-950 border-slate-800 h-32 resize-none break-words whitespace-pre-wrap text-sm leading-relaxed placeholder:text-slate-700 break-all"
-            placeholder="Írd ide az üzenetet..."/></div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800">
-            <ToggleOption label="KIEMELÉS" description="Lista tetejére rögzít" active={isPinned} onChange={setIsPinned}
-                          icon={Pin} activeColor="border-yellow-500/50 shadow-yellow-900/20"
-                          activeText="bg-yellow-500 text-black"/>
-            <ToggleOption label="ALÁÍRÁS" description={showAuthor ? "Név megjelenítése" : "Csak rang látszik"}
-                          active={showAuthor} onChange={setShowAuthor} icon={showAuthor ? Eye : EyeOff}
-                          activeColor="border-blue-500/50 shadow-blue-900/20" activeText="bg-blue-500 text-white"/>
-          </div>
-        </div>
-        <DialogFooter className="p-5 bg-slate-950 border-t border-slate-800 flex justify-between"><Button
-          variant="ghost" onClick={() => onOpenChange(false)}
-          className="hover:bg-slate-900 text-slate-400 text-xs font-bold uppercase">Mégse</Button><Button
-          onClick={handleSubmit} disabled={loading}
-          className="bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase tracking-widest px-6 shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:scale-105 transition-all"><Signal
-          className="w-4 h-4 mr-2"/> ADÁS KÜLDÉSE</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-// --- STÁTUSZ KEZELŐ ---
-const StatusControlDialog = ({open, onOpenChange}: { open: boolean, onOpenChange: (o: boolean) => void }) => {
-  const {alertLevel, setAlertLevel, recruitmentOpen, toggleRecruitment} = useSystemStatus();
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#0b1221] border border-slate-800 text-white sm:max-w-sm p-0 shadow-2xl">
-        <div className="bg-slate-900/50 border-b border-slate-800 p-4"><DialogTitle
-          className="text-sm font-bold uppercase tracking-wider flex items-center gap-2"><Activity
-          className="w-4 h-4 text-blue-500"/> Rendszer Státusz</DialogTitle></div>
-        <div className="p-6 space-y-6">
-          <div className="space-y-3">
-            <Label className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">Riasztási Szint
-              (DEFCON)</Label>
-            <div className="grid grid-cols-1 gap-2">
-              {(Object.keys(ALERT_LEVELS) as AlertLevelId[]).map((level) => (
-                <div key={level} onClick={() => setAlertLevel(level)}
-                     className={cn("flex items-center justify-between p-3 rounded border cursor-pointer transition-all", alertLevel === level ? "bg-slate-800 border-yellow-500/50" : "bg-slate-950 border-slate-800 hover:bg-slate-900")}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${ALERT_LEVELS[level].color.replace('text-', 'bg-')}`}></div>
-                    <span
-                      className={cn("text-xs font-bold uppercase", alertLevel === level ? "text-white" : "text-slate-400")}>{ALERT_LEVELS[level].label}</span>
-                  </div>
-                  {alertLevel === level && <Check className="w-3 h-3 text-yellow-500"/>}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-3 pt-4 border-t border-slate-800">
-            <Label className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">TGF Kapu</Label>
-            <Button onClick={toggleRecruitment}
-                    className={cn("w-full font-bold h-9 text-xs uppercase tracking-wider", recruitmentOpen ? "bg-green-600 hover:bg-green-500" : "bg-red-600 hover:bg-red-500")}>{recruitmentOpen ? "TGF NYITVA (Lezárás)" : "TGF ZÁRVA (Megnyitás)"}</Button>
-          </div>
-        </div>
-        <DialogFooter className="p-4 bg-slate-950 border-t border-slate-800"><Button variant="ghost" size="sm"
-                                                                                     onClick={() => onOpenChange(false)}>Bezárás</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const FeedItem = ({item, onDelete, currentUser}: { item: any, onDelete: (id: string) => void, currentUser: any }) => {
-  const canDelete = (currentUser.id === item.created_by) || isCommand(currentUser) || isExecutive(currentUser) || currentUser.is_bureau_manager;
-
-  // Executive Staff mindig látja az adatokat
-  const isExec = isExecutive(currentUser);
-
-  // Megjelenítendő adatok logikája
-  const showRealData = item.show_author || isExec;
-
-  // Ez jelzi, hogy csak a rang miatt látjuk-e (Privileged View)
-  const isPrivilegedView = !item.show_author && isExec;
-
-  const authorName = showRealData ? item.profiles?.full_name : getStaffCategory(item.profiles?.faction_rank);
-  const authorRank = showRealData ? item.profiles?.faction_rank : "CLASSIFIED";
-
-  return (
-    <div
-      className={cn("p-4 border-l-4 bg-slate-950/40 hover:bg-slate-950/60 hover:border-yellow-500/50 transition-all rounded-r-lg group mb-3 relative", item.is_pinned ? "border-yellow-500 bg-yellow-900/10" : "border-slate-700")}>
-      <div className="flex justify-between items-start mb-2">
-        <div className="flex gap-2 items-center">
-          {item.is_pinned && <Pin className="w-3 h-3 text-yellow-500 fill-current rotate-45"/>}
-          <Badge variant="outline"
-                 className={cn("text-[9px] h-5 uppercase border-opacity-50", item.type === 'alert' ? "text-red-400 border-red-500 bg-red-500/10" : item.type === 'training' ? "text-blue-400 border-blue-500 bg-blue-500/10" : "text-slate-400 border-slate-600 bg-slate-500/10")}>{item.type === 'alert' ? 'RIASZTÁS' : item.type === 'training' ? 'KÉPZÉS' : 'INFÓ'}</Badge>
-          <span className="text-[9px] text-slate-600 font-mono">{formatDistanceToNow(new Date(item.created_at), {
-            locale: hu,
-            addSuffix: true
-          })}</span>
-        </div>
-        {canDelete && <Button size="icon" variant="ghost"
-                              className="h-5 w-5 text-slate-600 hover:text-red-500 -mr-2 opacity-0 group-hover:opacity-100 transition-all"
-                              onClick={() => onDelete(item.id)}><Trash2 className="w-3 h-3"/></Button>}
-      </div>
-      <h4
-        className="text-sm font-bold text-white group-hover:text-yellow-500 transition-colors mb-2 break-all">{item.title}</h4>
-      <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap break-all mb-3">{item.content}</div>
-      <div className="pt-2 border-t border-white/5 flex flex-wrap items-center gap-2">
-        <div
-          className={cn("w-1.5 h-1.5 rounded-full", item.show_author ? "bg-green-500" : (isExec ? "bg-red-500" : "bg-blue-500"))}></div>
-        <div className="text-[9px] text-slate-500 font-mono uppercase flex items-center gap-1 flex-wrap">
-          <span>FROM:</span>
-          <span
-            className={cn("font-bold", item.show_author ? "text-slate-300" : (isExec ? "text-red-400" : "text-blue-400"))}>{authorName}</span>
-
-          {isPrivilegedView && (
-            <span
-              className="flex items-center gap-1 bg-red-500/10 border border-red-500/30 text-red-400 px-1.5 py-0.5 rounded text-[8px] tracking-wider ml-1"
-              title="Ez az információ mások számára rejtett">
-              <EyeOff className="w-2.5 h-2.5"/> REJTETT
-            </span>
-          )}
-
-          <span className="mx-1 text-slate-700">|</span>
-          <span>RANK: {authorRank}</span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- ACTION LOG ITEM ---
-const ActionItem = ({log}: { log: any }) => (
-  <div className="flex items-start gap-3 p-3 border-b border-slate-800/50 hover:bg-slate-900/30 transition-colors">
-    <div
-      className={cn("p-1.5 rounded bg-slate-950 border shrink-0", log.action_type === 'arrest' ? "border-red-900/50 text-red-500" : log.action_type === 'ticket' ? "border-orange-900/50 text-orange-500" : "border-blue-900/50 text-blue-500")}>
-      {log.action_type === 'arrest' ? <AlertOctagon className="w-3 h-3"/> : log.action_type === 'ticket' ?
-        <Ticket className="w-3 h-3"/> : <Info className="w-3 h-3"/>}
-    </div>
-    <div className="min-w-0 flex-1">
-      <div className="flex justify-between items-baseline">
-            <span
-              className={cn("text-xs font-black uppercase tracking-wide", log.action_type === 'arrest' ? "text-red-400" : log.action_type === 'ticket' ? "text-orange-400" : "text-blue-400")}>
-               {log.action_type === 'arrest' ? 'LETARTÓZTATÁS' : log.action_type === 'ticket' ? 'BÍRSÁG' : 'NAPLÓ'}
-            </span>
-        <span className="text-[9px] text-slate-500 font-mono">{new Date(log.created_at).toLocaleTimeString('hu-HU', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })}</span>
-      </div>
-      <div className="flex items-center gap-1 mt-0.5">
-        <User className="w-2.5 h-2.5 text-slate-600"/>
-        <span className="text-[10px] font-bold text-slate-300">{log.profiles?.full_name || "Ismeretlen"}</span>
-        <span className="text-[9px] text-slate-600">#{log.profiles?.badge_number}</span>
-      </div>
-      <p
-        className="text-[10px] text-slate-400 mt-1 leading-snug border-l-2 border-slate-800 pl-2 italic break-all whitespace-pre-wrap">{log.details}</p>
-    </div>
-  </div>
-);
+const ago = (iso: string) => formatDistanceToNowStrict(new Date(iso), {addSuffix: true, locale: hu});
 
 export function DashboardPage() {
   const {profile, supabase} = useAuth();
   const {alertLevel} = useSystemStatus();
   const navigate = useNavigate();
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [announcements, setAnnouncements] = useState<FeedAnnouncement[] | null>(null);
+  const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
+  const [events, setEvents] = useState<(MemberEvent & {member?: {full_name: string} | null})[]>([]);
+  const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const [announcements, setAnnouncements] = React.useState<any[]>([]);
-  const [actionLogs, setActionLogs] = React.useState<any[]>([]);
-  const [activeUnitCount, setActiveUnitCount] = React.useState(0);
-  const [isAnnouncementOpen, setIsAnnouncementOpen] = React.useState(false);
-  const [isStatusOpen, setIsStatusOpen] = React.useState(false);
-  const [deleteId, setDeleteId] = React.useState<string | null>(null);
-
-  const fetchData = React.useCallback(async () => {
-    const {data: news} = await supabase.from('announcements').select('*, profiles(full_name, faction_rank)').order('is_pinned', {ascending: false}).order('created_at', {ascending: false}).limit(10);
-    if (news) setAnnouncements(news);
-
-    const {count} = await supabase.from('profiles').select('id', {
-      count: 'exact',
-      head: true
-    }).neq('system_role', 'pending');
-    setActiveUnitCount(count || 0);
-
-    const {data: logs} = await supabase.from('action_logs').select('*, profiles!action_logs_user_id_fkey(full_name, badge_number)').order('created_at', {ascending: false}).limit(8);
-    if (logs) setActionLogs(logs);
+  const loadAnnouncements = useCallback(async () => {
+    const {data, error} = await supabase.rpc("get_announcements", {_limit: 12});
+    if (!error) setAnnouncements((data ?? []) as FeedAnnouncement[]);
   }, [supabase]);
 
-  React.useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  // Four requests in parallel: the summary (one RPC), announcements, activity and HR changes.
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      supabase.rpc("get_dashboard_summary"),
+      supabase.rpc("get_announcements", {_limit: 12}),
+      supabase.from("action_logs")
+        .select("id, user_id, action_type, details, created_at, profiles!action_logs_user_id_fkey(full_name, badge_number)")
+        .order("created_at", {ascending: false}).limit(8),
+      supabase.from("member_events")
+        .select("id, user_id, actor_id, kind, from_value, to_value, detail, created_at, member:profiles!member_events_user_id_fkey(full_name)")
+        .in("kind", ["joined", "rank", "award"]).order("created_at", {ascending: false}).limit(6),
+    ]).then(([summaryResult, announcementResult, logResult, eventResult]) => {
+      if (!active) return;
+      if (!summaryResult.error) setSummary(summaryResult.data as DashboardSummary);
+      setAnnouncements((announcementResult.data ?? []) as FeedAnnouncement[]);
+      setActionLogs((logResult.data ?? []) as unknown as ActionLog[]);
+      setEvents((eventResult.data ?? []) as unknown as (MemberEvent & {member?: {full_name: string} | null})[]);
+    });
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
 
-  const handleDeleteAnnouncement = async (id: string) => {
-    setDeleteId(id);
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteId) return;
-    const {error} = await supabase.from('announcements').delete().eq('id', deleteId);
-    if (error) toast.error("Hiba a törléskor."); else {
-      toast.success("Törölve.");
-      fetchData();
-    }
-    setDeleteId(null);
-  };
-
-  const greeting = React.useMemo(() => {
-    const h = new Date().getHours();
-    return h < 6 ? "Jó éjszakát" : h < 10 ? "Jó reggelt" : h < 18 ? "Szép napot" : "Jó estét";
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    return hour < 6 ? "Jó éjszakát" : hour < 10 ? "Jó reggelt" : hour < 18 ? "Szép napot" : "Jó estét";
   }, []);
 
   if (!profile) return null;
-  const canCreateNews = profile.system_role === 'admin' || isHighCommand(profile) || isSupervisory(profile);
-  const canManageStatus = profile.system_role === 'admin' || isHighCommand(profile);
-  const alertInfo = ALERT_LEVELS[alertLevel];
+  const level = ALERT_LEVELS[alertLevel];
+  const canPost = isStaff(profile);
+  const nextRank = getAdjacentRank(profile.faction_rank, "up");
+
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    const id = deleteId;
+    setDeleteId(null);
+    const {error} = await supabase.from("announcements").delete().eq("id", id);
+    if (error) toast.error("A hirdetmény törlése nem sikerült.");
+    else {
+      setAnnouncements((prev) => (prev ?? []).filter((item) => item.id !== id));
+      toast.success("Hirdetmény törölve.");
+    }
+  };
+
+  const tasks: {label: string; value: number | null | undefined; icon: typeof Bell; tone: Tone; to: string; hint?: string}[] = [
+    {label: "Olvasatlan értesítés", value: summary?.unread_notifications, icon: Bell, tone: "gold", to: "/notifications"},
+    {label: "Javítandó vizsgalap", value: summary?.pending_exam_sheets, icon: ClipboardCheck, tone: "violet", to: "/exams?tab=grading"},
+    {label: "Jóváhagyásra váró parancs", value: summary?.pending_warrants, icon: Gavel, tone: "red", to: "/mcb"},
+    {label: "Új regisztráció", value: summary?.pending_registrations, icon: UserPlus, tone: "emerald", to: "/hr?tab=requests"},
+    {label: "Szabadságkérelem", value: summary?.pending_leave_requests, icon: CalendarOff, tone: "blue", to: "/hr?tab=requests"},
+    {label: "Járműigénylés", value: summary?.pending_vehicle_requests, icon: Truck, tone: "orange", to: "/logistics"},
+    {label: "Költségtérítés", value: summary?.pending_budget_requests, icon: Receipt, tone: "emerald", to: "/finance"},
+    {label: "Nyitott aktám", value: summary?.my_open_cases, icon: Fingerprint, tone: "blue", to: "/mcb"},
+  ];
+  const visibleTasks = tasks.filter((task) => task.value !== null);
 
   return (
-    <div className="min-h-screen bg-[#050a14] relative overflow-hidden pb-20">
-      <SheriffBackground side="left"/>
-
-      <NewAnnouncementDialog open={isAnnouncementOpen} onOpenChange={setIsAnnouncementOpen} onSuccess={fetchData}/>
-      <StatusControlDialog open={isStatusOpen} onOpenChange={setIsStatusOpen}/>
-
-      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
-        <AlertDialogContent className="bg-[#0b1221] border border-red-900/50 text-white">
-          <AlertDialogHeader><AlertDialogTitle className="text-red-500 flex items-center gap-2"><Trash2
-            className="w-5 h-5"/> HIRDETÉS TÖRLÉSE</AlertDialogTitle><AlertDialogDescription className="text-slate-400">Biztosan
-            törlöd ezt a hirdetményt? A művelet nem visszavonható.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel
-            className="bg-slate-900 border-slate-700 hover:bg-slate-800 text-white">Mégse</AlertDialogCancel><AlertDialogAction
-            onClick={confirmDelete}
-            className="bg-red-600 hover:bg-red-700 border-none text-white font-bold">Törlés</AlertDialogAction></AlertDialogFooter>
+    <div className="space-y-6">
+      <NewAnnouncementDialog open={isAnnouncementOpen} onOpenChange={setIsAnnouncementOpen} onCreated={loadAnnouncements}/>
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hirdetmény törlése</AlertDialogTitle>
+            <AlertDialogDescription>Biztosan törlöd ezt a hirdetményt? A művelet nem vonható vissza.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Mégse</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 text-white hover:bg-red-500" onClick={() => void confirmDelete()}>Törlés</AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="max-w-[1600px] mx-auto px-6 py-10 relative z-10">
-        {/* HEADER */}
-        <div
-          className="flex flex-col lg:flex-row justify-between items-end gap-8 mb-10 animate-in fade-in slide-in-from-top-4 duration-700">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-yellow-500/80 mb-2"><Shield className="w-5 h-5"/><span
-              className="text-xs font-bold uppercase tracking-[0.3em]">San Fierro Sheriff's Dept.</span></div>
-            <h1
-              className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter leading-none drop-shadow-lg">{greeting}, <br/><span
-              className="text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">{profile.full_name.split(' ')[0]}.</span>
+      {/* Greeting */}
+      <section className="panel relative overflow-hidden p-6 md:p-8">
+        <div className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-primary/10 blur-3xl"/>
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary/80">San Fierro Sheriff's Department</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white md:text-4xl">
+              {greeting}, {profile.full_name.split(" ")[0]}!
             </h1>
-            <div className="flex items-center gap-3 pt-2"><Badge variant="outline"
-                                                                 className="border-slate-600 text-slate-300 font-mono uppercase">{profile.faction_rank}</Badge><Badge
-              className="bg-yellow-600 text-black font-bold font-mono border-none">#{profile.badge_number}</Badge></div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {profile.faction_rank} · <span className="font-mono">#{profile.badge_number}</span> · {profile.division}
+            </p>
           </div>
-          <div className="flex flex-wrap gap-4 items-center">
-            <WeatherWidget/> <ClockWidget/>
-            <div onClick={() => canManageStatus && setIsStatusOpen(true)}
-                 className={cn("flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border backdrop-blur-md px-6 shadow-lg transition-all", canManageStatus ? "cursor-pointer hover:bg-slate-900 hover:scale-105" : "cursor-default", alertLevel === 'tactical' ? "border-red-500/50 bg-red-950/40" : alertLevel === 'border' ? "border-orange-500/50 bg-orange-950/40" : "border-green-500/30 bg-green-950/20")}>
-              <div>
-                <div
-                  className={cn("text-lg font-black uppercase italic tracking-tighter leading-none drop-shadow-md", alertInfo.color)}>{alertInfo.label}</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-1">Jelenlegi
-                  Készültség {canManageStatus && "(Kezelés)"}</div>
-              </div>
-              {canManageStatus &&
-                <div className="p-1 rounded bg-black/30 text-white"><Shield className="w-4 h-4"/></div>}
-            </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[560px]">
+            <MiniFact label="Készültség" value={<span className={level.text}>{level.label}</span>}/>
+            <MiniFact label="Állomány" value={summary ? `${summary.members_total} fő` : "…"}
+                      hint={summary && summary.members_on_leave > 0 ? `${summary.members_on_leave} szabadságon` : undefined}/>
+            <MiniFact label="Rangon" value={formatSpan(daysSince(profile.last_promotion_date ?? profile.created_at))}
+                      hint={nextRank ? `Következő: ${nextRank}` : undefined}/>
+            <MiniFact label="Szolgálatban" value={formatSpan(daysSince(profile.created_at))}/>
           </div>
         </div>
+        {!!summary?.my_active_warnings && (
+          <button type="button" onClick={() => navigate("/profile")}
+                  className="relative mt-5 flex w-full items-center gap-3 rounded-xl bg-red-500/10 px-4 py-3 text-left text-sm text-red-200 ring-1 ring-red-500/25 hover:bg-red-500/15">
+            <AlertOctagon className="size-4 shrink-0 text-red-400"/>
+            {summary.my_active_warnings} aktív figyelmeztetésed van. Részletek a profilodon.
+            <ArrowRight className="ml-auto size-4"/>
+          </button>
+        )}
+      </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* LEFT: MODULES */}
-          <div className="lg:col-span-8 space-y-8 animate-in slide-in-from-left-8 duration-700 delay-100">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div
-                className="bg-slate-900/60 border border-slate-800/50 p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm shadow-md">
-                <div className="p-2 bg-blue-500/10 rounded-full"><Users className="w-5 h-5 text-blue-500"/></div>
-                <div>
-                  <div className="text-xl font-bold text-white">{activeUnitCount}</div>
-                  <div className="text-[10px] text-slate-500 uppercase font-bold">Aktív Egység</div>
+      {/* To do */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-slate-300">Teendők</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {visibleTasks.map((task) => {
+            const tone = TONE_CLASSES[task.tone];
+            const count = task.value ?? 0;
+            return (
+              <button key={task.label} type="button" onClick={() => navigate(task.to)}
+                      className={cn("panel group flex items-center gap-4 p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.03]",
+                        count === 0 && "opacity-60 hover:opacity-100")}>
+                <div className={cn("grid size-11 shrink-0 place-items-center rounded-xl ring-1", tone.tile)}><task.icon className="size-5"/></div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-2xl font-semibold text-white tabular-nums">{summary ? count : "…"}</div>
+                  <div className="truncate text-xs text-muted-foreground">{task.label}</div>
                 </div>
-              </div>
-              <div
-                className="bg-slate-900/60 border border-slate-800/50 p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm shadow-md">
-                <div className="p-2 bg-green-500/10 rounded-full"><Radio className="w-5 h-5 text-green-500"/></div>
-                <div>
-                  <div className="text-xl font-bold text-white">ONLINE</div>
-                  <div className="text-[10px] text-slate-500 uppercase font-bold">Rádió Status</div>
-                </div>
-              </div>
-              <div
-                className="bg-slate-900/60 border border-slate-800/50 p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm shadow-md">
-                <Activity className="w-6 h-6 text-yellow-500"/>
-                <div className="w-full">
-                  <div className="flex justify-between text-[10px] text-slate-500 uppercase font-bold mb-1"><span>Rendszer Terhelés</span><span
-                    className="text-white">STABIL</span></div>
-                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full w-[12%] bg-yellow-500 rounded-full shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
-                  </div>
-                </div>
-              </div>
+                <ArrowRight className="size-4 text-slate-600 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-300"/>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+        {/* Announcements */}
+        <section className="panel overflow-hidden">
+          <header className="flex items-center gap-3 border-b px-5 py-4">
+            <Megaphone className="size-4 text-primary"/>
+            <h2 className="text-sm font-semibold text-white">Hirdetmények</h2>
+            {canPost && (
+              <Button size="sm" className="ml-auto" onClick={() => setIsAnnouncementOpen(true)}><Plus/> Új hirdetmény</Button>
+            )}
+          </header>
+          {announcements === null ? (
+            <div className="space-y-3 p-5">
+              {[0, 1].map((i) => <div key={i} className="h-24 animate-pulse rounded-xl bg-white/[0.03]"/>)}
             </div>
-            <div>
-              <h3
-                className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 pl-1 mb-4">
-                <Terminal className="w-4 h-4"/> Rendszer Modulok</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <ModuleCard title="NYOMOZÓ IRODA" desc="Akták, gyanúsítottak, körözések." icon={Siren}
-                            colorClass="text-blue-500" onClick={() => navigate('/mcb')}
-                            locked={!isMcbMember(profile) && !isSupervisory(profile) && profile.system_role !== 'admin'}/>
-                <ModuleCard title="LOGISZTIKA" desc="Járműigénylés, raktárkészlet." icon={Truck}
-                            colorClass="text-orange-500" onClick={() => navigate('/logistics')}/>
-                <ModuleCard title="PÉNZÜGY" desc="Költségtérítések, bírságok." icon={Database}
-                            colorClass="text-green-500" onClick={() => navigate('/finance')}/>
-                <ModuleCard title="VIZSGAKÖZPONT" desc="Képzések, tesztek, vizsgáztatás." icon={FileText}
-                            colorClass="text-yellow-500" onClick={() => navigate('/exams')}/>
-                <ModuleCard title="BÜNTETŐ TÖRVÉNYKÖNYV" desc="Bírság kalkulátor és jogszabályok." icon={Gavel}
-                            colorClass="text-purple-500" onClick={() => navigate('/calculator')}/>
-                <ModuleCard title="JELENTÉSEK" desc="Napi jelentések generálása." icon={FileText}
-                            colorClass="text-cyan-500" onClick={() => navigate('/reports')}/>
-              </div>
-            </div>
-          </div>
-          {/* RIGHT: FEEDS */}
-          <div className="lg:col-span-4 space-y-6 animate-in slide-in-from-right-8 duration-700 delay-200">
-            <Card
-              className="bg-[#0b1221]/90 border border-slate-800 h-[320px] flex flex-col shadow-xl backdrop-blur-md">
-              <CardHeader className="pb-2 border-b border-slate-800/50 bg-slate-950/50"><CardTitle
-                className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between"><span
-                className="flex items-center gap-2"><Activity
-                className="w-4 h-4 text-green-500"/> Eseménynapló</span><span
-                className="text-[9px] bg-green-900/20 text-green-500 px-1.5 py-0.5 rounded animate-pulse">LIVE</span></CardTitle></CardHeader>
-              <div className="flex-1 min-h-0 relative"><ScrollArea className="h-full">{actionLogs.length === 0 ?
-                <div className="flex flex-col items-center justify-center h-full text-slate-600 opacity-50"><Activity
-                  className="w-8 h-8 mb-2"/><p className="text-[10px] font-mono uppercase">CSENDES ÜZEMMÓD</p></div> :
-                <div className="divide-y divide-slate-800/30">{actionLogs.map((log) => <ActionItem key={log.id}
-                                                                                                   log={log}/>)}</div>}</ScrollArea>
-              </div>
-            </Card>
-            <Card
-              className="bg-[#0b1221]/80 border border-slate-800 h-[450px] flex flex-col shadow-2xl backdrop-blur-md">
-              <CardHeader
-                className="pb-3 border-b border-slate-800/50 bg-slate-950/50 flex flex-row items-center justify-between"><CardTitle
-                className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Bell
-                className="w-4 h-4 text-yellow-500"/> Hirdetmények</CardTitle>{canCreateNews &&
-                <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-400 hover:text-white"
-                        onClick={() => setIsAnnouncementOpen(true)}><Plus className="w-4 h-4"/></Button>}</CardHeader>
-              <div className="flex-1 min-h-0 relative"><ScrollArea className="h-full">
-                <div className="p-4">{announcements.length === 0 ?
-                  <div className="flex flex-col items-center justify-center h-40 text-slate-600 opacity-50"><Megaphone
-                    className="w-8 h-8 mb-2"/><p className="text-[10px] font-mono uppercase">NINCS FRISS HÍR</p>
-                  </div> : announcements.map((item) => <FeedItem key={item.id} item={item}
-                                                                 onDelete={handleDeleteAnnouncement}
-                                                                 currentUser={profile}/>)}</div>
-              </ScrollArea>
-                <div
-                  className="absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-[#0b1221] to-transparent pointer-events-none"></div>
-              </div>
-            </Card>
-          </div>
+          ) : announcements.length === 0 ? (
+            <EmptyState icon={Megaphone} title="Nincs friss hirdetmény." compact/>
+          ) : (
+            <ul className="divide-y divide-white/5">
+              {announcements.map((item) => {
+                const type = ANNOUNCEMENT_TYPES[item.type] ?? ANNOUNCEMENT_TYPES.info;
+                return (
+                  <li key={item.id} className={cn("group px-5 py-4", item.is_pinned && "bg-primary/[0.03]")}>
+                    <div className="flex items-start gap-3">
+                      <div className={cn("grid size-9 shrink-0 place-items-center rounded-xl ring-1", type.tone)}><type.icon className="size-4"/></div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {item.is_pinned && <Pin className="size-3.5 rotate-45 text-primary"/>}
+                          <h3 className="text-sm font-semibold text-white">{item.title}</h3>
+                          <span className="text-xs text-slate-500">{ago(item.created_at)}</span>
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-300">{item.content}</p>
+                        <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                          {item.author_name ? (
+                            <>
+                              {item.author_name} · {item.author_rank}
+                              {!item.show_author && <span className="inline-flex items-center gap-1 text-amber-300/80" title="Mások csak a beosztást látják"><EyeOff className="size-3"/> rejtett</span>}
+                            </>
+                          ) : (
+                            <>{STAFF_CATEGORY_LABELS[item.author_category]}</>
+                          )}
+                        </p>
+                      </div>
+                      {item.can_delete && (
+                        <Button size="icon-sm" variant="ghost" title="Törlés" onClick={() => setDeleteId(item.id)}
+                                className="text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400">
+                          <Trash2 className="size-4"/>
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <div className="space-y-6">
+          <Feed title="Állományhírek" icon={TrendingUp} empty="Még nincs változás." onMore={() => navigate("/hr?tab=history")}>
+            {events.map((event) => (
+              <li key={event.id} className="flex items-start gap-3 px-5 py-3">
+                <span className={cn("mt-1.5 size-2 shrink-0 rounded-full",
+                  event.kind === "award" ? "bg-amber-400" : event.kind === "joined" ? "bg-primary"
+                    : event.detail === "promotion" ? "bg-emerald-400" : "bg-red-400")}/>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-slate-200">
+                    <span className="font-medium text-white">{event.member?.full_name ?? "Tag"}</span>{" "}
+                    <span className="text-slate-400">
+                      {event.kind === "award" ? "kitüntetést kapott" : event.kind === "joined" ? "csatlakozott"
+                        : event.detail === "promotion" ? "előléptetve" : "rendfokozata változott"}
+                    </span>
+                  </p>
+                  <p className="truncate text-xs text-slate-500">{describeEvent(event)}</p>
+                </div>
+                <span className="shrink-0 text-[11px] text-slate-500">{ago(event.created_at)}</span>
+              </li>
+            ))}
+          </Feed>
+
+          <Feed title="Eseménynapló (24 óra)" icon={Activity} empty="Csendes nap.">
+            {actionLogs.map((log) => (
+              <li key={log.id} className="flex items-start gap-3 px-5 py-3">
+                <div className={cn("grid size-7 shrink-0 place-items-center rounded-lg ring-1",
+                  log.action_type === "arrest" ? "bg-red-500/10 text-red-300 ring-red-500/25"
+                    : log.action_type === "ticket" ? "bg-orange-500/10 text-orange-300 ring-orange-500/25"
+                      : "bg-sky-500/10 text-sky-300 ring-sky-500/25")}>
+                  {log.action_type === "arrest" ? <AlertOctagon className="size-3.5"/> : log.action_type === "ticket" ? <Ticket className="size-3.5"/> : <Info className="size-3.5"/>}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-slate-200">
+                    <span className="font-medium text-white">{log.profiles?.full_name ?? "Ismeretlen"}</span>{" "}
+                    <span className="text-slate-400">{log.action_type === "arrest" ? "letartóztatás" : log.action_type === "ticket" ? "bírság" : "bejegyzés"}</span>
+                  </p>
+                  <p className="line-clamp-2 break-words text-xs text-slate-500">{log.details}</p>
+                </div>
+                <span className="shrink-0 text-[11px] text-slate-500">
+                  {new Date(log.created_at).toLocaleTimeString("hu-HU", {hour: "2-digit", minute: "2-digit"})}
+                </span>
+              </li>
+            ))}
+          </Feed>
         </div>
       </div>
+
+      {/* Modules */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-slate-300">Gyors elérés</h2>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-9">
+          {[
+            {label: "Nyomozó Iroda", icon: Fingerprint, to: "/mcb", tone: "blue" as Tone, show: canViewCaseList(profile)},
+            {label: "Logisztika", icon: Truck, to: "/logistics", tone: "orange" as Tone, show: true},
+            {label: "Pénzügy", icon: Banknote, to: "/finance", tone: "emerald" as Tone, show: true},
+            {label: "Vizsgaközpont", icon: ScrollText, to: "/exams", tone: "violet" as Tone, show: true},
+            {label: "Kalkulátor", icon: Gavel, to: "/calculator", tone: "red" as Tone, show: true},
+            {label: "Jelentések", icon: FileText, to: "/reports", tone: "cyan" as Tone, show: true},
+            {label: "Akadémia", icon: GraduationCap, to: "/academy", tone: "blue" as Tone, show: true},
+            {label: "Személyügy", icon: Users, to: "/hr", tone: "gold" as Tone, show: true},
+            {label: "Profilom", icon: ShieldCheck, to: "/profile", tone: "slate" as Tone, show: true},
+          ].filter((module) => module.show).map((module) => (
+            <button key={module.to} type="button" onClick={() => navigate(module.to)}
+                    className="panel group flex flex-col items-start gap-3 p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.03]">
+              <div className={cn("grid size-10 place-items-center rounded-xl ring-1", TONE_CLASSES[module.tone].tile)}><module.icon className="size-5"/></div>
+              <span className="text-sm font-medium text-slate-200 group-hover:text-white">{module.label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
     </div>
+  );
+}
+
+function MiniFact({label, value, hint}: {label: string; value: ReactNode; hint?: string}) {
+  return (
+    <div className="rounded-xl bg-white/[0.03] px-4 py-3 ring-1 ring-white/5">
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className="mt-0.5 truncate text-sm font-semibold text-white">{value}</div>
+      {hint && <div className="truncate text-[11px] text-slate-500">{hint}</div>}
+    </div>
+  );
+}
+
+function Feed({title, icon: Icon, empty, onMore, children}: {
+  title: string; icon: typeof Activity; empty: string; onMore?: () => void; children: ReactNode[];
+}) {
+  return (
+    <section className="panel overflow-hidden">
+      <header className="flex items-center gap-3 border-b px-5 py-3.5">
+        <Icon className="size-4 text-primary"/>
+        <h2 className="text-sm font-semibold text-white">{title}</h2>
+        {onMore && (
+          <button type="button" onClick={onMore} className="ml-auto text-xs text-slate-400 hover:text-white">Mind</button>
+        )}
+      </header>
+      {children.length === 0 ? <EmptyState icon={Icon} title={empty} compact/> : <ul className="divide-y divide-white/5">{children}</ul>}
+    </section>
+  );
+}
+
+function NewAnnouncementDialog({open, onOpenChange, onCreated}: {open: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void}) {
+  const {supabase, user} = useAuth();
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [type, setType] = useState<FeedAnnouncement["type"]>("info");
+  const [isPinned, setIsPinned] = useState(false);
+  const [showAuthor, setShowAuthor] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    if (!title.trim() || !content.trim()) return toast.error("A cím és az üzenet kötelező.");
+    setLoading(true);
+    const {error} = await supabase.from("announcements").insert({
+      title: title.trim(), content: content.trim(), type, created_by: user?.id, is_pinned: isPinned, show_author: showAuthor,
+    });
+    setLoading(false);
+    if (error) return toast.error("Hiba: " + errorMessage(error));
+    toast.success("Hirdetmény közzétéve. Mindenki értesítést kapott.");
+    setTitle("");
+    setContent("");
+    setIsPinned(false);
+    setShowAuthor(true);
+    onOpenChange(false);
+    onCreated();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Új hirdetmény</DialogTitle>
+          <DialogDescription>Az állomány minden tagja értesítést kap róla.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-2">
+            {(Object.keys(ANNOUNCEMENT_TYPES) as FeedAnnouncement["type"][]).map((key) => {
+              const meta = ANNOUNCEMENT_TYPES[key];
+              return (
+                <button key={key} type="button" onClick={() => setType(key)}
+                        className={cn("flex flex-col items-center gap-1.5 rounded-xl px-3 py-3 text-xs font-medium ring-1 transition-colors",
+                          type === key ? meta.tone : "text-slate-400 ring-white/10 hover:text-slate-200")}>
+                  <meta.icon className="size-5"/>{meta.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Cím</Label>
+            <Input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="Rövid, beszédes cím"/>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Üzenet</Label>
+            <Textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} placeholder="Írd ide az üzenetet…"/>
+          </div>
+          <label className="flex items-center justify-between gap-3 text-sm text-slate-200">
+            <span>Kiemelés <span className="block text-xs text-slate-500">A lista tetején marad.</span></span>
+            <Switch checked={isPinned} onCheckedChange={setIsPinned}/>
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm text-slate-200">
+            <span>Név megjelenítése <span className="block text-xs text-slate-500">Kikapcsolva csak a beosztásod látszik.</span></span>
+            <Switch checked={showAuthor} onCheckedChange={setShowAuthor}/>
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Mégse</Button>
+          <Button onClick={() => void submit()} disabled={loading}><Megaphone/> Közzététel</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,235 +1,263 @@
-import * as React from "react";
-import {useAuth} from "@/context/AuthContext";
-import {Card} from "@/components/ui/card";
+import {useEffect, useMemo, useState} from "react";
+import {useSearchParams} from "react-router";
+import {isToday, isYesterday, isThisWeek} from "date-fns";
+import {Bell, BellOff, CheckCheck, Inbox, Loader2, Monitor, Settings2, Trash2} from "lucide-react";
+import {PageHeader} from "@/components/layout/PageHeader";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {NotificationItem} from "@/components/notifications/NotificationItem";
 import {Button} from "@/components/ui/button";
-import {ScrollArea} from "@/components/ui/scroll-area";
-import {Bell, Check, Trash2, Info, AlertTriangle, CheckCircle2, Eye, EyeOff, Radio, Inbox} from "lucide-react";
-import {toast} from "sonner";
-import {formatDistanceToNow} from "date-fns";
-import {hu} from "date-fns/locale";
-import type {Notification} from "@/types/supabase";
-import {useNavigate} from "react-router-dom";
+import {Switch} from "@/components/ui/switch";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {SheriffBackground} from "@/components/SheriffBackground";
+import {useNotifications} from "@/context/NotificationsContext";
+import {CATEGORY_ORDER, NOTIFICATION_CATEGORIES} from "@/lib/notification-meta";
 import {cn} from "@/lib/utils";
+import type {Notification, NotificationCategory} from "@/types/supabase";
 
-// --- STÍLUSOK ---
-const getTypeStyles = (type: string) => {
-  switch (type) {
-    case 'success':
-      return {
-        icon: CheckCircle2,
-        color: 'text-green-500',
-        bg: 'bg-green-500/10',
-        border: 'border-green-500/30',
-        badge: 'SIKERES'
-      };
-    case 'warning':
-      return {
-        icon: AlertTriangle,
-        color: 'text-yellow-500',
-        bg: 'bg-yellow-500/10',
-        border: 'border-yellow-500/30',
-        badge: 'FIGYELEM'
-      };
-    case 'alert':
-      return {icon: Bell, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/30', badge: 'RIASZTÁS'};
-    default:
-      return {icon: Info, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/30', badge: 'INFÓ'};
-  }
+type Filter = "all" | "unread" | NotificationCategory;
+
+const dayGroup = (iso: string) => {
+  const date = new Date(iso);
+  if (isToday(date)) return "Ma";
+  if (isYesterday(date)) return "Tegnap";
+  if (isThisWeek(date, {weekStartsOn: 1})) return "Ezen a héten";
+  return "Korábban";
 };
 
 export function NotificationsPage() {
-  const {supabase, user} = useAuth();
-  const navigate = useNavigate();
-  const [notifications, setNotifications] = React.useState<Notification[]>([]);
-  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = React.useState(false);
-  const [filter, setFilter] = React.useState<'all' | 'unread'>('all');
+  const {
+    items, unreadCount, loading, hasMore, loadMore, markRead, markAllRead, remove, clearRead, open,
+  } = useNotifications();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = searchParams.get("view") === "settings" ? "settings" : "inbox";
+  const [filter, setFilter] = useState<Filter>("all");
+  const [isClearOpen, setIsClearOpen] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const fetchNotifications = async () => {
-    if (!user) return;
-    const {data} = await supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', {ascending: false});
-    if (data) setNotifications(data as any);
+  const setView = (next: "inbox" | "settings") => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "settings") params.set("view", "settings");
+    else params.delete("view");
+    setSearchParams(params, {replace: true});
   };
 
-  React.useEffect(() => {
-    fetchNotifications();
-    const channel = supabase.channel('notif_page_realtime').on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${user?.id}`
-      },
-      (payload) => {
-        if (payload.eventType === 'INSERT') setNotifications(prev => [payload.new as any, ...prev]);
-        else if (payload.eventType === 'UPDATE') setNotifications(prev => prev.map(n => n.id === payload.new.id ? {...n, ...payload.new} : n));
-        else if (payload.eventType === 'DELETE') setNotifications(prev => prev.filter(n => n.id !== payload.old.id));
-      }
-    ).subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, supabase]);
+  const counts = useMemo(() => {
+    const byCategory = new Map<NotificationCategory, number>();
+    items.forEach((item) => {
+      if (!item.is_read) byCategory.set(item.category, (byCategory.get(item.category) ?? 0) + 1);
+    });
+    return byCategory;
+  }, [items]);
 
-  const toggleReadStatus = async (e: React.MouseEvent, note: Notification) => {
-    e.stopPropagation();
-    const newStatus = !note.is_read;
-    setNotifications(prev => prev.map(n => n.id === note.id ? {...n, is_read: newStatus} : n));
-    const {error} = await supabase.from('notifications').update({is_read: newStatus}).eq('id', note.id);
-    if (error) setNotifications(prev => prev.map(n => n.id === note.id ? {...n, is_read: !newStatus} : n));
+  const visible = useMemo(() => items.filter((item) => {
+    if (filter === "all") return true;
+    if (filter === "unread") return !item.is_read;
+    return item.category === filter;
+  }), [items, filter]);
+
+  const groups = useMemo(() => {
+    const result: {label: string; items: Notification[]}[] = [];
+    visible.forEach((item) => {
+      const label = dayGroup(item.created_at);
+      const last = result[result.length - 1];
+      if (last?.label === label) last.items.push(item);
+      else result.push({label, items: [item]});
+    });
+    return result;
+  }, [visible]);
+
+  const readCount = items.filter((item) => item.is_read).length;
+  const presentCategories = CATEGORY_ORDER.filter((category) => items.some((item) => item.category === category));
+
+  const handleLoadMore = async () => {
+    setIsLoadingMore(true);
+    await loadMore();
+    setIsLoadingMore(false);
   };
-
-  const handleCardClick = async (note: Notification) => {
-    if (!note.is_read) {
-      supabase.from('notifications').update({is_read: true}).eq('id', note.id);
-      setNotifications(prev => prev.map(n => n.id === note.id ? {...n, is_read: true} : n));
-    }
-    if (note.link) navigate(note.link);
-  };
-
-  const markAllRead = async () => {
-    setNotifications(prev => prev.map(n => ({...n, is_read: true})));
-    await supabase.from('notifications').update({is_read: true}).eq('user_id', user!.id).eq('is_read', false);
-    toast.success("Minden üzenet olvasott.");
-  };
-
-  const deleteAll = async () => {
-    setNotifications([]);
-    await supabase.from('notifications').delete().eq('user_id', user!.id);
-    setIsDeleteAlertOpen(false);
-    toast.success("Napló törölve.");
-  };
-
-  const filteredNotifications = filter === 'all' ? notifications : notifications.filter(n => !n.is_read);
-  const unreadCount = notifications.filter(n => !n.is_read).length;
 
   return (
-    <div className="min-h-screen bg-[#050a14] relative overflow-hidden pb-20">
-      <SheriffBackground/>
+    <div className="mx-auto w-full max-w-6xl space-y-6">
+      <PageHeader
+        icon={Bell}
+        eyebrow="Kommunikáció"
+        title="Értesítések"
+        description={unreadCount > 0 ? `${unreadCount} olvasatlan értesítésed van.` : "Minden értesítésedet elolvastad."}
+        actions={view === "inbox" ? (
+          <>
+            <Button variant="outline" onClick={() => void markAllRead()} disabled={unreadCount === 0}>
+              <CheckCheck/> Összes olvasott
+            </Button>
+            <Button variant="outline" onClick={() => setIsClearOpen(true)} disabled={readCount === 0}
+                    className="text-red-300 hover:text-red-200">
+              <Trash2/> Olvasottak törlése
+            </Button>
+            <Button variant="ghost" size="icon" title="Beállítások" onClick={() => setView("settings")}>
+              <Settings2/>
+            </Button>
+          </>
+        ) : (
+          <Button variant="outline" onClick={() => setView("inbox")}><Inbox/> Vissza az értesítésekhez</Button>
+        )}
+      />
 
-      {/* TÖRLÉS CONFIRM */}
-      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
-        <AlertDialogContent className="bg-[#0b1221] border border-red-900/50 text-white">
-          <AlertDialogHeader><AlertDialogTitle className="text-red-500 flex items-center gap-2"><Trash2
-            className="w-5 h-5"/> ÜZENETEK TÖRLÉSE</AlertDialogTitle><AlertDialogDescription className="text-slate-400">Biztosan
-            törlöd a teljes értesítési naplót? Ez nem vonható vissza.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel
-            className="bg-slate-900 border-slate-700 hover:bg-slate-800 text-white">Mégse</AlertDialogCancel><AlertDialogAction
-            className="bg-red-600 hover:bg-red-700 border-none text-white font-bold"
-            onClick={deleteAll}>Törlés</AlertDialogAction></AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {view === "settings" ? <NotificationSettings/> : (
+        <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+          <aside className="space-y-1 lg:sticky lg:top-20 lg:self-start">
+            <FilterButton active={filter === "all"} onClick={() => setFilter("all")} icon={Inbox} label="Összes"
+                          count={unreadCount}/>
+            <FilterButton active={filter === "unread"} onClick={() => setFilter("unread")} icon={Bell} label="Olvasatlan"
+                          count={unreadCount}/>
+            {presentCategories.length > 0 && <div className="my-2 h-px bg-white/5"/>}
+            {presentCategories.map((category) => {
+              const meta = NOTIFICATION_CATEGORIES[category];
+              return (
+                <FilterButton key={category} active={filter === category} onClick={() => setFilter(category)}
+                              icon={meta.icon} label={meta.label} count={counts.get(category) ?? 0}/>
+              );
+            })}
+          </aside>
 
-      <div className="max-w-5xl mx-auto px-6 py-10 relative z-10">
-
-        {/* HEADER */}
-        <div
-          className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4 animate-in fade-in slide-in-from-top-4 duration-700">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-blue-500/80 font-bold text-xs uppercase tracking-widest"><Inbox
-              className="w-4 h-4"/> Communication Hub
-            </div>
-            <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Bejövő Üzenetek</h1>
-            <p
-              className="text-sm text-slate-400 font-mono">Összesen {notifications.length} üzenet, {unreadCount} olvasatlan.</p>
-          </div>
-          <div className="flex gap-3">
-            <Button variant="outline" size="sm" onClick={markAllRead}
-                    className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 bg-slate-950/50 uppercase font-bold tracking-wider text-xs h-9"><Check
-              className="w-3.5 h-3.5 mr-2"/> Összes Olvasott</Button>
-            <Button variant="destructive" size="sm" onClick={() => setIsDeleteAlertOpen(true)}
-                    className="bg-red-900/20 border border-red-900/50 text-red-500 hover:bg-red-900/40 uppercase font-bold tracking-wider text-xs h-9"><Trash2
-              className="w-3.5 h-3.5 mr-2"/> Törlés</Button>
-          </div>
-        </div>
-
-        {/* FILTER TABS */}
-        <div className="flex gap-2 mb-6 p-1 bg-slate-900/50 border border-slate-800 rounded-lg w-fit">
-          <button onClick={() => setFilter('all')}
-                  className={cn("px-4 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-all", filter === 'all' ? "bg-blue-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300 hover:bg-slate-800")}>Minden
-            Üzenet
-          </button>
-          <button onClick={() => setFilter('unread')}
-                  className={cn("px-4 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2", filter === 'unread' ? "bg-blue-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300 hover:bg-slate-800")}>Olvasatlan {unreadCount > 0 &&
-            <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{unreadCount}</span>}</button>
-        </div>
-
-        {/* CONTENT */}
-        <Card
-          className="bg-[#0b1221]/80 border border-slate-800 shadow-2xl min-h-[600px] backdrop-blur-md overflow-hidden flex flex-col">
-          <ScrollArea className="flex-1">
-            {filteredNotifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-[500px] text-slate-600 opacity-50">
-                <Radio className="w-16 h-16 mb-4 animate-pulse"/>
-                <p className="text-xs font-mono uppercase tracking-[0.2em] font-bold">NINCS MEGJELENÍTHETŐ ÜZENET</p>
-              </div>
+          <section className="panel overflow-hidden">
+            {loading ? (
+              <div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary/70"/></div>
+            ) : visible.length === 0 ? (
+              <EmptyState
+                icon={filter === "unread" ? CheckCheck : BellOff}
+                title={filter === "unread" ? "Nincs olvasatlan értesítésed" : "Nincs megjeleníthető értesítés"}
+                description="Itt jelennek meg az előléptetések, akták, kérelmek, vizsgák és hirdetmények hírei."
+              />
             ) : (
-              <div className="divide-y divide-slate-800/50">
-                {filteredNotifications.map((note, i) => {
-                  const style = getTypeStyles(note.type);
-                  const Icon = style.icon;
-                  return (
-                    <div key={note.id} onClick={() => handleCardClick(note)}
-                         className={cn(
-                           "group relative p-5 flex gap-5 transition-all cursor-pointer border-l-4 hover:bg-slate-900/60",
-                           note.is_read ? "border-l-transparent bg-transparent opacity-70 hover:opacity-100" : "border-l-blue-500 bg-blue-950/10"
-                         )}
-                         style={{animationDelay: `${i * 50}ms`}}
-                    >
-                      {/* ICON BOX */}
-                      <div
-                        className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border", style.bg, style.border, style.color)}>
-                        <Icon className="w-5 h-5"/>
-                      </div>
-
-                      {/* TEXT CONTENT */}
-                      <div className="flex-1 min-w-0 pt-0.5">
-                        <div className="flex justify-between items-start mb-1">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={cn("text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border bg-black/20", style.color, style.border)}>{style.badge}</span>
-                            <h4
-                              className={cn("text-sm font-bold uppercase tracking-tight truncate max-w-[300px] sm:max-w-none", note.is_read ? "text-slate-400" : "text-white")}>{note.title}</h4>
-                          </div>
-                          <span
-                            className="text-[10px] text-slate-600 font-mono whitespace-nowrap ml-2">{formatDistanceToNow(new Date(note.created_at), {
-                            addSuffix: true,
-                            locale: hu
-                          })}</span>
-                        </div>
-                        <p
-                          className={cn("text-xs leading-relaxed pr-12 line-clamp-2", note.is_read ? "text-slate-500" : "text-slate-300")}>{note.message}</p>
-                      </div>
-
-                      {/* ACTIONS (Hover) */}
-                      <div
-                        className="absolute right-4 top-1/2 -translate-y-1/2 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                        <Button size="icon" variant="ghost" onClick={(e) => toggleReadStatus(e, note)}
-                                className="h-8 w-8 bg-slate-950 border border-slate-700 hover:bg-slate-900 hover:text-white text-slate-500">
-                          {note.is_read ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
-                        </Button>
-                      </div>
-
-                      {/* Unread Dot */}
-                      {!note.is_read && <div
-                        className="absolute top-4 right-4 w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.8)] group-hover:opacity-0 transition-opacity"></div>}
-                    </div>
-                  )
-                })}
+              <div className="divide-y divide-white/5">
+                {groups.map((group) => (
+                  <div key={group.label} className="p-2">
+                    <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{group.label}</p>
+                    {group.items.map((notification) => (
+                      <NotificationItem key={notification.id} notification={notification} onOpen={open}
+                                        onToggleRead={(item) => void markRead(item.id, !item.is_read)}
+                                        onRemove={(item) => void remove(item.id)}/>
+                    ))}
+                  </div>
+                ))}
+                {hasMore && (
+                  <div className="p-3 text-center">
+                    <Button variant="ghost" onClick={() => void handleLoadMore()} disabled={isLoadingMore}>
+                      {isLoadingMore && <Loader2 className="animate-spin"/>} Régebbi értesítések
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
-          </ScrollArea>
-        </Card>
-      </div>
+          </section>
+        </div>
+      )}
+
+      <AlertDialog open={isClearOpen} onOpenChange={setIsClearOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Olvasott értesítések törlése</AlertDialogTitle>
+            <AlertDialogDescription>
+              Az összes elolvasott értesítésed törlődik. Az olvasatlanok megmaradnak.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Mégse</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 text-white hover:bg-red-500" onClick={() => void clearRead()}>
+              Törlés
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
+function FilterButton({active, onClick, icon: Icon, label, count}: {
+  active: boolean; onClick: () => void; icon: typeof Bell; label: string; count: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors",
+        active ? "bg-white/[0.07] font-medium text-white" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200",
+      )}
+    >
+      <Icon className="size-4 shrink-0"/>
+      <span className="truncate">{label}</span>
+      {count > 0 && (
+        <span className="ml-auto rounded-full bg-primary/15 px-2 text-[11px] font-semibold text-primary tabular-nums">{count}</span>
+      )}
+    </button>
+  );
+}
+
+function NotificationSettings() {
+  const {mutedCategories, loadPreferences, setMutedCategories, desktopEnabled, setDesktopEnabled} = useNotifications();
+
+  useEffect(() => {
+    void loadPreferences();
+  }, [loadPreferences]);
+
+  const toggleCategory = (category: NotificationCategory, enabled: boolean) => {
+    const current = mutedCategories ?? [];
+    void setMutedCategories(enabled ? current.filter((c) => c !== category) : [...current, category]);
+  };
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <section className="panel p-5">
+        <h3 className="text-sm font-semibold text-white">Kategóriák</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Válaszd ki, milyen témákban kérsz értesítést. A rendszerüzenetek (pl. fiókot érintő változások) nem kapcsolhatók ki.
+        </p>
+        <div className="mt-4 divide-y divide-white/5">
+          {CATEGORY_ORDER.map((category) => {
+            const meta = NOTIFICATION_CATEGORIES[category];
+            const enabled = !(mutedCategories ?? []).includes(category);
+            const Icon = meta.icon;
+            return (
+              <label key={category} className={cn("flex items-center gap-4 py-3", meta.mutable && "cursor-pointer")}>
+                <div className={cn("grid size-9 place-items-center rounded-xl ring-1", meta.tone)}><Icon className="size-4"/></div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-200">{meta.label}</p>
+                  <p className="text-xs text-muted-foreground">{CATEGORY_HINTS[category]}</p>
+                </div>
+                <Switch checked={enabled} disabled={!meta.mutable || mutedCategories === null}
+                        onCheckedChange={(value) => toggleCategory(category, value)}/>
+              </label>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="panel h-fit p-5">
+        <div className="flex items-start gap-4">
+          <div className="grid size-9 place-items-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
+            <Monitor className="size-4"/>
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-slate-200">Asztali értesítések</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Felugró értesítés a rendszer értesítési sávjában, amikor az oldal a háttérben van nyitva.
+            </p>
+          </div>
+          <Switch checked={desktopEnabled} onCheckedChange={(value) => void setDesktopEnabled(value)}/>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+const CATEGORY_HINTS: Record<NotificationCategory, string> = {
+  hr: "Előléptetés, beosztás, képesítések, kitüntetés, figyelmeztetés, szabadság.",
+  mcb: "Akták, közreműködők, üzenetek, parancsok, említések.",
+  exam: "Javítandó vizsgalapok, eredmények, vizsgahozzáférések.",
+  academy: "Akadémiai beosztások.",
+  logistics: "Járműigénylések.",
+  finance: "Költségtérítési kérelmek.",
+  announcement: "Új hirdetmények az irányítópulton.",
+  system: "Fiókot és biztonságot érintő üzenetek, készültségi szint.",
+};

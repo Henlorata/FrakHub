@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback, memo, useRef} from "react";
-import {useNavigate, useParams} from "react-router-dom";
+import {useNavigate, useParams} from "react-router";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
 import {toast} from "sonner";
 import {FACTION_RANKS} from "@/types/supabase";
 import type {Exam} from "@/types/exams";
-import {canManageExamContent, canCreateAnyExam, canDeleteExam, cn} from "@/lib/utils";
+import {canManageExamContent, canCreateAnyExam, canDeleteExam, cn, errorMessage} from "@/lib/utils";
 import {Badge} from "@/components/ui/badge";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -36,7 +36,7 @@ const preventInvalidNumberInput = (e: React.KeyboardEvent) => {
   }
 };
 
-const OptionItem = memo(({opt, index, qId, qType, onUpdate, onRemove}: any) => {
+const OptionItem = memo(function OptionItem({opt, index, qId, qType, onUpdate, onRemove}: any) {
   const [localText, setLocalText] = useState(opt.option_text);
   useEffect(() => {
     setLocalText(opt.option_text);
@@ -77,7 +77,7 @@ const OptionItem = memo(({opt, index, qId, qType, onUpdate, onRemove}: any) => {
   );
 }, (prev, next) => prev.opt === next.opt && prev.index === next.index);
 
-const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveOption, onUpdateOption}: any) => {
+const QuestionCard = memo(function QuestionCard({q, onUpdate, onRemove, onAddOption, onRemoveOption, onUpdateOption}: any) {
   const [localText, setLocalText] = useState(q.question_text);
   const [localPoints, setLocalPoints] = useState(q.points);
 
@@ -96,10 +96,17 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
     if (val === '' || /^[0-9]+$/.test(val)) setLocalPoints(val);
   };
   const handlePointsBlur = () => {
-    let p = parseInt(String(localPoints)) || 0;
-    if (p < 1) p = 1;
+    let p = parseInt(String(localPoints));
+    if (isNaN(p) || p < 0) p = 0;
+    if (p > 1000) p = 1000;
     onUpdate(q.id, 'points', p);
     setLocalPoints(p);
+  };
+  const isUnscored = Number(q.points) === 0;
+  const toggleUnscored = () => {
+    const next = isUnscored ? 1 : 0;
+    onUpdate(q.id, 'points', next);
+    setLocalPoints(next);
   };
 
   const getTypeIcon = () => {
@@ -134,6 +141,8 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
           </Badge>
           {q.is_required && <Badge
             className="bg-red-900/20 text-red-400 border-red-900/50 border hover:bg-red-900/30 text-[10px]">KÖTELEZŐ</Badge>}
+          {Number(q.points) === 0 && <Badge
+            className="bg-slate-800 text-slate-300 border-slate-700 border text-[10px]">NEM PONTOZOTT</Badge>}
         </div>
       </CardHeader>
       <CardContent className="p-5 space-y-6">
@@ -159,7 +168,8 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
             <div className="flex gap-3">
               <div className="space-y-2 flex-1">
                 <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Pont</Label>
-                <Input type="number" min={1} value={localPoints} onChange={handlePointsChange} onBlur={handlePointsBlur}
+                <Input type="number" min={0} value={isUnscored ? 0 : localPoints} disabled={isUnscored}
+                       onChange={handlePointsChange} onBlur={handlePointsBlur}
                        onKeyDown={preventInvalidNumberInput} className={EDITOR_INPUT}/>
               </div>
               <div className="space-y-2 flex flex-col justify-end pb-1">
@@ -170,6 +180,13 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
             </div>
           </div>
         </div>
+        <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-950/40 px-4 py-3 cursor-pointer">
+          <div>
+            <div className="text-sm font-medium text-slate-200">Nem számít bele az eredménybe</div>
+            <div className="text-xs text-slate-500">0 pontos, információs kérdés (pl. Discord név). A kitöltő is látja, hogy nem pontozott.</div>
+          </div>
+          <Switch checked={isUnscored} onCheckedChange={toggleUnscored}/>
+        </label>
         {q.question_type !== 'text' && (
           <div className="pl-0 md:pl-4 md:border-l-2 md:border-slate-800/50 space-y-4">
             <div className="flex justify-between items-center">
@@ -189,7 +206,7 @@ const QuestionCard = memo(({q, index, onUpdate, onRemove, onAddOption, onRemoveO
               <Button size="sm" variant="ghost"
                       className="text-slate-400 hover:text-white hover:bg-slate-800 h-8 text-xs font-bold uppercase tracking-wider"
                       onClick={() => onAddOption(q.id)}><Plus className="w-3 h-3 mr-2"/> Opció Hozzáadása</Button>
-              {q.exam_options.length >= 2 && !q.exam_options.some((o: any) => o.is_correct) &&
+              {q.exam_options.length >= 2 && Number(q.points) > 0 && !q.exam_options.some((o: any) => o.is_correct) &&
                 <p className="text-yellow-500 text-[10px] font-bold animate-pulse flex items-center"><AlertTriangle
                   className="w-3 h-3 mr-1"/> Jelöld ki a helyes választ!</p>}
             </div>
@@ -230,11 +247,6 @@ export function ExamEditor() {
   const [submissionCount, setSubmissionCount] = useState(0);
   const loadedExamIdRef = useRef<string | null>(null);
 
-  // Eredeti ID-k tárolása a törléshez
-  const [originalIds, setOriginalIds] = useState<{ questions: string[], options: string[] }>({
-    questions: [],
-    options: []
-  });
 
   const [examData, setExamData] = useState<Partial<Exam>>({
     title: "",
@@ -267,7 +279,7 @@ export function ExamEditor() {
         const {
           data,
           error
-        } = await supabase.from('exams').select(`*, exam_questions(*, exam_options(*))`).eq('id', examId).single();
+        } = await supabase.from('exams').select(`*, exam_questions(*, exam_options(id, question_id, option_text))`).eq('id', examId).single();
         if (error) {
           toast.error("Hiba a betöltéskor");
           navigate('/exams');
@@ -277,10 +289,22 @@ export function ExamEditor() {
             navigate('/exams');
             return;
           }
-          const {count} = await supabase.from('exam_submissions').select('*', {
-            count: 'exact',
-            head: true
-          }).eq('exam_id', examId);
+          // The answer key is not readable through the table: editors get it from an RPC.
+          const [{count}, {data: answerKey, error: keyError}] = await Promise.all([
+            supabase.from('exam_submissions').select('id', {count: 'exact', head: true})
+              .eq('exam_id', examId).is('deleted_at', null),
+            supabase.rpc('get_exam_answer_key', {_exam_id: examId}),
+          ]);
+          if (keyError) {
+            toast.error("A megoldókulcs betöltése nem sikerült.");
+            navigate('/exams');
+            return;
+          }
+          const correctIds = new Set(((answerKey ?? []) as {option_id: string, is_correct: boolean}[])
+            .filter(row => row.is_correct).map(row => row.option_id));
+          data.exam_questions?.forEach((q: any) => q.exam_options?.forEach((o: any) => {
+            o.is_correct = correctIds.has(o.id);
+          }));
           setSubmissionCount(count || 0);
           const {exam_questions, ...cleanData} = data;
           setExamData(cleanData);
@@ -292,10 +316,6 @@ export function ExamEditor() {
             page_number: q.page_number ?? 1
           })));
 
-          // EREDETI ID-K MENTÉSE (Hogy tudjuk, mit kell törölni mentéskor)
-          const qIds = sorted.map((q: any) => q.id);
-          const oIds = sorted.flatMap((q: any) => q.exam_options.map((o: any) => o.id));
-          setOriginalIds({questions: qIds, options: oIds});
 
           loadedExamIdRef.current = examId;
         }
@@ -321,7 +341,7 @@ export function ExamEditor() {
       const quals = ['SAHP', 'AB', 'MU', 'GW', 'FAB', 'SIB', 'TSB'].map(q => ({value: q, label: q}));
       return [...all, ...quals];
     }
-    const options = [];
+    const options: {value: string, label: string}[] = [];
     if (profile.is_bureau_commander) options.push({value: profile.division, label: profile.division});
     if (profile.commanded_divisions) profile.commanded_divisions.forEach(div => {
       if (!options.find(o => o.value === div)) options.push({value: div, label: div});
@@ -399,8 +419,8 @@ export function ExamEditor() {
     return {...q, exam_options: newOpts};
   })), []);
 
-  const handleNumberInput = (value: string, field: 'time_limit_minutes' | 'passing_percentage', min: number, max: number) => {
-    let num = parseInt(value);
+  const handleNumberInput = (value: string, field: 'time_limit_minutes' | 'passing_percentage') => {
+    const num = parseInt(value);
     if (isNaN(num)) return;
     setExamData(prev => ({...prev, [field]: num}));
   };
@@ -436,7 +456,8 @@ export function ExamEditor() {
           setCurrentEditorPage(q.page_number);
           return;
         }
-        if (!q.exam_options.some((o: any) => o.is_correct)) {
+        // Unscored questions (e.g. "which division?") have no correct answer.
+        if (Number(q.points) > 0 && !q.exam_options.some((o: any) => o.is_correct)) {
           toast.error("Nincs helyes válasz!");
           setActiveTab("questions");
           setCurrentEditorPage(q.page_number);
@@ -447,66 +468,42 @@ export function ExamEditor() {
 
     setIsLoading(true);
     try {
-      const {id: _id, created_at: _c, exam_questions: _eq, ...cleanExamData} = examData as any;
-      const examPayload = {...cleanExamData, created_by: profile?.id};
+      const {id: _id, created_at: _c, created_by: _cb, exam_questions: _eq, ...examPayload} = examData as Exam;
       let savedExamId = examId;
 
       if (!examId) {
-        const {data, error} = await supabase.from('exams').insert(examPayload).select().single();
+        const {data, error} = await supabase.from('exams')
+          .insert({...examPayload, created_by: profile?.id}).select('id').single();
         if (error) throw error;
         savedExamId = data.id;
       } else {
+        // The original author stays the creator when someone else edits the exam.
         const {error} = await supabase.from('exams').update(examPayload).eq('id', examId);
         if (error) throw error;
       }
 
-      // ----------------------------------------------------
-      // JAVÍTÁS: Törölt elemek eltávolítása az adatbázisból
-      // ----------------------------------------------------
-      const currentQIds = questions.map(q => q.id).filter(id => !id.startsWith('temp-'));
-      const currentOIds = questions.flatMap(q => q.exam_options.map((o: any) => o.id)).filter((id: any) => !id.startsWith('temp-'));
-
-      const questionsToDelete = originalIds.questions.filter(id => !currentQIds.includes(id));
-      const optionsToDelete = originalIds.options.filter(id => !currentOIds.includes(id));
-
-      if (optionsToDelete.length > 0) {
-        await supabase.from('exam_options').delete().in('id', optionsToDelete);
-      }
-      if (questionsToDelete.length > 0) {
-        await supabase.from('exam_questions').delete().in('id', questionsToDelete);
-      }
-      // ----------------------------------------------------
-
-      for (let i = 0; i < questions.length; i++) {
-        const q = questions[i];
-        const qPayload = {
-          exam_id: savedExamId,
+      // Questions and options are saved in one transaction by the server, which also
+      // removes rows that were deleted here (one request instead of up to six).
+      const {error: questionsError} = await supabase.rpc('save_exam_questions', {
+        _exam_id: savedExamId,
+        _questions: questions.map(q => ({
+          id: q.id,
           question_text: q.question_text,
           question_type: q.question_type,
-          points: q.points,
-          order_index: i,
+          points: Number(q.points) || 0,
           is_required: q.is_required,
-          page_number: q.page_number || 1
-        };
-        let qId = q.id;
-        if (q.id.startsWith('temp-')) {
-          const {data: newQ, error} = await supabase.from('exam_questions').insert(qPayload).select().single();
-          if (error) throw error;
-          qId = newQ.id;
-        } else await supabase.from('exam_questions').update(qPayload).eq('id', qId);
+          page_number: q.page_number || 1,
+          options: q.question_type === 'text' ? [] : q.exam_options.map((opt: {id: string, option_text: string, is_correct: boolean}) => ({
+            id: opt.id, option_text: opt.option_text, is_correct: !!opt.is_correct,
+          })),
+        })),
+      });
+      if (questionsError) throw questionsError;
 
-        if (q.question_type !== 'text' && q.exam_options) {
-          for (const opt of q.exam_options) {
-            const oPayload = {question_id: qId, option_text: opt.option_text, is_correct: opt.is_correct};
-            if (opt.id.startsWith('temp-')) await supabase.from('exam_options').insert(oPayload);
-            else await supabase.from('exam_options').update(oPayload).eq('id', opt.id);
-          }
-        }
-      }
       toast.success("Vizsga mentve!");
       navigate('/exams');
-    } catch (error: any) {
-      toast.error("Hiba: " + error.message);
+    } catch (error) {
+      toast.error("Hiba: " + errorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -519,8 +516,8 @@ export function ExamEditor() {
       if (error) throw error;
       toast.success("Törölve.");
       navigate('/exams');
-    } catch (e: any) {
-      toast.error("Hiba: " + e.message);
+    } catch (e) {
+      toast.error("Hiba: " + errorMessage(e));
     }
   };
 
@@ -634,14 +631,14 @@ export function ExamEditor() {
                 <div className="space-y-1.5"><Label
                   className="text-xs text-slate-500 uppercase font-bold tracking-wider">Időkorlát (Perc)</Label><Input
                   type="number" min={1} max={60} value={examData.time_limit_minutes}
-                  onChange={e => handleNumberInput(e.target.value, 'time_limit_minutes', 1, 60)}
+                  onChange={e => handleNumberInput(e.target.value, 'time_limit_minutes')}
                   onBlur={() => handleNumberBlur('time_limit_minutes', 1, 60)} onKeyDown={preventInvalidNumberInput}
                   className={EDITOR_INPUT}/></div>
                 <div className="space-y-1.5"><Label
                   className="text-xs text-slate-500 uppercase font-bold tracking-wider flex items-center gap-2"><Percent
                   className="w-3 h-3"/> Sikeres határ (%)</Label><Input type="number" min={1} max={100}
                                                                         value={examData.passing_percentage}
-                                                                        onChange={e => handleNumberInput(e.target.value, 'passing_percentage', 1, 100)}
+                                                                        onChange={e => handleNumberInput(e.target.value, 'passing_percentage')}
                                                                         onBlur={() => handleNumberBlur('passing_percentage', 1, 100)}
                                                                         onKeyDown={preventInvalidNumberInput}
                                                                         className={EDITOR_INPUT}/></div>
@@ -690,7 +687,7 @@ export function ExamEditor() {
           )}
 
           <div
-            className="flex items-center justify-between bg-[#0b1221] p-2 rounded-xl border border-slate-800 shadow-lg sticky top-4 z-20">
+            className="flex items-center justify-between bg-[#0b1221] p-2 rounded-xl border border-slate-800 shadow-lg sticky top-[4.5rem] z-20">
             <Button variant="ghost" disabled={currentEditorPage === 1} onClick={() => setCurrentEditorPage(p => p - 1)}
                     className="text-slate-400 hover:text-white hover:bg-slate-800"><ChevronLeft
               className="w-4 h-4 mr-2"/> ELŐZŐ</Button>

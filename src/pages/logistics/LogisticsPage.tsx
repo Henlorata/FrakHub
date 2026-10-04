@@ -8,14 +8,15 @@ import {
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
-import {ScrollArea} from "@/components/ui/scroll-area";
 import {toast} from "sonner";
 import {
   Plus, CheckSquare, XSquare, Loader2, Car, Truck, Ship, Plane,
-  AlertTriangle, ShieldCheck, Box, Container, Wrench, Hash
+  AlertTriangle, ShieldCheck, Box, Wrench, Hash
 } from "lucide-react";
 import type {VehicleRequest} from "@/types/supabase";
 import {NewVehicleRequestDialog} from "./components/NewVehicleRequestDialog";
+import {PageHeader} from "@/components/layout/PageHeader";
+import {useDialogParam} from "@/lib/use-dialog-param";
 import {isSupervisory, isHighCommand, cn} from "@/lib/utils";
 
 // --- BLUEPRINT BACKGROUND EFFECT ---
@@ -41,7 +42,7 @@ export function LogisticsPage() {
   const {supabase, profile, user} = useAuth();
   const [requests, setRequests] = React.useState<VehicleRequest[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [isNewOpen, setIsNewOpen] = React.useState(false);
+  const [isNewOpen, setIsNewOpen] = useDialogParam('new');
   const [filter, setFilter] = React.useState("all");
 
   // Admin műveletekhez
@@ -60,7 +61,7 @@ export function LogisticsPage() {
         .order('created_at', {ascending: false});
       if (error) throw error;
       setRequests((data as unknown as VehicleRequest[]) || []);
-    } catch (err) {
+    } catch {
       toast.error("Hiba az adatok betöltésekor");
     } finally {
       setIsLoading(false);
@@ -93,7 +94,7 @@ export function LogisticsPage() {
     if (!selectedRequest || !actionType || !user) return;
     setIsProcessing(true);
     try {
-      const updates: any = {
+      const updates: Record<string, string> = {
         status: actionType === 'approve' ? 'approved' : 'rejected',
         processed_by: user.id,
         updated_at: new Date().toISOString(),
@@ -108,17 +109,10 @@ export function LogisticsPage() {
         updates.admin_comment = adminComment;
       }
 
-      const {error} = await (supabase.from('vehicle_requests') as any).update(updates).eq('id', selectedRequest.id);
+      const {error} = await supabase.from('vehicle_requests').update(updates).eq('id', selectedRequest.id);
       if (error) throw error;
 
-      // Értesítés küldése
-      await supabase.from('notifications').insert({
-        user_id: selectedRequest.user_id,
-        title: 'Járműigénylés Státusz',
-        message: `A(z) ${selectedRequest.vehicle_type} igénylésedet ${actionType === 'approve' ? 'ELFOGADTÁK' : 'ELUTASÍTOTTÁK'}.`,
-        type: actionType === 'approve' ? 'success' : 'alert',
-        link: '/logistics'
-      });
+      // The requester is notified by a database trigger.
 
       toast.success("Művelet sikeres.");
       void fetchRequests();
@@ -144,44 +138,14 @@ export function LogisticsPage() {
     <div
       className="w-full h-full flex flex-col space-y-6 animate-in fade-in duration-500">
 
-      {/* --- INDUSTRIAL HEADER --- */}
-      <div
-        className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0 bg-[#0a0f1c] border-b-2 border-orange-500/20 p-6 relative overflow-hidden shadow-lg">
-        {/* Dekoratív háttér elem */}
-        <div
-          className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
-        <div className="absolute top-0 right-0 w-32 h-full bg-gradient-to-l from-orange-500/10 to-transparent"></div>
-
-        <div className="relative z-10 flex items-center gap-4">
-          <div
-            className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-md text-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.1)]">
-            <Container className="w-8 h-8"/>
-          </div>
-          <div>
-            <h1 className="text-3xl font-black text-white tracking-tight uppercase font-mono">LOGISZTIKA</h1>
-            <p className="text-xs text-orange-500/60 font-bold uppercase tracking-[0.2em]">Fleet Operations & Supply</p>
-          </div>
-        </div>
-
-        <div className="relative z-10 flex gap-4 items-center">
-          {/* Mini Dashboard */}
-          <div className="hidden lg:flex gap-4 border-r border-white/10 pr-6 mr-2">
-            <div className="text-right">
-              <div className="text-2xl font-mono font-bold text-white leading-none">{stats.pending}</div>
-              <div className="text-[9px] uppercase text-slate-500 font-bold tracking-wider">FÜGGŐBEN</div>
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-mono font-bold text-white leading-none">{stats.approved}</div>
-              <div className="text-[9px] uppercase text-slate-500 font-bold tracking-wider">AKTÍV ÁLLOMÁNY</div>
-            </div>
-          </div>
-
-          <Button onClick={() => setIsNewOpen(true)}
-                  className="bg-orange-600 hover:bg-orange-500 text-black font-bold uppercase tracking-wider h-12 px-6 shadow-[0_0_20px_rgba(249,115,22,0.3)] border border-orange-400">
-            <Plus className="w-5 h-5 mr-2"/> ÚJ IGÉNYLÉS
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={Truck}
+        tone="orange"
+        eyebrow="Flotta és ellátás"
+        title="Logisztika"
+        description={`${stats.pending} igénylés vár elbírálásra · ${stats.approved} jármű kiadva`}
+        actions={<Button onClick={() => setIsNewOpen(true)} className="bg-orange-500 text-black hover:bg-orange-400"><Plus/> Új igénylés</Button>}
+      />
 
       {/* --- FILTER TABS --- */}
       <div

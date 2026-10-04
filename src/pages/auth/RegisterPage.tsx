@@ -1,5 +1,5 @@
 import * as React from "react";
-import {useNavigate, Link} from "react-router-dom";
+import {useNavigate, Link} from "react-router";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {
@@ -8,22 +8,29 @@ import {
 import {toast} from "sonner";
 import {
   Loader2, Shield, User, Mail, Lock, Hash,
-  Building2, Fingerprint, Activity, ScanLine, Target, Network
+  Building2, Fingerprint, Activity, ScanLine, Target, Network, AlertTriangle
 } from "lucide-react";
 import {FACTION_RANKS, type DepartmentDivision} from "@/types/supabase";
-import {useAuth} from "@/context/AuthContext";
+import {useSystemStatus} from "@/context/SystemStatusContext";
 import {useMediaQuery} from "@/hooks/use-media-query";
+import {postApi} from "@/lib/api";
+import {errorMessage, getStaffCategory} from "@/lib/utils";
 
 // --- KONSTANSOK ---
-const EXECUTIVE_STAFF = ['Commander', 'Deputy Commander'];
-const COMMAND_STAFF = ['Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.'];
-const SUPERVISORY_STAFF = ['Sergeant II.', 'Sergeant I.'];
+const TSB_LABELS = {
+  executive: "Executive Staff (Command)",
+  command: "Command Staff (HQ)",
+  supervisory: "Supervisory Staff",
+  field: "Field Staff (Patrol)",
+} as const;
 
-const getTsbLabel = (rank: string) => {
-  if (EXECUTIVE_STAFF.includes(rank)) return "Executive Staff (Command)";
-  if (COMMAND_STAFF.includes(rank)) return "Command Staff (HQ)";
-  if (SUPERVISORY_STAFF.includes(rank)) return "Supervisory Staff";
-  return "Field Staff (Patrol)";
+const getTsbLabel = (rank: string) => TSB_LABELS[getStaffCategory(rank)];
+
+/** Stable, ID-looking code derived from the form values (no randomness during render). */
+const cardIdFor = (seed: string) => {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i++) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
+  return (hash >>> 0).toString(36).toUpperCase().padStart(7, "0").slice(0, 7);
 };
 
 // --- HÁTTÉR KOMPONENS ---
@@ -197,11 +204,10 @@ const FingerprintScanner = ({active, colorClass}: { active: boolean, colorClass:
 
 export function RegisterPage() {
   const navigate = useNavigate();
-  const {supabase} = useAuth();
+  const {recruitmentOpen} = useSystemStatus();
 
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [isRecruitmentClosed, setIsRecruitmentClosed] = React.useState(false);
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -209,14 +215,6 @@ export function RegisterPage() {
   const [badgeNumber, setBadgeNumber] = React.useState("");
   const [selectedRank, setSelectedRank] = React.useState<string>("Deputy Sheriff Trainee");
   const [selectedDivision, setSelectedDivision] = React.useState<DepartmentDivision>("TSB");
-
-  React.useEffect(() => {
-    const checkStatus = async () => {
-      const {data} = await supabase.from('system_status').select('recruitment_open').eq('id', 'global').single();
-      if (data && data.recruitment_open === false) setIsRecruitmentClosed(true);
-    };
-    checkStatus();
-  }, [supabase]);
 
   const handleBadgeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -233,20 +231,14 @@ export function RegisterPage() {
     }
     setIsLoading(true);
     try {
-      const response = await fetch('/api/register', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          email, password, full_name: fullName, badge_number: badgeNumber,
-          faction_rank: selectedRank, division: selectedDivision
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Hiba történt');
-      toast.success("Kérelem rögzítve", {description: "Sikeres regisztráció."});
+      await postApi('/api/register', {
+        email, password, full_name: fullName, badge_number: badgeNumber,
+        faction_rank: selectedRank, division: selectedDivision
+      }, {authenticated: false});
+      toast.success("Kérelem rögzítve", {description: "Sikeres regisztráció. Jelentkezz be, és várd meg a jóváhagyást."});
       navigate('/login');
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorMessage(err, "Hiba történt a regisztráció során."));
     } finally {
       setIsLoading(false);
     }
@@ -256,6 +248,7 @@ export function RegisterPage() {
     const base = {
       formBorder: 'border-yellow-600/30',
       formIcon: 'text-yellow-500',
+      formIconFocus: 'group-focus-within:text-yellow-500',
       formRing: 'focus:ring-yellow-500/20',
       formBtn: 'bg-yellow-600 hover:bg-yellow-500',
       cardScanColor: 'text-yellow-500',
@@ -273,6 +266,7 @@ export function RegisterPage() {
     if (selectedDivision === 'SEB') return {
       formBorder: 'border-red-600/30',
       formIcon: 'text-red-500',
+      formIconFocus: 'group-focus-within:text-red-500',
       formRing: 'focus:ring-red-500/20',
       formBtn: 'bg-red-700 hover:bg-red-600',
       cardScanColor: 'text-red-500',
@@ -290,6 +284,7 @@ export function RegisterPage() {
     if (selectedDivision === 'MCB') return {
       formBorder: 'border-blue-500/30',
       formIcon: 'text-blue-400',
+      formIconFocus: 'group-focus-within:text-blue-400',
       formRing: 'focus:ring-blue-500/20',
       formBtn: 'bg-blue-700 hover:bg-blue-600',
       cardScanColor: 'text-blue-400',
@@ -329,6 +324,20 @@ export function RegisterPage() {
               <p className="text-slate-400 text-sm mt-1">San Fierro Sheriff's Department Intranet</p>
             </div>
 
+            {!recruitmentOpen && (
+              <div className="mb-5 p-3 bg-red-950/30 border border-red-500/30 rounded text-red-200 text-xs flex gap-3">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-500"/>
+                <p>A frakcióban jelenleg <strong>létszámstop</strong> van érvényben. A regisztráció leadható, de a
+                  jóváhagyás a szokásosnál jóval több időt vehet igénybe.</p>
+              </div>
+            )}
+
+            {error && (
+              <div role="alert" className="mb-5 p-3 bg-red-950/40 border border-red-500/40 rounded text-red-200 text-sm">
+                {error}
+              </div>
+            )}
+
             {/* Form Content */}
             <form onSubmit={handleRegister} className="space-y-5">
               <div className="space-y-4">
@@ -337,7 +346,7 @@ export function RegisterPage() {
                     Név</label>
                   <div className="relative">
                     <User
-                      className={`absolute left-3 top-3 h-4 w-4 text-slate-500 transition-colors group-focus-within:${theme.formIcon}`}/>
+                      className={`absolute left-3 top-3 h-4 w-4 text-slate-500 transition-colors ${theme.formIconFocus}`}/>
                     <Input required placeholder="John Doe"
                            className={`pl-10 bg-black/40 border-slate-700 h-11 text-white transition-all focus:border-current ${theme.formRing} ${theme.cardAccent}`}
                            value={fullName} onChange={(e) => setFullName(e.target.value)}/>
@@ -350,7 +359,7 @@ export function RegisterPage() {
                       className="text-[10px] uppercase font-bold text-slate-500 mb-1 block tracking-wider">Jelvény</label>
                     <div className="relative">
                       <Hash
-                        className={`absolute left-3 top-3 h-4 w-4 text-slate-500 transition-colors group-focus-within:${theme.formIcon}`}/>
+                        className={`absolute left-3 top-3 h-4 w-4 text-slate-500 transition-colors ${theme.formIconFocus}`}/>
                       <Input required placeholder="0000"
                              className={`pl-10 bg-black/40 border-slate-700 h-11 text-white font-mono tracking-widest transition-all focus:border-current ${theme.formRing} ${theme.cardAccent}`}
                              value={badgeNumber} onChange={handleBadgeChange}/>
@@ -408,7 +417,7 @@ export function RegisterPage() {
                     className="text-[10px] uppercase font-bold text-slate-500 mb-1 block tracking-wider">Email</label>
                   <div className="relative">
                     <Mail
-                      className={`absolute left-3 top-3 h-4 w-4 text-slate-500 transition-colors group-focus-within:${theme.formIcon}`}/>
+                      className={`absolute left-3 top-3 h-4 w-4 text-slate-500 transition-colors ${theme.formIconFocus}`}/>
                     <Input required type="email" placeholder="email@example.com"
                            className={`pl-10 bg-black/40 border-slate-700 h-11 text-white transition-all focus:border-current ${theme.formRing} ${theme.cardAccent}`}
                            value={email} onChange={(e) => setEmail(e.target.value)}/>
@@ -419,8 +428,8 @@ export function RegisterPage() {
                     className="text-[10px] uppercase font-bold text-slate-500 mb-1 block tracking-wider">Jelszó</label>
                   <div className="relative">
                     <Lock
-                      className={`absolute left-3 top-3 h-4 w-4 text-slate-500 transition-colors group-focus-within:${theme.formIcon}`}/>
-                    <Input required type="password" placeholder="••••••••"
+                      className={`absolute left-3 top-3 h-4 w-4 text-slate-500 transition-colors ${theme.formIconFocus}`}/>
+                    <Input required type="password" minLength={6} maxLength={72} placeholder="••••••••"
                            className={`pl-10 bg-black/40 border-slate-700 h-11 text-white transition-all focus:border-current ${theme.formRing} ${theme.cardAccent}`}
                            value={password} onChange={(e) => setPassword(e.target.value)}/>
                   </div>
@@ -464,11 +473,11 @@ export function RegisterPage() {
                 transform hover:scale-105 hover:rotate-1 z-10
             `}>
             <div
-              className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 mix-blend-overlay pointer-events-none"></div>
+              className="absolute inset-0 tex-carbon opacity-20 mix-blend-overlay pointer-events-none"></div>
             <div
               className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent opacity-50 pointer-events-none"></div>
             <div className="absolute -right-10 -bottom-10 w-64 h-64 opacity-10 pointer-events-none grayscale">
-              {theme.logo ? <img src={theme.logo} className="w-full h-full object-contain"/> :
+              {theme.logo ? <img src={theme.logo} alt="" className="w-full h-full object-contain"/> :
                 <Shield className="w-full h-full"/>}
             </div>
 
@@ -534,7 +543,7 @@ export function RegisterPage() {
 
               <div className="mt-auto pt-2 flex justify-between items-end opacity-50">
                 <div className="text-[10px] font-mono text-slate-400">
-                  CARD ID: {Math.random().toString(36).substring(7).toUpperCase()}
+                  CARD ID: {cardIdFor(`${fullName}|${badgeNumber}|${selectedDivision}`)}
                 </div>
                 <ScanLine className="w-6 h-6 text-white/50"/>
               </div>

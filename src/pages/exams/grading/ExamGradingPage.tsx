@@ -1,5 +1,5 @@
 import {useEffect, useState, useMemo} from "react";
-import {useParams, useNavigate} from "react-router-dom";
+import {useParams, useNavigate} from "react-router";
 import {useAuth} from "@/context/AuthContext";
 import {Card, CardContent, CardHeader, CardTitle, CardDescription} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
@@ -12,12 +12,26 @@ import {Separator} from "@/components/ui/separator";
 import {toast} from "sonner";
 import {
   Loader2, CheckCircle2, XCircle, ArrowLeft, User, Clock, ShieldAlert,
-  ChevronLeft, ChevronRight, Target, Bot, PenLine, EyeOff, Hourglass
+  ChevronLeft, ChevronRight, Target, Bot, PenLine, EyeOff, Hourglass, Trash2, RotateCcw
 } from "lucide-react";
-import type {ExamSubmission} from "@/types/exams";
+import type {ExamAnswer, ExamQuestion, ExamSubmission} from "@/types/exams";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
-import {canGradeExam, cn} from "@/lib/utils";
+import {canGradeExam, cn, errorMessage, isStaff} from "@/lib/utils";
+
+const QUESTION_COLUMNS = 'id, question_text, question_type, points, order_index, page_number, exam_options (id, option_text)';
+
+interface QuestionStat {
+  id: string;
+  unscored: boolean;
+  page: number;
+  isCorrect: boolean;
+  type: string;
+  autoPoints: number;
+  displayPoints: string | number;
+  calcPoints: number;
+  isModified: boolean;
+}
 
 // Score Ring Component
 const ScoreRing = ({score, max, percent}: { score: number, max: number, percent: number }) => {
@@ -52,8 +66,8 @@ export function ExamGradingPage() {
   const navigate = useNavigate();
 
   const [submission, setSubmission] = useState<ExamSubmission | null>(null);
-  const [answers, setAnswers] = useState<any[]>([]);
-  const [questions, setQuestions] = useState<any[]>([]);
+  const [answers, setAnswers] = useState<ExamAnswer[]>([]);
+  const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Javítás state-ek
@@ -69,80 +83,77 @@ export function ExamGradingPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!submissionId) return;
-      if (!profile) return;
+    if (!submissionId || !profile) return;
+    let active = true;
 
+    (async () => {
       setLoading(true);
       try {
-        const {data: subData, error: subError} = await supabase
+        const {data, error: subError} = await supabase
           .from('exam_submissions')
-          .select(`
-            *, 
-            exams (
-              title, 
-              passing_percentage, 
-              type,            
-              division,        
-              required_rank,   
-              exam_questions (
-                id, 
-                question_text, 
-                question_type, 
-                points, 
-                order_index, 
-                page_number, 
-                exam_options (id, option_text, is_correct)
-              )
-            )
-          `)
+          .select('*, exams (title, passing_percentage, type, division, required_rank)')
           .eq('id', submissionId)
           .single();
-
         if (subError) throw subError;
+        const subData = data as ExamSubmission;
 
         // --- JOGOSULTSÁG ELLENŐRZÉS ---
         const isOwnSubmission = subData.user_id === profile.id;
-        const hasRights = canGradeExam(profile, subData.exams as any);
+        const isGraderView = !isOwnSubmission && !!subData.exams &&
+          canGradeExam(profile, {type: subData.exams.type ?? 'other', division: subData.exams.division});
 
-        if (!isOwnSubmission && !hasRights) {
+        if (!isOwnSubmission && !isGraderView) {
           toast.error("Nincs jogosultságod ezt a vizsgát megtekinteni.");
           navigate('/exams');
           return;
         }
 
-        const {
-          data: ansData,
-          error: ansError
-        } = await supabase.from('exam_answers').select('*').eq('submission_id', submissionId);
-        if (ansError) throw ansError;
+        // The answer key (is_correct) is only downloaded for graders, or for the candidate
+        // once detailed feedback has been released. Otherwise it would be readable in the
+        // network tab before a retry.
+        const showDetails = isGraderView || !!subData.feedback_visible;
+        const [questionResult, answerResult, keyResult] = showDetails
+          ? await Promise.all([
+            supabase.from('exam_questions').select(QUESTION_COLUMNS).eq('exam_id', subData.exam_id),
+            supabase.from('exam_answers').select('*').eq('submission_id', submissionId),
+            supabase.rpc('get_exam_answer_key', {_exam_id: subData.exam_id}),
+          ])
+          : [{data: [], error: null}, {data: [], error: null}, {data: [], error: null}];
+        if (questionResult.error) throw questionResult.error;
+        if (answerResult.error) throw answerResult.error;
+        if (keyResult.error) throw keyResult.error;
+        if (!active) return;
+        // The answer key comes from its own RPC (the column is not readable directly).
+        const correctIds = new Set(((keyResult.data ?? []) as {option_id: string, is_correct: boolean}[])
+          .filter(row => row.is_correct).map(row => row.option_id));
+        ((questionResult.data ?? []) as unknown as ExamQuestion[]).forEach(q => q.exam_options?.forEach(o => {
+          o.is_correct = correctIds.has(o.id);
+        }));
 
-        setSubmission(subData as any);
-        setAnswers(ansData || []);
+        setSubmission(subData);
+        setAnswers((answerResult.data ?? []) as ExamAnswer[]);
         setGradingNotes(subData.grading_notes || "");
         setFeedbackVisible(subData.feedback_visible || false);
-
-        // Kérdések rendezése
-        const sortedQuestions = (subData.exams as any).exam_questions.sort((a: any, b: any) => a.order_index - b.order_index);
-        setQuestions(sortedQuestions);
-
-      } catch (err: any) {
+        setQuestions([...((questionResult.data ?? []) as ExamQuestion[])].sort((a, b) => a.order_index - b.order_index));
+      } catch (err) {
         console.error(err);
-        toast.error("Hiba: " + err.message);
+        toast.error("Hiba: " + errorMessage(err));
         navigate('/exams');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
-    };
+    })();
 
-    fetchData();
-  }, [submissionId, supabase, profile?.id, navigate]);
+    return () => {
+      active = false;
+    };
+  }, [submissionId, supabase, profile, navigate]);
 
   // Pontszámítás
   const {score, maxScore, questionStats} = useMemo(() => {
     let currentScore = 0;
     let totalMax = 0;
-    const stats: any[] = [];
+    const stats: QuestionStat[] = [];
 
     questions.forEach((q) => {
       totalMax += q.points;
@@ -152,16 +163,16 @@ export function ExamGradingPage() {
 
       if (userAns) {
         if (q.question_type === 'single_choice') {
-          const correctOpt = q.exam_options.find((o: any) => o.is_correct);
+          const correctOpt = q.exam_options.find((o) => o.is_correct);
           if (correctOpt && userAns.selected_option_ids?.includes(correctOpt.id)) {
             autoPoints = q.points;
             isCorrect = true;
           }
         } else if (q.question_type === 'multiple_choice') {
-          const correctIds = q.exam_options.filter((o: any) => o.is_correct).map((o: any) => o.id);
+          const correctIds = q.exam_options.filter((o) => o.is_correct).map((o) => o.id);
           const userIds = userAns.selected_option_ids || [];
-          const allCorrectSelected = correctIds.every((id: any) => userIds.includes(id));
-          const noWrongSelected = userIds.every((id: any) => correctIds.includes(id));
+          const allCorrectSelected = correctIds.every((id) => userIds.includes(id));
+          const noWrongSelected = userIds.every((id) => correctIds.includes(id));
           if (allCorrectSelected && noWrongSelected) {
             autoPoints = q.points;
             isCorrect = true;
@@ -186,6 +197,7 @@ export function ExamGradingPage() {
 
       stats.push({
         id: q.id,
+        unscored: q.points === 0,
         page: q.page_number || 1,
         isCorrect,
         type: q.question_type,
@@ -222,16 +234,10 @@ export function ExamGradingPage() {
     if (!submission) return;
     setIsSaving(true);
     try {
-      const answerUpdates = questionStats.map(stat => {
+      const answerUpdates = questionStats.flatMap(stat => {
         const ans = answers.find(a => a.question_id === stat.id);
-        if (ans) {
-          return {
-            ...ans,
-            points_awarded: stat.calcPoints
-          };
-        }
-        return null;
-      }).filter(Boolean);
+        return ans ? [{...ans, points_awarded: stat.calcPoints}] : [];
+      });
 
       if (answerUpdates.length > 0) {
         const {error: ansError} = await supabase
@@ -249,7 +255,7 @@ export function ExamGradingPage() {
         }
       }
 
-      const updates: any = {
+      const updates = {
         status,
         grading_notes: gradingNotes,
         total_score: score,
@@ -264,11 +270,25 @@ export function ExamGradingPage() {
 
       toast.success(`Vizsga ${status === 'passed' ? 'elfogadva' : 'elutasítva'}!`);
       navigate('/exams');
-    } catch (err: any) {
-      toast.error("Hiba: " + err.message);
+    } catch (err) {
+      toast.error("Hiba: " + errorMessage(err));
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const setTrashed = async (trashed: boolean) => {
+    if (!submission) return;
+    setIsSaving(true);
+    const {error} = await supabase.rpc(trashed ? 'exam_submission_trash' : 'exam_submission_restore', {_submission_id: submission.id});
+    setIsSaving(false);
+    if (error) {
+      toast.error("Hiba: " + errorMessage(error));
+      return;
+    }
+    toast.success(trashed ? "A vizsgalap a lomtárba került." : "A vizsgalap visszaállítva.");
+    if (trashed) navigate('/exams?tab=trash');
+    else setSubmission({...submission, deleted_at: null} as ExamSubmission);
   };
 
   const pageNumbers = useMemo(() => {
@@ -283,8 +303,12 @@ export function ExamGradingPage() {
     className="w-10 h-10 animate-spin text-yellow-500"/></div>;
   if (!submission) return <div className="p-10 text-center text-white">Nem található a beadás.</div>;
 
-  const percentage = maxScore > 0 ? (score / maxScore) * 100 : 0;
-  const passingPercent = (submission.exams as any).passing_percentage;
+  // Without released details only the stored result is known.
+  const hasDetails = questions.length > 0;
+  const displayScore = hasDetails ? score : (submission.total_score ?? 0);
+  const displayMax = hasDetails ? maxScore : (submission.max_score ?? 0);
+  const percentage = displayMax > 0 ? (displayScore / displayMax) * 100 : 0;
+  const passingPercent = submission.exams?.passing_percentage ?? 0;
   const isPassing = percentage >= passingPercent;
 
   const isGrader = profile?.id !== submission.user_id && user?.id !== submission.user_id;
@@ -292,18 +316,24 @@ export function ExamGradingPage() {
   const showDetails = isGrader || feedbackVisible;
 
   return (
-    <div className="min-h-screen bg-slate-950 pb-20">
+    <div className="pb-10">
       {/* HEADER */}
-      <div className="border-b border-slate-900 bg-slate-950/80 backdrop-blur sticky top-0 z-30">
+      <div className="panel">
         <div className="max-w-[1600px] mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" onClick={() => navigate('/exams')}
                     className="text-slate-400 hover:text-white hover:bg-slate-800"><ArrowLeft
               className="w-4 h-4 mr-2"/> Kilépés</Button>
             <Separator orientation="vertical" className="h-6 bg-slate-800"/>
-            <h1 className="text-lg font-bold text-white hidden md:block">{(submission.exams as any)?.title}</h1>
+            <h1 className="text-lg font-bold text-white hidden md:block">{submission.exams?.title}</h1>
           </div>
           <div className="flex items-center gap-3">
+            {isGrader && isStaff(profile) && !submission.deleted_at && (
+              <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => void setTrashed(true)}
+                      className="text-slate-400 hover:text-red-400" title="Hibás vagy teszt kitöltés törlése (visszaállítható)">
+                <Trash2 className="w-4 h-4 mr-1.5"/> Lomtárba
+              </Button>
+            )}
             {submission.status === 'pending' ? <Badge variant="outline"
                                                       className="text-yellow-500 border-yellow-900/50 bg-yellow-900/10 animate-pulse">Folyamatban</Badge> :
               <Badge variant="outline"
@@ -312,13 +342,28 @@ export function ExamGradingPage() {
         </div>
       </div>
 
+      {submission.deleted_at && (
+        <div className="max-w-[1600px] mx-auto px-4 md:px-6 pt-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-red-900/40 bg-red-950/20 p-4 sm:flex-row sm:items-center">
+            <Trash2 className="w-5 h-5 text-red-400 shrink-0"/>
+            <div className="flex-1 text-sm text-red-200">
+              Ez a vizsgalap a lomtárban van ({new Date(submission.deleted_at).toLocaleString('hu-HU')}). A vizsgázó nem látja, és nem számít bele az eredményeibe.
+            </div>
+            {isStaff(profile) && (
+              <Button size="sm" variant="outline" disabled={isSaving} onClick={() => void setTrashed(false)}>
+                <RotateCcw className="w-4 h-4 mr-1.5"/> Visszaállítás
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       <div className="max-w-[1600px] mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative">
         {/* BAL OLDAL: KÉRDÉSEK */}
         <div className="lg:col-span-8 space-y-6">
           {showDetails ? (
             <>
               <div
-                className="flex items-center justify-between bg-slate-900/80 p-2 rounded-lg border border-slate-800 backdrop-blur-sm sticky top-20 z-20 shadow-lg">
+                className="flex items-center justify-between bg-slate-900/80 p-2 rounded-lg border border-slate-800 backdrop-blur-sm sticky top-[4.5rem] z-20 shadow-lg">
                 <Button variant="ghost" size="sm" disabled={currentPage === 1} onClick={() => {
                   setCurrentPage(p => p - 1);
                   window.scrollTo({top: 0, behavior: 'smooth'});
@@ -332,14 +377,14 @@ export function ExamGradingPage() {
               </div>
 
               <div className="space-y-4">
-                {currentQuestions.map((q, idx) => {
+                {currentQuestions.map((q) => {
                   const globalIndex = questions.indexOf(q) + 1;
                   const answer = answers.find(a => a.question_id === q.id);
                   const stat = questionStats.find(s => s.id === q.id);
 
                   let statusColor = "border-slate-800";
-                  if (q.question_type !== 'text') {
-                    if (stat?.autoPoints > 0) statusColor = "border-green-900/30";
+                  if (q.question_type !== 'text' && q.points > 0) {
+                    if ((stat?.autoPoints ?? 0) > 0) statusColor = "border-green-900/30";
                     else statusColor = "border-red-900/30";
                   }
 
@@ -353,7 +398,10 @@ export function ExamGradingPage() {
                             <CardTitle className="text-base text-slate-200 leading-snug">{q.question_text}</CardTitle>
                           </div>
                           <div className="flex items-center gap-3 pl-4">
-                            {isGrader && isPending ? (
+                            {q.points === 0 ? (
+                              <Badge variant="secondary"
+                                     className="bg-slate-950 border border-slate-800 text-slate-400 text-xs h-7">Nem pontozott</Badge>
+                            ) : isGrader && isPending ? (
                               <div
                                 className="flex items-center gap-2 bg-slate-950/50 p-1 rounded border border-slate-800">
                                 {stat?.isModified ? (
@@ -391,7 +439,7 @@ export function ExamGradingPage() {
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {q.exam_options.map((opt: any) => {
+                            {q.exam_options.map((opt) => {
                               const isSelected = answer?.selected_option_ids?.includes(opt.id);
                               const isActuallyCorrect = opt.is_correct;
                               let style = "bg-slate-950 border-slate-800 text-slate-400 opacity-70";
@@ -435,7 +483,7 @@ export function ExamGradingPage() {
 
         {/* --- JOBB OLDAL: VEZÉRLŐPULT --- */}
         <div className="lg:col-span-4">
-          <div className="space-y-6 lg:sticky lg:top-24 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto pr-1">
+          <div className="space-y-6 lg:sticky lg:top-[4.5rem] h-fit max-h-[calc(100dvh-6rem)] overflow-y-auto pr-1">
 
             <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
               <div
@@ -443,7 +491,7 @@ export function ExamGradingPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex justify-between items-center text-white">
                   <span>Eredmény</span>
-                  <ScoreRing score={score} max={maxScore} percent={percentage}/>
+                  <ScoreRing score={displayScore} max={displayMax} percent={percentage}/>
                 </CardTitle>
                 <CardDescription>Minimum: <span
                   className="text-white font-bold">{passingPercent}%</span></CardDescription>
@@ -477,7 +525,7 @@ export function ExamGradingPage() {
                       <button key={stat.id} onClick={() => {
                         setCurrentPage(stat.page);
                       }}
-                              className={`h-8 rounded text-xs font-bold transition-all border ${stat.type === 'text' ? 'bg-slate-800 border-slate-700 text-slate-400' : stat.calcPoints > 0 ? 'bg-green-900/20 border-green-900/50 text-green-500' : 'bg-red-900/20 border-red-900/50 text-red-500'} ${stat.page === currentPage ? 'ring-2 ring-yellow-500/50 scale-110' : ''}`}
+                              className={`h-8 rounded text-xs font-bold transition-all border ${stat.type === 'text' || stat.unscored ? 'bg-slate-800 border-slate-700 text-slate-400' : stat.calcPoints > 0 ? 'bg-green-900/20 border-green-900/50 text-green-500' : 'bg-red-900/20 border-red-900/50 text-red-500'} ${stat.page === currentPage ? 'ring-2 ring-yellow-500/50 scale-110' : ''}`}
                       >{i + 1}</button>
                     ))}
                   </div>

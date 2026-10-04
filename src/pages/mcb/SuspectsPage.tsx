@@ -11,6 +11,9 @@ import {
 import {toast} from "sonner";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import type {Suspect} from "@/types/supabase";
+import type {LucideIcon} from "lucide-react";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
+import {errorMessage} from "@/lib/utils";
 import {NewSuspectDialog} from "@/pages/mcb/components/NewSuspectDialog";
 import {cn} from "@/lib/utils";
 import {
@@ -68,15 +71,16 @@ export function SuspectsPage() {
     try {
       const {data, error} = await supabase.rpc('delete_suspect_safely', {_suspect_id: suspectToDelete.id});
       if (error) throw error;
-      if (data.success) {
-        toast.success(data.message);
+      const result = data as {success?: boolean; message?: string} | null;
+      if (result?.success) {
+        toast.success(result.message ?? "Adatlap törölve.");
         deleteSuspectFromCache(suspectToDelete.id);
         setSuspectToDelete(null);
       } else {
-        toast.error(data.message);
+        toast.error(result?.message ?? "Az adatlap nem törölhető.");
       }
-    } catch (e: any) {
-      toast.error("Hiba: " + e.message);
+    } catch (e) {
+      toast.error("Hiba: " + errorMessage(e));
     } finally {
       setIsDeleteLoading(false);
     }
@@ -84,8 +88,9 @@ export function SuspectsPage() {
 
   // Tartalom szűrése
   const getFolderContent = () => {
-    let items = suspects;
-    if (search) return items.filter(s => s.full_name.toLowerCase().includes(search.toLowerCase()) || s.alias?.toLowerCase().includes(search.toLowerCase()));
+    const items = suspects;
+    const term = search.toLowerCase();
+    if (term) return items.filter(s => s.full_name.toLowerCase().includes(term) || s.alias?.toLowerCase().includes(term));
 
     switch (currentFolder.type) {
       case 'root':
@@ -106,22 +111,36 @@ export function SuspectsPage() {
   };
   const displayedSuspects = getFolderContent();
 
-  // --- KOMPONENSEK ---
+  return (
+    <SuspectsPageView
+      suspects={suspects} caseMap={caseMap} cases={cases} creators={creators} loading={loading}
+      search={search} setSearch={setSearch} isDialogOpen={isDialogOpen} setIsDialogOpen={setIsDialogOpen}
+      suspectToDelete={suspectToDelete} setSuspectToDelete={setSuspectToDelete} isDeleteLoading={isDeleteLoading}
+      handleDelete={handleDelete} path={path} currentFolder={currentFolder} handleNavigate={handleNavigate}
+      handleNavigateUp={handleNavigateUp} goBack={goBack} displayedSuspects={displayedSuspects}
+      refreshSuspects={refreshSuspects} openSuspectId={openSuspectId}
+    />
+  );
+}
 
-  // 1. Mappa Ikon
-  const FolderItem = ({label, icon: Icon, count, onClick, color = "blue"}: any) => {
-    const colors: any = {
-      blue: "text-blue-500 border-blue-500/20 hover:border-blue-400 group-hover:text-blue-400 bg-blue-950/20",
-      red: "text-red-500 border-red-500/20 hover:border-red-400 group-hover:text-red-400 bg-red-950/20",
-      orange: "text-orange-500 border-orange-500/20 hover:border-orange-400 group-hover:text-orange-400 bg-orange-950/20",
-      purple: "text-purple-500 border-purple-500/20 hover:border-purple-400 group-hover:text-purple-400 bg-purple-950/20",
-      green: "text-green-500 border-green-500/20 hover:border-green-400 group-hover:text-green-400 bg-green-950/20",
-      slate: "text-slate-400 border-slate-700 hover:border-slate-500 group-hover:text-slate-300 bg-slate-900/40",
-    };
+// --- KOMPONENSEK ---
 
+const FOLDER_COLORS: Record<string, string> = {
+  blue: "text-blue-500 border-blue-500/20 hover:border-blue-400 group-hover:text-blue-400 bg-blue-950/20",
+  red: "text-red-500 border-red-500/20 hover:border-red-400 group-hover:text-red-400 bg-red-950/20",
+  orange: "text-orange-500 border-orange-500/20 hover:border-orange-400 group-hover:text-orange-400 bg-orange-950/20",
+  purple: "text-purple-500 border-purple-500/20 hover:border-purple-400 group-hover:text-purple-400 bg-purple-950/20",
+  green: "text-green-500 border-green-500/20 hover:border-green-400 group-hover:text-green-400 bg-green-950/20",
+  slate: "text-slate-400 border-slate-700 hover:border-slate-500 group-hover:text-slate-300 bg-slate-900/40",
+};
+
+// 1. Mappa Ikon
+function FolderItem({label, icon: Icon, count, onClick, color = "blue"}: {
+  label: string, icon: LucideIcon, count?: number, onClick: () => void, color?: string
+}) {
     return (
       <div onClick={onClick}
-           className={cn("group flex flex-col p-4 rounded-xl border transition-all cursor-pointer hover:shadow-lg hover:scale-[1.02] relative overflow-hidden", colors[color])}>
+           className={cn("group flex flex-col p-4 rounded-xl border transition-all cursor-pointer hover:shadow-lg hover:scale-[1.02] relative overflow-hidden", FOLDER_COLORS[color])}>
         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Icon
           className="w-16 h-16"/></div>
         <div className="flex items-center gap-3 mb-2 relative z-10">
@@ -135,10 +154,10 @@ export function SuspectsPage() {
         </div>
       </div>
     );
-  };
+}
 
-  // 2. High-Tech Suspect Card
-  const SuspectCard = ({suspect}: { suspect: Suspect }) => {
+// 2. High-Tech Suspect Card
+function SuspectCard({suspect, onOpen, onDelete}: { suspect: Suspect, onOpen: (id: string) => void, onDelete: (suspect: Suspect) => void }) {
     const statusColors = {
       wanted: {
         border: 'border-red-500',
@@ -180,7 +199,7 @@ export function SuspectsPage() {
       <div className="group relative h-full">
         {/* Kártya Keret */}
         <div
-          onClick={() => openSuspectId(suspect.id)}
+          onClick={() => onOpen(suspect.id)}
           className={cn(
             "relative h-full bg-[#080c14] border hover:border-opacity-100 border-opacity-40 rounded-xl overflow-hidden transition-all duration-300 cursor-pointer flex flex-col",
             style.border, style.shadow, "hover:shadow-2xl hover:-translate-y-1"
@@ -197,7 +216,7 @@ export function SuspectsPage() {
             {/* Mugshot + Status */}
             <div className="relative shrink-0">
               <Avatar className={cn("w-20 h-20 rounded-lg border-2", style.border)}>
-                <AvatarImage src={suspect.mugshot_url || undefined} className="object-cover sepia-[.2]"/>
+                <AvatarImage src={getOptimizedAvatarUrl(suspect.mugshot_url, 160) || undefined} className="object-cover sepia-[.2]"/>
                 <AvatarFallback
                   className="bg-slate-900 text-slate-600 font-bold text-2xl rounded-lg">{suspect.full_name.charAt(0)}</AvatarFallback>
               </Avatar>
@@ -233,7 +252,7 @@ export function SuspectsPage() {
               className="h-6 w-6 rounded-full bg-black/60 hover:bg-red-600 text-slate-400 hover:text-white"
               onClick={(e) => {
                 e.stopPropagation();
-                setSuspectToDelete(suspect);
+                onDelete(suspect);
               }}
             >
               <Trash2 className="w-3.5 h-3.5"/>
@@ -242,10 +261,39 @@ export function SuspectsPage() {
         </div>
       </div>
     );
-  };
+}
 
+interface SuspectsPageViewProps {
+  suspects: Suspect[];
+  caseMap: Record<string, string[]>;
+  cases: Record<string, string>;
+  creators: Record<string, string>;
+  loading: boolean;
+  search: string;
+  setSearch: (value: string) => void;
+  isDialogOpen: boolean;
+  setIsDialogOpen: (open: boolean) => void;
+  suspectToDelete: Suspect | null;
+  setSuspectToDelete: (suspect: Suspect | null) => void;
+  isDeleteLoading: boolean;
+  handleDelete: () => void;
+  path: FolderView[];
+  currentFolder: FolderView;
+  handleNavigate: (folder: FolderView) => void;
+  handleNavigateUp: (index: number) => void;
+  goBack: () => void;
+  displayedSuspects: Suspect[] | null;
+  refreshSuspects: (force?: boolean) => Promise<void>;
+  openSuspectId: (id: string) => void;
+}
+
+function SuspectsPageView({
+  suspects, cases, creators, loading, search, setSearch, isDialogOpen, setIsDialogOpen, suspectToDelete,
+  setSuspectToDelete, isDeleteLoading, handleDelete, path, currentFolder, handleNavigate, handleNavigateUp, goBack,
+  displayedSuspects, refreshSuspects, openSuspectId,
+}: SuspectsPageViewProps) {
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] animate-in fade-in duration-500">
+    <div className="flex flex-col h-shell-mcb animate-in fade-in duration-500">
       <NewSuspectDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} onSuccess={() => refreshSuspects(true)}/>
 
       {/* Delete Alert */}
@@ -394,11 +442,12 @@ export function SuspectsPage() {
         {(displayedSuspects && (currentFolder.id || search)) && (
           <div
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in zoom-in-95 duration-300">
-            {displayedSuspects.map(suspect => <SuspectCard key={suspect.id} suspect={suspect}/>)}
+            {displayedSuspects.map(suspect => <SuspectCard key={suspect.id} suspect={suspect} onOpen={openSuspectId}
+                                                           onDelete={setSuspectToDelete}/>)}
             {displayedSuspects.length === 0 && (
               <div className="col-span-full text-center py-20 text-slate-600 font-mono flex flex-col items-center">
                 <FolderOpen className="w-12 h-12 mb-4 opacity-50"/>
-                EB A MAPPA ÜRES
+                EZ A MAPPA ÜRES
               </div>
             )}
           </div>

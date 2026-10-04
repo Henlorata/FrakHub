@@ -11,7 +11,18 @@ import {Input} from "@/components/ui/input";
 import {toast} from "sonner";
 import {Search, Loader2, RefreshCw, Link, User} from "lucide-react";
 import {Badge} from "@/components/ui/badge";
-import {cn} from "@/lib/utils";
+import {cn, errorMessage} from "@/lib/utils";
+import {getProfileDirectory, type DirectoryProfile} from "@/lib/profile-directory";
+
+interface OrphanSubmission {
+  id: string;
+  applicant_name: string | null;
+  start_time: string;
+  status: string;
+  exams: {title: string} | null;
+}
+
+const TRAINEE_RANK = 'Deputy Sheriff Trainee';
 
 interface AdminExamAssignDialogProps {
   open: boolean;
@@ -21,8 +32,8 @@ interface AdminExamAssignDialogProps {
 export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialogProps) {
   const {supabase} = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
-  const [orphanExams, setOrphanExams] = useState<any[]>([]);
-  const [trainees, setTrainees] = useState<any[]>([]);
+  const [orphanExams, setOrphanExams] = useState<OrphanSubmission[]>([]);
+  const [trainees, setTrainees] = useState<DirectoryProfile[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -35,6 +46,7 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
         .from('exam_submissions')
         .select('id, applicant_name, start_time, status, exams(title)')
         .is('user_id', null)
+        .is('deleted_at', null)
         .neq('status', 'failed');
 
       if (query) {
@@ -46,40 +58,30 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
         .limit(50);
 
       if (examError) throw examError;
-      setOrphanExams(exams || []);
+      setOrphanExams((exams ?? []) as unknown as OrphanSubmission[]);
 
-      // 2. Trainees lekérése (kizárva azokat, akiknek MÁR VAN bármilyen vizsgája)
-      const { data: existingSubmissions, error: subError } = await supabase
-        .from('exam_submissions')
-        .select('user_id')
-        .not('user_id', 'is', null);
+      // 2. Trainees without any submission yet. Bounded: only the (few) trainees'
+      //    submissions are checked, instead of downloading every submission ever made
+      //    and sending them back in an ever-growing "not in (...)" URL.
+      const term = query.trim().toLowerCase();
+      const candidates = (await getProfileDirectory())
+        .filter(member => member.faction_rank === TRAINEE_RANK && member.system_role !== 'pending')
+        .filter(member => !term || member.full_name.toLowerCase().includes(term));
 
-      if (subError) throw subError;
-
-      const excludedUserIds = existingSubmissions?.map(s => s.user_id) || [];
-
-      let userQuery = supabase
-        .from('profiles')
-        .select('id, full_name, badge_number')
-        .eq('faction_rank', 'Deputy Sheriff Trainee');
-
-      if (excludedUserIds.length > 0) {
-        userQuery = userQuery.not('id', 'in', `(${excludedUserIds.join(',')})`);
+      let taken = new Set<string>();
+      if (candidates.length > 0) {
+        const { data: existingSubmissions, error: subError } = await supabase
+          .from('exam_submissions')
+          .select('user_id')
+          .in('user_id', candidates.map(member => member.id))
+          .is('deleted_at', null);
+        if (subError) throw subError;
+        taken = new Set((existingSubmissions ?? []).map((s: {user_id: string}) => s.user_id));
       }
 
-      if (query) {
-        userQuery = userQuery.ilike('full_name', `%${query}%`);
-      }
-
-      const { data: users, error: userError } = await userQuery
-        .order('full_name')
-        .limit(50);
-
-      if (userError) throw userError;
-      setTrainees(users || []);
-
-    } catch (e: any) {
-      toast.error("Hiba az adatok lekérésekor: " + e.message);
+      setTrainees(candidates.filter(member => !taken.has(member.id)).slice(0, 50));
+    } catch (e) {
+      toast.error("Hiba az adatok lekérésekor: " + errorMessage(e));
     } finally {
       setIsLoading(false);
     }
@@ -110,8 +112,8 @@ export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialo
       await fetchData(searchTerm);
       setSelectedExamId(null);
       setSelectedUserId(null);
-    } catch (e: any) {
-      toast.error("Hiba a hozzárendelés során: " + e.message);
+    } catch (e) {
+      toast.error("Hiba a hozzárendelés során: " + errorMessage(e));
     } finally {
       setIsLoading(false);
     }

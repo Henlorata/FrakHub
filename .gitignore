@@ -1,3 +1,11 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+*.tsbuildinfo
+
 # Logs
 logs
 *.log
@@ -7,22 +15,50 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Environment files (secrets). Only the documented template is committed.
+.env
+.env.*
+!.env.example
 *.local
+
+# Vercel
+.vercel
+
+# Supabase CLI local state
+supabase/.temp
+supabase/.branches
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/.e2e-dist/
+/playwright/.cache/
+/.playwright-mcp/
+/e2e/.auth/
+
+# Tooling caches
+.eslintcache
+.prettiercache
+coverage
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-.env
-.vercel
-.env*.local
+# Lockfiles of package managers this project does not use (bun is the standard)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+
+# Temporary development files
+/temp/

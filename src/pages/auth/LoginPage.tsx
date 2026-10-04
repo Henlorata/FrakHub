@@ -1,5 +1,5 @@
 import * as React from "react";
-import {useNavigate, Link} from "react-router-dom";
+import {useNavigate, Link} from "react-router";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -9,21 +9,21 @@ import {
 } from "lucide-react";
 import {useMediaQuery} from "@/hooks/use-media-query";
 
+// Vízszintes fénycsíkok (Data Beams): modul szinten, egyszer generálva (renderelés tiszta marad)
+const BEAMS = Array.from({length: 18}, () => ({
+  top: `${Math.random() * 100}%`,
+  width: `${10 + Math.random() * 40}%`,
+  animationDuration: `${2 + Math.random() * 5}s`,
+  animationDelay: `${Math.random() * 5}s`,
+  opacity: 0.1 + Math.random() * 0.4,
+  direction: Math.random() > 0.5 ? 'beam-slide-right' : 'beam-slide-left'
+}));
+
 // --- LOGIN HÁTTÉR ---
 const SecureGatewayBackground = ({children}: { children: React.ReactNode }) => {
   const isHeightSafe = useMediaQuery("(min-height: 800px)");
   const isWidthSafe = useMediaQuery("(min-width: 1024px)");
   const isDesktopMode = isHeightSafe && isWidthSafe;
-
-  // Vízszintes fénycsíkok (Data Beams)
-  const beams = React.useMemo(() => Array.from({length: 18}).map((_, i) => ({
-    top: `${Math.random() * 100}%`,
-    width: `${10 + Math.random() * 40}%`,
-    animationDuration: `${2 + Math.random() * 5}s`,
-    animationDelay: `${Math.random() * 5}s`,
-    opacity: 0.1 + Math.random() * 0.4,
-    direction: Math.random() > 0.5 ? 'beam-slide-right' : 'beam-slide-left'
-  })), []);
 
   return (
     <div
@@ -35,7 +35,7 @@ const SecureGatewayBackground = ({children}: { children: React.ReactNode }) => {
 
       {/* 2. Adatcsíkok (Data Beams) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        {beams.map((style, i) => (
+        {BEAMS.map((style, i) => (
           <div key={i} className="data-beam" style={{
             top: style.top,
             width: style.width,
@@ -120,7 +120,7 @@ const SecureGatewayBackground = ({children}: { children: React.ReactNode }) => {
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const {supabase, session, profile} = useAuth();
+  const {supabase, session, profile, profileError} = useAuth();
 
   const [isLoading, setIsLoading] = React.useState(false);
   const [email, setEmail] = React.useState("");
@@ -129,10 +129,11 @@ export function LoginPage() {
   const [systemMsg, setSystemMsg] = React.useState("WAITING FOR CREDENTIALS...");
 
   React.useEffect(() => {
-    if (session && profile) {
-      navigate('/dashboard');
+    // Signed in: the app shell takes over (it also shows the retry screen on profile errors).
+    if (session && (profile || profileError)) {
+      navigate('/dashboard', {replace: true});
     }
-  }, [session, profile, navigate]);
+  }, [session, profile, profileError, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,9 +150,9 @@ export function LoginPage() {
         description: "Üdvözöljük a rendszerben, Deputy.",
         className: "bg-slate-900 border-yellow-500 text-white"
       });
-    } catch (err: any) {
+    } catch {
       toast.error("Belépés megtagadva", {
-        description: "Helytelen jelvényszám vagy jelszó.",
+        description: "Helytelen email cím vagy jelszó.",
         className: "bg-red-950 border-red-500 text-white"
       });
       setSystemMsg("ERROR: ACCESS DENIED");

@@ -5,9 +5,10 @@ import {Button} from "@/components/ui/button";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {Shield, Users, FileText, Plus, Paperclip, UserPlus, Fingerprint, X, Trash2} from "lucide-react";
-import type {Case} from "@/types/supabase";
+import type {Case, CaseCollaborator, CaseEvidence, CaseSuspect, Suspect} from "@/types/supabase";
 import {cn} from "@/lib/utils";
 import {useAuth} from "@/context/AuthContext";
+import {getOptimizedAvatarUrl, withTransformation} from "@/lib/cloudinary";
 
 // --- STÍLUS KONSTANSOK ---
 const TECH_CARD_BASE = "bg-slate-950/80 border border-sky-900/30 backdrop-blur-md shadow-lg overflow-hidden relative group";
@@ -56,7 +57,7 @@ export function CaseInfoCard({caseData}: { caseData: Case }) {
           <div className="flex items-center gap-3 bg-slate-900/50 p-2 rounded border border-slate-800">
             <div
               className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-sky-500 border border-slate-700">
-              {caseData.owner?.full_name.charAt(0)}
+              {caseData.owner?.full_name?.charAt(0)}
             </div>
             <div>
               <p className="text-slate-200 text-xs font-bold">{caseData.owner?.full_name || "Ismeretlen"}</p>
@@ -71,9 +72,9 @@ export function CaseInfoCard({caseData}: { caseData: Case }) {
 
 // --- ÉRINTETT SZEMÉLYEK ---
 export function SuspectsCard({suspects, onAdd, onView, onDelete}: {
-  suspects: any[],
+  suspects: CaseSuspect[],
   onAdd?: () => void,
-  onView: (suspect: any) => void,
+  onView: (suspect: Suspect) => void,
   onDelete?: (id: string) => void
 }) {
   return (
@@ -107,9 +108,10 @@ export function SuspectsCard({suspects, onAdd, onView, onDelete}: {
                         item.involvement_type === 'witness' ? 'bg-blue-500' : 'bg-yellow-500')}/>
 
                   <div className="flex items-center gap-3 overflow-hidden flex-1 pl-2"
-                       onClick={() => onView(item.suspect)}>
+                       onClick={() => item.suspect && onView(item.suspect)}>
                     <Avatar className="h-9 w-9 border border-slate-700 rounded-md">
-                      <AvatarImage src={item.suspect?.mugshot_url} className="object-cover"/>
+                      <AvatarImage src={getOptimizedAvatarUrl(item.suspect?.mugshot_url, 72) || undefined}
+                                   className="object-cover"/>
                       <AvatarFallback className="text-[10px] bg-slate-800 text-slate-400 rounded-md">
                         {item.suspect?.full_name?.charAt(0)}
                       </AvatarFallback>
@@ -151,11 +153,11 @@ export function SuspectsCard({suspects, onAdd, onView, onDelete}: {
 }
 
 // --- SEGÉD KOMPONENS: EVIDENCE ITEM ---
-const EvidenceItem = React.memo(({file, onView, onDelete}: {
-  file: any,
-  onView: (f: any) => void,
+const EvidenceItem = React.memo(function EvidenceItem({file, onView, onDelete}: {
+  file: CaseEvidence,
+  onView: (f: CaseEvidence) => void,
   onDelete?: (id: string) => void
-}) => {
+}) {
   const {supabase} = useAuth();
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
 
@@ -165,7 +167,8 @@ const EvidenceItem = React.memo(({file, onView, onDelete}: {
     if (file.file_type === 'image') {
       // 1. Cloudinary / External URL ellenőrzés
       if (file.file_path.startsWith('http')) {
-        setPreviewUrl(file.file_path);
+        // 40px thumbnail: request an 80px crop instead of the full-size original.
+        setPreviewUrl(withTransformation(file.file_path, 'c_fill,w_80,h_80,q_auto,f_auto'));
       }
       // 2. Supabase Storage URL generálás
       else {
@@ -187,7 +190,7 @@ const EvidenceItem = React.memo(({file, onView, onDelete}: {
       <div
         className="w-10 h-10 rounded bg-black/50 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0 relative">
         {previewUrl ? (
-          <img src={previewUrl} alt=""
+          <img src={previewUrl} alt="" loading="lazy"
                className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"/>
         ) : (
           <FileText className="w-5 h-5 text-slate-600 group-hover:text-sky-400"/>
@@ -216,9 +219,9 @@ const EvidenceItem = React.memo(({file, onView, onDelete}: {
 
 // --- BIZONYÍTÉKOK ---
 export function EvidenceCard({evidence, onUpload, onView, onDelete}: {
-  evidence: any[],
+  evidence: CaseEvidence[],
   onUpload?: () => void,
-  onView: (file: any) => void,
+  onView: (file: CaseEvidence) => void,
   onDelete?: (id: string) => void
 }) {
   return (
@@ -254,7 +257,7 @@ export function EvidenceCard({evidence, onUpload, onView, onDelete}: {
 
 // --- KÖZREMŰKÖDŐK ---
 export function CollaboratorsCard({collaborators, onAdd, onDelete}: {
-  collaborators: any[], onAdd?: () => void, onDelete?: (id: string) => void
+  collaborators: CaseCollaborator[], onAdd?: () => void, onDelete?: (id: string) => void
 }) {
   return (
     <Card className={cn(TECH_CARD_BASE, "flex flex-col h-[200px] shrink-0")}>
@@ -276,9 +279,9 @@ export function CollaboratorsCard({collaborators, onAdd, onDelete}: {
                    className="flex items-center justify-between p-2 rounded bg-slate-900/30 border border-slate-800/60 group">
                 <div className="flex items-center gap-2 overflow-hidden">
                   <Avatar className="h-6 w-6 border border-slate-700">
-                    <AvatarImage src={collab.profile?.avatar_url}/>
+                    <AvatarImage src={getOptimizedAvatarUrl(collab.profile?.avatar_url, 48) || undefined}/>
                     <AvatarFallback
-                      className="text-[9px] bg-slate-800">{collab.profile?.full_name.charAt(0)}</AvatarFallback>
+                      className="text-[9px] bg-slate-800">{collab.profile?.full_name?.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-slate-300 truncate">{collab.profile?.full_name}</p>

@@ -1,46 +1,67 @@
-import type {VercelRequest, VercelResponse} from '@vercel/node';
-import {v2 as cloudinary} from 'cloudinary';
-import {createClient} from '@supabase/supabase-js';
+import {isAcademyInstructor} from "../shared/ranks.js";
+import {destroyAssets, toOwnAssets} from "./_lib/cloudinary.js";
+import {handle, HttpError, json, readJsonObject} from "./_lib/http.js";
+import {getSupabaseAdmin, requireCaller} from "./_lib/supabase.js";
 
-cloudinary.config({
-  cloud_name: process.env.VITE_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure: true,
+const MAX_URLS = 50;
+
+/** Columns pointing at Cloudinary assets. A URL still referenced here is in use. */
+const REFERENCES = [
+  {table: "profiles", column: "avatar_url"},
+  {table: "case_evidence", column: "file_path"},
+  {table: "suspects", column: "mugshot_url"},
+  {table: "ribbons", column: "image_url"},
+] as const;
+
+/**
+ * Deletes orphaned Cloudinary assets: replaced avatars, removed case evidence and
+ * images dropped from Academy material. Clients send the stored URLs; the server
+ * derives public ID and resource type, so raw documents are cleaned up as well.
+ *
+ * Assets still referenced by a record are never deleted, so this endpoint cannot
+ * be abused to wipe someone else's avatar or evidence.
+ */
+export const POST = handle("delete-image", async (request) => {
+  const caller = await requireCaller(request);
+  const body = await readJsonObject(request);
+
+  const urls = Array.isArray(body.urls) ? [...new Set(body.urls.filter((url) => typeof url === "string"))] : [];
+  if (urls.length === 0) throw new HttpError(400, "Nincs megadva törlendő fájl.");
+  if (urls.length > MAX_URLS) throw new HttpError(400, `Egyszerre legfeljebb ${MAX_URLS} fájl törölhető.`);
+
+  const assets = toOwnAssets(urls as string[]);
+  const academyAssets = assets.filter((asset) => asset.publicId.startsWith("academy/"));
+  const otherAssets = assets.filter((asset) => !asset.publicId.startsWith("academy/"));
+
+  if (academyAssets.length > 0 && !isAcademyInstructor(caller)) {
+    throw new HttpError(403, "Tananyag képeit csak oktató törölheti.");
+  }
+
+  const inUse = await findReferencedUrls(otherAssets.map((asset) => asset.url));
+  const {deleted, failed} = await destroyAssets([
+    ...academyAssets,
+    ...otherAssets.filter((asset) => !inUse.has(asset.url)),
+  ]);
+
+  return json({success: failed.length === 0, deleted, failed, skipped: [...inUse]});
 });
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+async function findReferencedUrls(urls: string[]): Promise<Set<string>> {
+  if (urls.length === 0) return new Set();
+  const supabase = getSupabaseAdmin();
+  const results = await Promise.all(
+    REFERENCES.map(({table, column}) => supabase.from(table).select(column).in(column, urls)),
+  );
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({error: 'Method not allowed'});
-
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({error: 'Unauthorized: Nincs token.'});
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } }
-  });
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return res.status(401).json({error: 'Unauthorized: Érvénytelen token.'});
-
-  const {publicId} = req.body;
-  if (!publicId) return res.status(400).json({error: 'Missing publicId'});
-
-  try {
-    const result = await cloudinary.uploader.destroy(publicId, {
-      invalidate: true,
-      resource_type: 'image'
-    });
-
-    if (result.result !== 'ok' && result.result !== 'not found') {
-      throw new Error(`Cloudinary delete failed: ${result.result}`);
+  const used = new Set<string>();
+  results.forEach(({data, error}, index) => {
+    // Fail closed: if a reference cannot be verified, nothing gets deleted.
+    if (error) throw error;
+    const column = REFERENCES[index].column;
+    for (const row of (data ?? []) as Record<string, string | null>[]) {
+      const value = row[column];
+      if (value) used.add(value);
     }
-
-    return res.status(200).json({success: true, result});
-  } catch (error: any) {
-    console.error('Delete error:', error);
-    return res.status(500).json({error: error.message});
-  }
+  });
+  return used;
 }

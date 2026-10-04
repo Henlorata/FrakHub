@@ -3,10 +3,55 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* --- FŐ TÉMA KONFIGURÁCIÓ --- */
+/* --- DESIGN TOKENS ---
+   Dark navy surfaces with the department's gold as the primary colour. The shadcn/radix
+   primitives in src/components/ui read these tokens (bg-primary, border-border, ...). */
+@theme inline {
+    --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+}
+
 :root {
-    --radius: 0.5rem;
-    --background: #02040a;
+    --radius: 0.625rem;
+    --background: #060a13;
+    --foreground: #e2e8f0;
+    --card: #0b1220;
+    --card-foreground: #e2e8f0;
+    --popover: #0d1526;
+    --popover-foreground: #e2e8f0;
+    --primary: #eab308;
+    --primary-foreground: #0b0f19;
+    --secondary: #141d31;
+    --secondary-foreground: #e2e8f0;
+    --muted: #111a2c;
+    --muted-foreground: #8a97ab;
+    --accent: #16203a;
+    --accent-foreground: #f8fafc;
+    --destructive: #ef4444;
+    --border: rgb(148 163 184 / 0.13);
+    --input: rgb(148 163 184 / 0.2);
+    --ring: rgb(234 179 8 / 0.5);
 
     /* SFSD Színek */
     --sfsd-gold: #eab308;
@@ -14,6 +59,103 @@
 
     --status-color: #eab308;
     --status-glow: rgba(234, 179, 8, 0.5);
+
+    /* Generated grain and smoke: local CSS, no third-party image requests. */
+    --texture-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --texture-smoke: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.008' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .7 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E");
+}
+
+@layer base {
+    * {
+        border-color: var(--border);
+    }
+
+    html {
+        color-scheme: dark;
+    }
+
+    body {
+        background-color: var(--background);
+        color: var(--foreground);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-feature-settings: "cv11", "ss03";
+    }
+}
+
+/* --- APP SHELL ---
+   Header height and page padding of AppLayout, so full-height pages can size themselves. */
+:root {
+    --shell-header: 3.5rem;
+    --shell-pad: 1rem;
+    --mcb-header: 4.5rem;
+}
+
+@media (width >= 48rem) {
+    :root {
+        --shell-pad: 1.5rem;
+    }
+}
+
+@media (width >= 64rem) {
+    :root {
+        --shell-pad: 2rem;
+    }
+}
+
+/* Height of the content area below the header (minus page padding). */
+@utility h-shell {
+    height: calc(100dvh - var(--shell-header) - 2 * var(--shell-pad));
+}
+
+/* Same inside the MCB area, below its section header. */
+@utility h-shell-mcb {
+    height: calc(100dvh - var(--shell-header) - 2 * var(--shell-pad) - var(--mcb-header));
+}
+
+/* --- SURFACES --- */
+@utility panel {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + 4px);
+}
+
+/* --- TEXTURES (local, CSS only) --- */
+@utility tex-noise {
+    background-image: var(--texture-noise);
+    background-size: 180px 180px;
+}
+
+@utility tex-smoke {
+    background-image: var(--texture-smoke);
+    background-size: 600px 600px;
+}
+
+@utility tex-carbon {
+    background-image: linear-gradient(27deg, rgb(255 255 255 / 0.05) 5px, transparent 5px),
+    linear-gradient(207deg, rgb(255 255 255 / 0.05) 5px, transparent 5px),
+    linear-gradient(27deg, rgb(0 0 0 / 0.25) 5px, transparent 5px),
+    linear-gradient(207deg, rgb(0 0 0 / 0.25) 5px, transparent 5px);
+    background-size: 20px 20px;
+    background-position: 0 5px, 10px 0, 0 10px, 10px 5px;
+}
+
+@utility tex-stripes {
+    background-image: repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.5) 0 2px, transparent 2px 12px);
+}
+
+@utility tex-diamonds {
+    background-image: linear-gradient(45deg, rgb(255 255 255 / 0.35) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.35) 75%),
+    linear-gradient(45deg, rgb(255 255 255 / 0.35) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.35) 75%);
+    background-size: 24px 24px;
+    background-position: 0 0, 12px 12px;
+}
+
+@utility tex-grid {
+    background-image: linear-gradient(rgb(255 255 255 / 0.6) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.6) 1px, transparent 1px);
+    background-size: 32px 32px;
 }
 
 /* --- UI ELEMEK --- */
@@ -342,7 +484,7 @@
     width: 200%;
     height: 200%;
 
-    background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
+    background-image: var(--texture-noise);
     mix-blend-mode: screen;
     pointer-events: none;
 }
@@ -368,7 +510,7 @@
 .rain-mist {
     position: absolute;
     inset: 0;
-    background-image: url("https://www.transparenttextures.com/patterns/noise.png");
+    background-image: var(--texture-noise);
     opacity: 0.05;
     mix-blend-mode: overlay;
     animation: rain-fall-natural 0.5s steps(3) infinite;
@@ -389,7 +531,7 @@
     position: absolute;
     inset: 0;
     background-color: #080a0f;
-    background-image: url("https://www.transparenttextures.com/patterns/asfalt-dark.png");
+    background-image: var(--texture-noise);
     background-size: 500px 500px;
     z-index: 0;
 }
@@ -443,7 +585,7 @@
     inset: -50%;
     width: 200%;
     height: 200%;
-    background-image: url("https://www.transparenttextures.com/patterns/smoke.png");
+    background-image: var(--texture-smoke);
     background-size: 800px 800px;
     animation: fog-flow 50s linear infinite;
     opacity: 0.25;
@@ -456,7 +598,7 @@
     inset: -100%;
     width: 300%;
     height: 300%;
-    background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
+    background-image: var(--texture-noise);
     background-attachment: fixed;
     background-size: 450px 450px;
     animation: rain-fall 0.7s linear infinite;
@@ -494,7 +636,7 @@
 }
 
 .night-vision-grain {
-    background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
+    background-image: var(--texture-noise);
     opacity: 0.1;
 }
 

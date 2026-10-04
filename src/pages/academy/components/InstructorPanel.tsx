@@ -1,4 +1,4 @@
-import {useState, useEffect} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -29,78 +29,68 @@ export function InstructorPanel({activeCycle: initialActiveCycle, onRefresh}: In
   const [isNewCycleOpen, setIsNewCycleOpen] = useState(false);
   const [newDate, setNewDate] = useState("");
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
-  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<{id: string, full_name: string, faction_rank: string}[]>([]);
   const [selectedUser, setSelectedUser] = useState("");
 
   const [selectedDay, setSelectedDay] = useState(1);
 
   // Ciklusok betöltése
   useEffect(() => {
-    const fetchCycles = async () => {
-      const {data} = await supabase.from('academy_cycles')
-        .select('*')
-        .order('start_date', {ascending: false});
-      if (data) {
-        setAllCycles(data);
-        if (!selectedCycleId && initialActiveCycle) setSelectedCycleId(initialActiveCycle.id);
-        else if (!selectedCycleId && data.length > 0) setSelectedCycleId(data[0].id);
-      }
+    let active = true;
+    supabase.from('academy_cycles')
+      .select('*')
+      .order('start_date', {ascending: false})
+      .then(({data}) => {
+        if (!active || !data) return;
+        const cycles = data as AcademyCycle[];
+        setAllCycles(cycles);
+        setSelectedCycleId(current => current ?? initialActiveCycle?.id ?? cycles[0]?.id ?? null);
+      });
+    return () => {
+      active = false;
     };
-    fetchCycles();
-  }, [initialActiveCycle]);
+  }, [supabase, initialActiveCycle]);
 
-  // Adatok frissítése, ha a választott ciklus vagy nap változik
-  useEffect(() => {
-    if (selectedCycleId) {
-      fetchStudentsAndLogs();
-    }
-  }, [selectedCycleId, selectedDay]);
-
-  const currentViewCycle = allCycles.find(c => c.id === selectedCycleId) || initialActiveCycle;
-  const isViewingActive = currentViewCycle?.status === 'active';
-
-  const fetchStudentsAndLogs = async () => {
+  const fetchStudentsAndLogs = useCallback(async () => {
     if (!selectedCycleId) return;
 
-    // 1. Tanulók lekérése
-    const {data: relData, error: relError} = await supabase
-      .from('academy_students')
-      .select('*')
-      .eq('cycle_id', selectedCycleId);
-
+    // Students and the day's log are independent: fetched in parallel.
+    const [{data: relData, error: relError}, {data: logData}] = await Promise.all([
+      supabase.from('academy_students').select('*').eq('cycle_id', selectedCycleId),
+      supabase.from('academy_logs').select('*').eq('cycle_id', selectedCycleId).eq('day_number', selectedDay),
+    ]);
     if (relError || !relData) return;
 
-    // 2. Profilok lekérése
-    const userIds = relData.map(r => r.user_id);
+    const relations = relData as AcademyStudent[];
+    const userIds = relations.map(r => r.user_id);
     if (userIds.length > 0) {
       const {data: profiles} = await supabase
         .from('profiles')
         .select('id, full_name, badge_number, faction_rank')
         .in('id', userIds);
 
-      const combinedData = relData.map(rel => {
-        const profile = profiles?.find(p => p.id === rel.user_id);
-        return {...rel, profile};
-      });
-      setStudents(combinedData);
+      setStudents(relations.map(rel => ({
+        ...rel,
+        profile: (profiles as (AcademyStudent['profile'] & {id: string})[] | null)?.find(p => p.id === rel.user_id),
+      })));
     } else {
       setStudents([]);
     }
 
-    // 3. Naplók lekérése
-    const {data: logData} = await supabase.from('academy_logs')
-      .select('*')
-      .eq('cycle_id', selectedCycleId)
-      .eq('day_number', selectedDay);
-
-    const updates: any = {};
-    if (logData) {
-      logData.forEach((log: any) => {
-        updates[log.student_id] = {present: log.is_present, note: log.note || ""};
-      });
-    }
+    const updates: Record<string, {present: boolean, note: string}> = {};
+    (logData ?? []).forEach((log: {student_id: string, is_present: boolean, note: string | null}) => {
+      updates[log.student_id] = {present: log.is_present, note: log.note || ""};
+    });
     setLogUpdates(updates);
-  };
+  }, [supabase, selectedCycleId, selectedDay]);
+
+  // Adatok frissítése, ha a választott ciklus vagy nap változik
+  useEffect(() => {
+    void fetchStudentsAndLogs();
+  }, [fetchStudentsAndLogs]);
+
+  const currentViewCycle = allCycles.find(c => c.id === selectedCycleId) || initialActiveCycle;
+  const isViewingActive = currentViewCycle?.status === 'active';
 
   const handleStartCycle = async () => {
     if (!newDate) return;

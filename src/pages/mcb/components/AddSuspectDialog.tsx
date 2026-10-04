@@ -10,6 +10,7 @@ import {toast} from "sonner";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import type {Suspect} from "@/types/supabase";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 
 interface AddSuspectDialogProps {
   open: boolean;
@@ -35,19 +36,28 @@ export function AddSuspectDialog({
   const [notes, setNotes] = React.useState("");
 
   React.useEffect(() => {
-    const searchSuspects = async () => {
-      if (search.length < 2) {
-        setResults([]);
-        return;
-      }
+    const term = search.trim();
+    if (term.length < 2) {
+      setResults([]);
+      return;
+    }
+    let active = true;
+    const debounce = setTimeout(async () => {
       setLoading(true);
-      const {data} = await supabase.from('suspects').select('*').ilike('full_name', `%${search}%`).limit(5);
-      if (data) setResults(data.filter(s => !existingSuspectIds.includes(s.id)));
-      setLoading(false);
+      const {data} = await supabase.from('suspects').select('*').ilike('full_name', `%${term}%`).limit(10);
+      if (active) {
+        setResults((data ?? []) as Suspect[]);
+        setLoading(false);
+      }
+    }, 400);
+    return () => {
+      active = false;
+      clearTimeout(debounce);
     };
-    const debounce = setTimeout(searchSuspects, 500);
-    return () => clearTimeout(debounce);
-  }, [search, supabase, existingSuspectIds]);
+  }, [search, supabase]);
+
+  // Filtered at render time, so a parent re-render does not trigger a new query.
+  const visibleResults = results.filter(s => !existingSuspectIds.includes(s.id));
 
   const handleAdd = async () => {
     if (!selectedSuspect) return;
@@ -62,7 +72,7 @@ export function AddSuspectDialog({
       toast.success(`${selectedSuspect.full_name} csatolva.`);
       onSuspectAdded();
       handleClose();
-    } catch (error: any) {
+    } catch {
       toast.error("Hiba történt.");
     }
   };
@@ -103,15 +113,15 @@ export function AddSuspectDialog({
                 {loading ?
                   <div className="flex justify-center p-4"><Loader2 className="animate-spin w-5 h-5 text-sky-500"/>
                   </div>
-                  : results.length === 0 ? <p
+                  : visibleResults.length === 0 ? <p
                       className="text-center text-xs text-slate-500 p-4 font-mono">{search.length < 2 ? "ÍRJ BE NEVET..." : "NINCS TALÁLAT"}</p>
-                    : <div className="space-y-1">{results.map(suspect => (
+                    : <div className="space-y-1">{visibleResults.map(suspect => (
                       <button key={suspect.id}
                               className="w-full flex items-center gap-3 p-2 rounded hover:bg-sky-500/10 hover:border-sky-500/30 border border-transparent transition-all text-left group"
                               onClick={() => setSelectedSuspect(suspect)}>
                         <Avatar
                           className="h-8 w-8 border border-slate-700 group-hover:border-sky-500 transition-colors">
-                          <AvatarImage src={suspect.mugshot_url || undefined}/>
+                          <AvatarImage src={getOptimizedAvatarUrl(suspect.mugshot_url, 64) || undefined}/>
                           <AvatarFallback
                             className="bg-slate-900 text-xs">{suspect.full_name.charAt(0)}</AvatarFallback>
                         </Avatar>
@@ -130,7 +140,7 @@ export function AddSuspectDialog({
                 className="flex items-center gap-4 p-4 bg-slate-950/80 rounded border border-sky-500/30 relative overflow-hidden">
                 <div className="absolute inset-0 bg-sky-500/5 animate-pulse pointer-events-none"></div>
                 <Avatar className="h-12 w-12 border-2 border-sky-500/50">
-                  <AvatarImage src={selectedSuspect.mugshot_url || undefined}/>
+                  <AvatarImage src={getOptimizedAvatarUrl(selectedSuspect.mugshot_url, 96) || undefined}/>
                   <AvatarFallback
                     className="bg-slate-900 font-bold">{selectedSuspect.full_name.charAt(0)}</AvatarFallback>
                 </Avatar>

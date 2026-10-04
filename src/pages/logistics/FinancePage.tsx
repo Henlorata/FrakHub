@@ -12,25 +12,17 @@ import {
 } from "lucide-react";
 import type {BudgetRequest} from "@/types/supabase";
 import {NewBudgetRequestDialog} from "./components/NewBudgetRequestDialog";
+import {PageHeader} from "@/components/layout/PageHeader";
+import {useDialogParam} from "@/lib/use-dialog-param";
 import {ImageViewerDialog} from "@/pages/mcb/components/ImageViewerDialog";
 import {Tabs} from "@/components/ui/tabs";
 import {cn} from "@/lib/utils";
-
-// --- LEDGER BACKGROUND ---
-const LedgerGrid = () => (
-  <div className="absolute inset-0 pointer-events-none opacity-[0.05]"
-       style={{
-         backgroundImage: 'linear-gradient(to right, #22c55e 1px, transparent 1px), linear-gradient(to bottom, #22c55e 1px, transparent 1px)',
-         backgroundSize: '40px 40px'
-       }}
-  />
-);
 
 export function FinancePage() {
   const {supabase, profile, user} = useAuth();
   const [requests, setRequests] = React.useState<BudgetRequest[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [isNewOpen, setIsNewOpen] = React.useState(false);
+  const [isNewOpen, setIsNewOpen] = useDialogParam('new');
   const [filter, setFilter] = React.useState("all");
 
   // State
@@ -81,7 +73,7 @@ export function FinancePage() {
     if (!selectedRequest || !actionType || !user) return;
     setIsProcessing(true);
     try {
-      const updates: any = {
+      const updates: Record<string, string> = {
         status: actionType === 'approve' ? 'approved' : 'rejected',
         processed_by: user.id,
         updated_at: new Date().toISOString()
@@ -89,16 +81,10 @@ export function FinancePage() {
       if (actionType === 'reject' && !adminComment) throw new Error("Indoklás kötelező!");
       if (adminComment) updates.admin_comment = adminComment;
 
-      const {error} = await (supabase.from('budget_requests') as any).update(updates).eq('id', selectedRequest.id);
+      const {error} = await supabase.from('budget_requests').update(updates).eq('id', selectedRequest.id);
       if (error) throw error;
 
-      await supabase.from('notifications').insert({
-        user_id: selectedRequest.user_id,
-        title: 'Pénzügyi Értesítés',
-        message: `A kérelmed státusza frissült: ${actionType === 'approve' ? 'JÓVÁHAGYVA' : 'ELUTASÍTVA'}.`,
-        type: actionType === 'approve' ? 'success' : 'alert',
-        link: '/finance'
-      });
+      // The requester is notified by a database trigger.
 
       toast.success("Tranzakció feldolgozva.");
       void fetchRequests();
@@ -125,14 +111,14 @@ export function FinancePage() {
     setAdminComment("");
   };
 
-  // Bizonyíték path helper
-  const getProofPaths = (req: any): string[] => {
+  // Bizonyíték path helper: array, JSON-encoded array or (legacy) a single path.
+  const getProofPaths = (req: BudgetRequest): string[] => {
     const raw = req.proof_image_path;
     if (!raw) return [];
     if (Array.isArray(raw)) return raw;
     try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(String);
     } catch {
       return [String(raw)];
     }
@@ -146,27 +132,14 @@ export function FinancePage() {
     <div
       className="w-full h-full flex flex-col space-y-6 animate-in fade-in duration-500">
 
-      {/* --- FINANCE HEADER --- */}
-      <div
-        className="flex justify-between items-center shrink-0 bg-[#050a14] border-b-2 border-green-500/20 p-6 relative overflow-hidden shadow-lg">
-        <LedgerGrid/>
-        <div className="relative z-10 flex items-center gap-4">
-          <div
-            className="p-3 bg-green-500/10 border border-green-500/30 text-green-500 rounded-md shadow-[0_0_15px_rgba(34,197,94,0.15)]">
-            <Wallet className="w-8 h-8"/>
-          </div>
-          <div>
-            <h1 className="text-3xl font-black text-white tracking-tight uppercase font-mono">PÉNZÜGYI NAPLÓ</h1>
-            <p className="text-xs text-green-500/60 font-bold uppercase tracking-widest">Treasury Department Ledger</p>
-          </div>
-        </div>
-        <div className="relative z-10 flex gap-3">
-          <Button onClick={() => setIsNewOpen(true)}
-                  className="bg-green-600 hover:bg-green-500 text-white font-bold uppercase tracking-wider h-10 px-6 shadow-[0_0_20px_rgba(34,197,94,0.2)]">
-            <Plus className="w-4 h-4 mr-2"/> ÚJ TÉTEL
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={Wallet}
+        tone="emerald"
+        eyebrow="Költségtérítések"
+        title="Pénzügy"
+        description="Szolgálati kiadások elszámolása bizonylattal."
+        actions={<Button onClick={() => setIsNewOpen(true)} className="bg-emerald-500 text-black hover:bg-emerald-400"><Plus/> Új kérelem</Button>}
+      />
 
       {/* --- STATS ROW --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
@@ -217,13 +190,13 @@ export function FinancePage() {
       <Tabs value={filter} onValueChange={setFilter} className="flex-1 flex flex-col min-h-0">
         <div className="flex items-center justify-between mb-2 px-1">
           <div className="text-xs font-mono text-slate-500 uppercase tracking-widest flex items-center gap-2">
-            <History className="w-4 h-4"/> LIVE TRANSACTION FEED
+            <History className="w-4 h-4"/> Kérelmek
           </div>
           <div className="flex gap-2">
             {['all', 'pending', 'approved', 'rejected'].map(f => (
               <button key={f} onClick={() => setFilter(f)}
                       className={cn("px-3 py-1 rounded-sm text-[10px] font-bold uppercase tracking-wider border transition-all", filter === f ? "bg-slate-800 text-white border-slate-600" : "text-slate-500 border-transparent hover:bg-slate-900")}>
-                {f === 'all' ? 'ÖSSZES' : f}
+                {f === 'all' ? 'Összes' : f === 'pending' ? 'Függő' : f === 'approved' ? 'Jóváhagyott' : 'Elutasított'}
               </button>
             ))}
           </div>
@@ -234,19 +207,19 @@ export function FinancePage() {
           {/* Table Header */}
           <div
             className="bg-slate-950/80 border-b border-slate-800 grid grid-cols-12 gap-2 px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest sticky top-0 z-10 backdrop-blur-md">
-            <div className="col-span-1">STATUS</div>
-            <div className="col-span-2">BENEFICIARY</div>
-            <div className="col-span-2 text-right pr-4">AMOUNT</div>
-            <div className="col-span-4">DESCRIPTION</div>
-            <div className="col-span-2">EVIDENCE</div>
-            <div className="col-span-1 text-right">DATE</div>
+            <div className="col-span-1">Állapot</div>
+            <div className="col-span-2">Kérelmező</div>
+            <div className="col-span-2 text-right pr-4">Összeg</div>
+            <div className="col-span-4">Indoklás</div>
+            <div className="col-span-2">Bizonylat</div>
+            <div className="col-span-1 text-right">Dátum</div>
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {filteredRequests.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 opacity-30 text-slate-500">
                 <CreditCard className="w-16 h-16 mb-4"/>
-                <p className="font-mono text-sm uppercase tracking-widest">NO TRANSACTIONS FOUND</p>
+                <p className="text-sm">Nincs megjeleníthető kérelem.</p>
               </div>
             ) : filteredRequests.map((req, i) => {
               const paths = getProofPaths(req);

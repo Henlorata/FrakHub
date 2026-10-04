@@ -21,12 +21,14 @@ import {
   Database
 } from "lucide-react";
 import {toast} from "sonner";
-import type {Suspect, SuspectVehicle, SuspectProperty, SuspectAssociate} from "@/types/supabase";
+import type {CaseSuspect, Suspect, SuspectVehicle, SuspectProperty, SuspectAssociate} from "@/types/supabase";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {Badge} from "@/components/ui/badge";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {useNavigate} from "react-router-dom";
-import {cn} from "@/lib/utils";
+import {useNavigate} from "react-router";
+import {cn, errorMessage} from "@/lib/utils";
+import {useSuspects} from "@/context/SuspectCacheContext";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 
 interface SuspectDetailDialogProps {
   suspect: Suspect | null;
@@ -47,14 +49,36 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
   const [vehicles, setVehicles] = React.useState<SuspectVehicle[]>([]);
   const [properties, setProperties] = React.useState<SuspectProperty[]>([]);
   const [associates, setAssociates] = React.useState<SuspectAssociate[]>([]);
-  const [criminalRecord, setCriminalRecord] = React.useState<any[]>([]);
-  const [allSuspects, setAllSuspects] = React.useState<Suspect[]>([]);
+  const [criminalRecord, setCriminalRecord] = React.useState<CaseSuspect[]>([]);
+  // The associate picker reuses the cached suspect list instead of another query.
+  const {suspects: cachedSuspects, deleteSuspectFromCache} = useSuspects();
+  const allSuspects = React.useMemo(
+    () => cachedSuspects.filter(s => s.id !== suspect?.id),
+    [cachedSuspects, suspect?.id],
+  );
 
   const [newVehicle, setNewVehicle] = React.useState({plate: "", type: "", color: "", notes: ""});
   const [newProperty, setNewProperty] = React.useState({address: "", type: "house", notes: ""});
   const [newAssociate, setNewAssociate] = React.useState({targetId: "", relation: "", notes: ""});
 
   const canEdit = profile?.system_role === 'admin' || profile?.system_role === 'supervisor' || profile?.division === 'MCB';
+
+  const suspectId = suspect?.id;
+
+  const fetchRelatedData = React.useCallback(async () => {
+    if (!suspectId) return;
+    // Independent lists: fetched in parallel.
+    const [vehicleResult, propertyResult, associateResult, recordResult] = await Promise.all([
+      supabase.from('suspect_vehicles').select('*').eq('suspect_id', suspectId),
+      supabase.from('suspect_properties').select('*').eq('suspect_id', suspectId),
+      supabase.from('suspect_associates').select('*, associate:associate_id(full_name, alias, mugshot_url)').eq('suspect_id', suspectId),
+      supabase.from('case_suspects').select('*, case:case_id(id, case_number, title, status, created_at)').eq('suspect_id', suspectId).order('added_at', {ascending: false}),
+    ]);
+    setVehicles((vehicleResult.data ?? []) as SuspectVehicle[]);
+    setProperties((propertyResult.data ?? []) as SuspectProperty[]);
+    setAssociates((associateResult.data ?? []) as unknown as SuspectAssociate[]);
+    setCriminalRecord((recordResult.data ?? []) as unknown as CaseSuspect[]);
+  }, [supabase, suspectId]);
 
   React.useEffect(() => {
     if (suspect && open) {
@@ -68,23 +92,9 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
         mugshot_url: suspect.mugshot_url
       });
       setIsEditing(false);
-      fetchRelatedData();
+      void fetchRelatedData();
     }
-  }, [suspect, open]);
-
-  const fetchRelatedData = async () => {
-    if (!suspect) return;
-    const {data: vData} = await supabase.from('suspect_vehicles').select('*').eq('suspect_id', suspect.id);
-    if (vData) setVehicles(vData);
-    const {data: pData} = await supabase.from('suspect_properties').select('*').eq('suspect_id', suspect.id);
-    if (pData) setProperties(pData);
-    const {data: aData} = await supabase.from('suspect_associates').select('*, associate:associate_id(full_name, alias, mugshot_url)').eq('suspect_id', suspect.id);
-    if (aData) setAssociates(aData);
-    const {data: cData} = await supabase.from('case_suspects').select('*, case:case_id(id, case_number, title, status, created_at)').eq('suspect_id', suspect.id).order('added_at', {ascending: false});
-    if (cData) setCriminalRecord(cData);
-    const {data: sData} = await supabase.from('suspects').select('id, full_name').neq('id', suspect.id);
-    if (sData) setAllSuspects(sData);
-  }
+  }, [suspect, open, fetchRelatedData]);
 
   const handleSave = async () => {
     if (!suspect) return;
@@ -98,7 +108,7 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
       toast.success("Profil frissítve.");
       onUpdate();
       setIsEditing(false);
-    } catch (error: any) {
+    } catch {
       toast.error("Hiba a mentéskor.");
     } finally {
       setLoading(false);
@@ -109,75 +119,74 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
     if (!suspect || !confirm("Végleges törlés?")) return;
     setLoading(true);
     try {
-      await supabase.from('suspects').delete().eq('id', suspect.id);
-      toast.success("Adatlap törölve.");
+      // Same server-side routine as the suspect list (handles linked records safely).
+      const {data, error} = await supabase.rpc('delete_suspect_safely', {_suspect_id: suspect.id});
+      if (error) throw error;
+      const result = data as {success?: boolean; message?: string} | null;
+      if (!result?.success) {
+        toast.error(result?.message ?? "Az adatlap nem törölhető.");
+        return;
+      }
+      toast.success(result.message ?? "Adatlap törölve.");
+      deleteSuspectFromCache(suspect.id);
       onUpdate();
       onOpenChange(false);
-    } catch {
-      toast.error("Hiba történt.");
+    } catch (error) {
+      toast.error("Hiba: " + errorMessage(error));
     } finally {
       setLoading(false);
     }
   };
 
+  /** Runs a sub-record change and reports its result; refreshes the related lists on success. */
+  const mutate = async (operation: PromiseLike<{error: unknown}>, successMessage?: string) => {
+    const {error} = await operation;
+    if (error) {
+      toast.error("Hiba: " + errorMessage(error));
+      return false;
+    }
+    if (successMessage) toast.success(successMessage);
+    void fetchRelatedData();
+    return true;
+  };
+
   // Sub-items handlers
   const addVehicle = async () => {
     if (!newVehicle.plate) return toast.error("Rendszám hiányzik!");
-    const {error} = await supabase.from('suspect_vehicles').insert({
+    const saved = await mutate(supabase.from('suspect_vehicles').insert({
       suspect_id: suspect!.id,
       plate_number: newVehicle.plate,
       vehicle_type: newVehicle.type,
       color: newVehicle.color,
       notes: newVehicle.notes
-    });
-    if (!error) {
-      toast.success("Jármű rögzítve.");
-      setNewVehicle({plate: "", type: "", color: "", notes: ""});
-      fetchRelatedData();
-    }
+    }), "Jármű rögzítve.");
+    if (saved) setNewVehicle({plate: "", type: "", color: "", notes: ""});
   };
-  const deleteVehicle = async (id: string) => {
-    await supabase.from('suspect_vehicles').delete().eq('id', id);
-    fetchRelatedData();
-  };
+  const deleteVehicle = (id: string) => mutate(supabase.from('suspect_vehicles').delete().eq('id', id));
 
   const addProperty = async () => {
     if (!newProperty.address) return toast.error("Cím hiányzik!");
-    const {error} = await supabase.from('suspect_properties').insert({
+    const saved = await mutate(supabase.from('suspect_properties').insert({
       suspect_id: suspect!.id,
       address: newProperty.address,
-      property_type: newProperty.type as any,
+      property_type: newProperty.type,
       notes: newProperty.notes
-    });
-    if (!error) {
-      toast.success("Ingatlan rögzítve.");
-      setNewProperty({address: "", type: "house", notes: ""});
-      fetchRelatedData();
-    }
+    }), "Ingatlan rögzítve.");
+    if (saved) setNewProperty({address: "", type: "house", notes: ""});
   };
-  const deleteProperty = async (id: string) => {
-    await supabase.from('suspect_properties').delete().eq('id', id);
-    fetchRelatedData();
-  };
+  const deleteProperty = (id: string) => mutate(supabase.from('suspect_properties').delete().eq('id', id));
 
   const addAssociate = async () => {
     if (!newAssociate.targetId) return toast.error("Személy hiányzik!");
-    const {error} = await supabase.from('suspect_associates').insert({
+    const saved = await mutate(supabase.from('suspect_associates').insert({
       suspect_id: suspect!.id,
       associate_id: newAssociate.targetId,
       relationship: newAssociate.relation,
       notes: newAssociate.notes
-    });
-    if (!error) {
-      toast.success("Kapcsolat rögzítve.");
-      setNewAssociate({targetId: "", relation: "", notes: ""});
-      fetchRelatedData();
-    }
+    }), "Kapcsolat rögzítve.");
+    if (saved) setNewAssociate({targetId: "", relation: "", notes: ""});
   };
-  const deleteAssociate = async (id: string) => {
-    await supabase.from('suspect_associates').delete().eq('id', id);
-    fetchRelatedData();
-  };
+  const deleteAssociate = (id: string) => mutate(supabase.from('suspect_associates').delete().eq('id', id));
 
   if (!suspect) return null;
 
@@ -209,7 +218,7 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
                   {formData.status === 'wanted' ? 'KÖRÖZÖTT' : formData.status === 'jailed' ? 'BÖRTÖNBEN' : formData.status === 'deceased' ? 'ELHUNYT' : 'SZABADLÁBON'}
                 </Badge>
                 <span
-                  className="text-[10px] text-slate-500 font-mono uppercase">Last Update: {new Date().toLocaleDateString()}</span>
+                  className="text-[10px] text-slate-500 font-mono uppercase">Last Update: {new Date(suspect.updated_at || suspect.created_at).toLocaleDateString('hu-HU')}</span>
               </div>
             </div>
           </div>
@@ -234,7 +243,7 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
                 <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-white opacity-50"></div>
 
                 <Avatar className="w-full h-full rounded-lg">
-                  <AvatarImage src={formData.mugshot_url} className="object-cover"/>
+                  <AvatarImage src={getOptimizedAvatarUrl(formData.mugshot_url, 256) || undefined} className="object-cover"/>
                   <AvatarFallback className="bg-slate-900 text-slate-600 rounded-lg"><User
                     className="w-12 h-12"/></AvatarFallback>
                 </Avatar>
@@ -344,7 +353,7 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
                             <div className="flex gap-2 text-[10px] uppercase font-bold text-slate-500 mt-0.5">
                               <span className="text-yellow-600">{rec.involvement_type}</span>
                               <span>•</span>
-                              <span>{new Date(rec.added_at).toLocaleDateString()}</span>
+                              <span>{rec.added_at ? new Date(rec.added_at).toLocaleDateString('hu-HU') : '-'}</span>
                             </div>
                           </div>
                         </div>
@@ -377,8 +386,8 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
                     <div key={assoc.id}
                          className="flex items-center gap-3 p-3 bg-slate-950/30 border border-slate-800 rounded">
                       <Avatar className="h-10 w-10 border border-slate-700"><AvatarImage
-                        src={assoc.associate?.mugshot_url}/><AvatarFallback
-                        className="bg-slate-900">{assoc.associate?.full_name.charAt(0)}</AvatarFallback></Avatar>
+                        src={getOptimizedAvatarUrl(assoc.associate?.mugshot_url, 80) || undefined}/><AvatarFallback
+                        className="bg-slate-900">{assoc.associate?.full_name?.charAt(0)}</AvatarFallback></Avatar>
                       <div className="flex-1">
                         <p className="font-bold text-sm text-slate-200">{assoc.associate?.full_name}</p>
                         <p

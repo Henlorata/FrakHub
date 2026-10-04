@@ -7,54 +7,64 @@ import {Badge} from "@/components/ui/badge";
 import {FileWarning, Plus, Check, X, MapPin, User, Gavel, Clock} from "lucide-react";
 import {toast} from "sonner";
 import {canApproveWarrant, cn} from "@/lib/utils";
-import type {CaseWarrant} from "@/types/supabase";
+import type {CaseSuspect, CaseWarrant} from "@/types/supabase";
+import {uniqueChannelName} from "@/lib/realtime";
+
+const WARRANT_COLUMNS = '*, requester:requested_by(full_name, badge_number), approver:approved_by(full_name, badge_number), suspect:suspect_id(full_name), property:property_id(address)';
 import {WarrantDialog} from "./WarrantDialog";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
 
 export function CaseWarrants({caseId, suspects, readOnly = false}: {
   caseId: string,
-  suspects: any[],
+  suspects: CaseSuspect[],
   readOnly?: boolean
 }) {
   const {supabase, profile, user} = useAuth();
   const [warrants, setWarrants] = React.useState<CaseWarrant[]>([]);
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
 
-  const fetchWarrants = async () => {
+  const fetchWarrants = React.useCallback(async () => {
     const {data} = await supabase.from('case_warrants')
-      .select(`*, requester:requested_by(full_name, badge_number), approver:approved_by(full_name, badge_number), suspect:suspect_id(full_name), property:property_id(address)`)
+      .select(WARRANT_COLUMNS)
       .eq('case_id', caseId).order('created_at', {ascending: false});
-    if (data) setWarrants(data as any);
-  };
+    if (data) setWarrants(data as unknown as CaseWarrant[]);
+  }, [caseId, supabase]);
 
   React.useEffect(() => {
-    fetchWarrants();
-    const channel = supabase.channel(`case_warrants_${caseId}`).on('postgres_changes', {
+    void fetchWarrants();
+    // Realtime keeps the list current (also after our own changes), debounced so a
+    // burst of updates results in a single refetch.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const channel = supabase.channel(uniqueChannelName(`case_warrants:${caseId}`)).on('postgres_changes', {
       event: '*',
       schema: 'public',
       table: 'case_warrants',
       filter: `case_id=eq.${caseId}`
-    }, () => fetchWarrants()).subscribe();
+    }, () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => void fetchWarrants(), 300);
+    }).subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      clearTimeout(timer);
+      void supabase.removeChannel(channel);
     }
-  }, [caseId, supabase]);
+  }, [caseId, supabase, fetchWarrants]);
 
   const handleWarrantAction = async (id: string, status: 'approved' | 'rejected' | 'executed') => {
     if (readOnly) return;
 
-    const {error} = await supabase.from('case_warrants').update({
-      status,
-      approved_by: user?.id,
-      updated_at: new Date().toISOString()
-    }).eq('id', id);
+    // Executing a warrant must not overwrite who approved it.
+    const changes: Record<string, string | undefined> = {status, updated_at: new Date().toISOString()};
+    if (status !== 'executed') changes.approved_by = user?.id;
+
+    const {error} = await supabase.from('case_warrants').update(changes).eq('id', id);
     if (error) {
       toast.error("Hiba történt.");
       return;
     }
     toast.success("Státusz frissítve.");
-    fetchWarrants();
+    void fetchWarrants();
   };
 
   const getTargetName = (w: CaseWarrant) => w.suspect ? w.suspect.full_name : w.property ? w.property.address : w.target_name || "Ismeretlen";

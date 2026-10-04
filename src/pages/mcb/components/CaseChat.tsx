@@ -9,57 +9,67 @@ import {Send, MessageSquare, Lock} from "lucide-react";
 import {formatDistanceToNow} from "date-fns";
 import {hu} from "date-fns/locale";
 import type {CaseNote} from "@/types/supabase";
+import {uniqueChannelName} from "@/lib/realtime";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
+import {toast} from "sonner";
+
+const NOTE_COLUMNS = '*, profile:user_id(full_name, avatar_url, faction_rank)';
+/** Only the most recent messages are loaded; very old chatter is rarely needed. */
+const NOTE_LIMIT = 200;
 
 export function CaseChat({caseId, readOnly = false}: { caseId: string, readOnly?: boolean }) {
   const {supabase, user, profile} = useAuth();
   const [notes, setNotes] = React.useState<CaseNote[]>([]);
   const [message, setMessage] = React.useState("");
+  const userId = user?.id;
+  // Sentinel at the end of the list: scrolling it into view scrolls this chat's own
+  // viewport (the old global query scrolled the first scroll area on the page).
+  const bottomRef = React.useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      const scrollViewport = document.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollViewport) scrollViewport.scrollTop = scrollViewport.scrollHeight;
-    }, 100);
-  }
+  const scrollToBottom = React.useCallback(() => {
+    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({block: "end"}));
+  }, []);
 
   React.useEffect(() => {
-    const fetchNotes = async () => {
-      const {data} = await supabase
-        .from('case_notes')
-        .select('*, profile:user_id(full_name, avatar_url, faction_rank)')
-        .eq('case_id', caseId)
-        .order('created_at', {ascending: true});
-      if (data) {
-        setNotes(data as any);
+    let active = true;
+    supabase
+      .from('case_notes')
+      .select(NOTE_COLUMNS)
+      .eq('case_id', caseId)
+      .order('created_at', {ascending: false})
+      .limit(NOTE_LIMIT)
+      .then(({data}) => {
+        if (!active || !data) return;
+        setNotes((data as unknown as CaseNote[]).reverse());
         scrollToBottom();
-      }
-    };
-    fetchNotes();
+      });
 
-    const channel = supabase.channel(`case_chat_${caseId}`)
+    const channel = supabase.channel(uniqueChannelName(`case_chat:${caseId}`))
       .on('postgres_changes', {event: 'INSERT', schema: 'public', table: 'case_notes', filter: `case_id=eq.${caseId}`},
         async (payload) => {
-          if (payload.new.user_id === user?.id) return;
-          const {data: newNote} = await supabase.from('case_notes').select('*, profile:user_id(full_name, avatar_url, faction_rank)').eq('id', payload.new.id).single();
-          if (newNote) {
-            setNotes(prev => [...prev, newNote as any]);
+          if (payload.new.user_id === userId) return;
+          const {data: newNote} = await supabase.from('case_notes').select(NOTE_COLUMNS).eq('id', payload.new.id).maybeSingle();
+          if (active && newNote) {
+            setNotes(prev => [...prev, newNote as unknown as CaseNote]);
             scrollToBottom();
           }
         }).subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      active = false;
+      void supabase.removeChannel(channel);
     };
-  }, [caseId, supabase, user?.id]);
+  }, [caseId, supabase, userId, scrollToBottom]);
 
   const handleSend = async () => {
     if (!message.trim() || readOnly) return;
     const content = message;
     setMessage("");
 
-    const tempNote: any = {
+    if (!userId) return;
+    const tempNote: CaseNote = {
       id: `temp-${Date.now()}`,
-      case_id: caseId, user_id: user!.id, content: content, created_at: new Date().toISOString(),
+      case_id: caseId, user_id: userId, content: content, created_at: new Date().toISOString(),
       profile: {
         full_name: profile?.full_name || "Én",
         avatar_url: profile?.avatar_url,
@@ -69,7 +79,13 @@ export function CaseChat({caseId, readOnly = false}: { caseId: string, readOnly?
     setNotes(prev => [...prev, tempNote]);
     scrollToBottom();
 
-    await supabase.from('case_notes').insert({case_id: caseId, user_id: user?.id, content: content});
+    const {error} = await supabase.from('case_notes').insert({case_id: caseId, user_id: userId, content: content});
+    if (error) {
+      // Roll back the optimistic message and give the text back for another try.
+      setNotes(prev => prev.filter(note => note.id !== tempNote.id));
+      setMessage(content);
+      toast.error("Az üzenet elküldése nem sikerült.");
+    }
   };
 
   return (
@@ -89,7 +105,7 @@ export function CaseChat({caseId, readOnly = false}: { caseId: string, readOnly?
 
       {/* Messages Area */}
       <div
-        className="flex-1 min-h-0 relative bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-repeat opacity-90">
+        className="flex-1 min-h-0 relative tex-carbon bg-repeat opacity-90">
         <div className="absolute inset-0 bg-slate-950/90"></div>
         <ScrollArea className="h-full w-full relative z-10">
           <div className="p-4 space-y-4">
@@ -102,7 +118,7 @@ export function CaseChat({caseId, readOnly = false}: { caseId: string, readOnly?
               return (
                 <div key={note.id || index} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group/msg`}>
                   <Avatar className="w-8 h-8 border border-slate-700 shrink-0 rounded-sm">
-                    <AvatarImage src={note.profile?.avatar_url}/>
+                    <AvatarImage src={getOptimizedAvatarUrl(note.profile?.avatar_url, 64) || undefined}/>
                     <AvatarFallback
                       className="text-[10px] bg-slate-900 font-mono rounded-sm">{note.profile?.full_name?.charAt(0)}</AvatarFallback>
                   </Avatar>
@@ -135,6 +151,7 @@ export function CaseChat({caseId, readOnly = false}: { caseId: string, readOnly?
                 </div>
               )
             })}
+            <div ref={bottomRef}/>
           </div>
         </ScrollArea>
       </div>
@@ -151,7 +168,7 @@ export function CaseChat({caseId, readOnly = false}: { caseId: string, readOnly?
             <Input
               value={message}
               onChange={e => setMessage(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSend()}
+              onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleSend()}
               placeholder="Üzenet küldése..."
               className="bg-slate-950 border-slate-800 h-9 text-xs font-mono focus-visible:ring-sky-500/30 pl-3"
             />

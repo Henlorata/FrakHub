@@ -1,4 +1,4 @@
-import {useState, useEffect, useMemo} from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
@@ -20,41 +20,21 @@ import {
 } from "@/components/ui/alert-dialog";
 import {toast} from "sonner";
 import type {AcademyCycle, AcademyMaterial} from "@/types/academy";
+import {deleteCloudinaryAssets} from "@/lib/cloudinary";
+import {extractImageUrls} from "@/lib/blocknote-content";
+import {
+  fetchMaterialContent,
+  forgetMaterialContent,
+  MATERIAL_LIST_COLUMNS,
+  setMaterialContent,
+  useMaterialContent
+} from "../useMaterialContent";
 
 interface BasicAcademyViewProps {
   isInstructor: boolean;
 }
 
-// Segéd: Public ID kinyerése URL-ből
-const getPublicIdFromUrl = (url: string) => {
-  try {
-    if (!url.includes('/upload/')) return null;
-    const splitUrl = url.split('/upload/');
-    let path = splitUrl[1];
-    path = path.replace(/^v\d+\//, '');
-    const lastDotIndex = path.lastIndexOf('.');
-    if (lastDotIndex !== -1) path = path.substring(0, lastDotIndex);
-    return path;
-  } catch (e) {
-    return null;
-  }
-};
-
-// Helper a képek kinyerésére
-const extractImageUrls = (content: any): string[] => {
-  if (!Array.isArray(content)) return [];
-  const urls: string[] = [];
-  const traverse = (blocks: any[]) => {
-    blocks.forEach(block => {
-      if (block.type === 'image' && block.props?.url) {
-        urls.push(block.props.url);
-      }
-      if (block.children) traverse(block.children);
-    });
-  };
-  traverse(content);
-  return urls;
-};
+const TABLE = "academy_materials";
 
 export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
   const {supabase, profile} = useAuth();
@@ -84,22 +64,25 @@ export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
     return profile.faction_rank === 'Deputy Sheriff Trainee';
   }, [profile]);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
-    const {data: cycles} = await supabase.from('academy_cycles').select('*').eq('status', 'active').maybeSingle();
-    if (cycles) setActiveCycle(cycles);
-
-    const {data: mats} = await supabase.from('academy_materials').select('*').eq('category', 'basic').order('page_order', {ascending: true});
-    if (mats) setMaterials(mats);
+  // Page list without content; each page's document is loaded when it is opened.
+  const fetchData = useCallback(async () => {
+    const [cycleResult, materialResult] = await Promise.all([
+      supabase.from('academy_cycles').select('*').eq('status', 'active').maybeSingle(),
+      supabase.from(TABLE).select(MATERIAL_LIST_COLUMNS[TABLE]).eq('category', 'basic').order('page_order', {ascending: true}),
+    ]);
+    setActiveCycle((cycleResult.data ?? null) as AcademyCycle | null);
+    if (materialResult.data) setMaterials(materialResult.data as unknown as AcademyMaterial[]);
     setLoading(false);
-  };
+  }, [supabase]);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
 
   const dayMaterials = materials.filter(m => m.day_number === selectedDay);
   const currentMaterial = dayMaterials[currentPageIndex];
+  const {content: currentContent, loading: contentLoading} = useMaterialContent(TABLE, currentMaterial?.id);
+  const {content: editingContent, loading: editingContentLoading} = useMaterialContent(TABLE, editingMaterial?.id);
 
   // Editor megnyitása új oldalhoz
   const handleOpenNewPageEditor = () => {
@@ -124,17 +107,19 @@ export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
     return today < unlockDate;
   };
 
-  const handleSaveMaterial = async (content: any) => {
+  const handleSaveMaterial = async (content: unknown) => {
     if (editingMaterial) {
       // Meglévő szerkesztése
-      await supabase.from('academy_materials').update({
+      const {error} = await supabase.from(TABLE).update({
         content,
         updated_at: new Date().toISOString()
       }).eq('id', editingMaterial.id);
-    } else {
+      if (error) throw error;
+      setMaterialContent(TABLE, editingMaterial.id, content);
+    } else if (newPageId) {
       // Új oldal létrehozása (a generált ID-t használjuk)
       const nextPageOrder = materials.filter(m => m.day_number === selectedDay).length + 1;
-      await supabase.from('academy_materials').insert({
+      const {error} = await supabase.from(TABLE).insert({
         id: newPageId, // Itt használjuk fel az előre generált ID-t
         title: `Nap ${selectedDay} - Oldal ${nextPageOrder}`,
         day_number: selectedDay,
@@ -142,6 +127,8 @@ export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
         category: 'basic',
         content
       });
+      if (error) throw error;
+      setMaterialContent(TABLE, newPageId, content);
     }
     await fetchData();
     setIsEditorOpen(false);
@@ -155,44 +142,23 @@ export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
     const toastId = toast.loading("Oldal törlése...");
 
     try {
-      // 1. Képek kinyerése és törlése
-      const imagesToDelete = extractImageUrls(currentMaterial.content);
-
-      if (imagesToDelete.length > 0) {
-        for (const url of imagesToDelete) {
-          const publicId = getPublicIdFromUrl(url);
-          if (publicId) {
-            await fetch('/api/delete-image', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({publicId}) // Legacy törlés
-            }).catch(console.error);
-          }
-        }
-      }
+      // 1. The page's images (content may not be loaded yet when deleting).
+      const imagesToDelete = extractImageUrls(await fetchMaterialContent(TABLE, currentMaterial.id));
 
       // 2. Adatbázis törlés
-      await supabase.from('academy_materials').delete().eq('id', currentMaterial.id);
+      const {error: deleteError} = await supabase.from(TABLE).delete().eq('id', currentMaterial.id);
+      if (deleteError) throw deleteError;
+      forgetMaterialContent(TABLE, currentMaterial.id);
+      void deleteCloudinaryAssets(imagesToDelete);
 
-      // 3. Újraszámozás és címfrissítés
-      const {data: remaining} = await supabase
-        .from('academy_materials')
-        .select('id')
-        .eq('category', 'basic')
-        .eq('day_number', selectedDay)
-        .neq('id', currentMaterial.id)
-        .order('page_order', {ascending: true});
-
-      if (remaining && remaining.length > 0) {
-        for (let i = 0; i < remaining.length; i++) {
-          await supabase.from('academy_materials')
-            .update({
-              page_order: i + 1,
-              title: `Nap ${selectedDay} - Oldal ${i + 1}`
-            })
-            .eq('id', remaining[i].id);
-        }
-      }
+      // 3. Újraszámozás és címfrissítés (párhuzamosan)
+      const remaining = dayMaterials.filter(m => m.id !== currentMaterial.id);
+      await Promise.all(remaining.map((material, i) => supabase.from(TABLE)
+        .update({
+          page_order: i + 1,
+          title: `Nap ${selectedDay} - Oldal ${i + 1}`
+        })
+        .eq('id', material.id)));
 
       toast.success("Oldal törölve.", {id: toastId});
       await fetchData();
@@ -206,10 +172,15 @@ export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
 
   const handleThemeChange = async (newTheme: string) => {
     if (!currentMaterial) return;
-    const updatedMaterials = materials.map(m => m.id === currentMaterial.id ? {...m, theme: newTheme} : m);
-    setMaterials(updatedMaterials);
-    await supabase.from('academy_materials').update({theme: newTheme}).eq('id', currentMaterial.id);
-    toast.success("Téma módosítva");
+    const previous = materials;
+    setMaterials(materials.map(m => m.id === currentMaterial.id ? {...m, theme: newTheme} : m));
+    const {error} = await supabase.from(TABLE).update({theme: newTheme}).eq('id', currentMaterial.id);
+    if (error) {
+      setMaterials(previous);
+      toast.error("Nem sikerült menteni a témát.");
+    } else {
+      toast.success("Téma módosítva");
+    }
   };
 
   if (loading) return <div className="flex h-full items-center justify-center"><Loader2
@@ -302,13 +273,18 @@ export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
                       <Button variant="ghost" onClick={() => setIsEditorOpen(false)}>Mégse</Button>
                     </div>
                     <div className="flex-1 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+                      {editingMaterial && editingContentLoading ? (
+                        <div className="flex h-64 items-center justify-center"><Loader2
+                          className="animate-spin text-sky-500 w-8 h-8"/></div>
+                      ) : (
                       <AcademyEditor
-                        initialContent={editingMaterial?.content}
+                        initialContent={editingMaterial ? editingContent : undefined}
                         onSave={handleSaveMaterial}
                         theme={editingMaterial?.theme || 'default'}
                         // HA szerkesztünk: a meglevő ID. HA új: a generált ID.
                         pageId={editingMaterial?.id || newPageId || ""}
                       />
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -417,14 +393,19 @@ export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
                             </div>
                           )}
 
-                          <AcademyEditor
-                            initialContent={currentMaterial?.content}
-                            onSave={async () => {
-                            }}
-                            readOnly={true}
-                            theme={currentMaterial?.theme || 'default'}
-                            pageId={currentMaterial?.id}
-                          />
+                          {contentLoading ? (
+                            <div className="flex h-64 items-center justify-center"><Loader2
+                              className="animate-spin text-sky-500 w-8 h-8"/></div>
+                          ) : (
+                            <AcademyEditor
+                              initialContent={currentContent}
+                              onSave={async () => {
+                              }}
+                              readOnly={true}
+                              theme={currentMaterial?.theme || 'default'}
+                              pageId={currentMaterial?.id ?? ""}
+                            />
+                          )}
                         </div>
 
                         <div className="mt-8 flex flex-col items-center gap-4 pb-12">

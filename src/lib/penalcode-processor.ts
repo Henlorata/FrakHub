@@ -50,6 +50,16 @@ const checkWarning = (note: string | null | undefined, name: string): WarningTyp
   return "none";
 };
 
+/**
+ * Stable item id derived from the paragraph numbers and the abbreviation (unique in
+ * penalcode.json). The previous ids were sequential ("item-12"), so every edit of the
+ * penal code silently re-pointed saved favorites and templates to other offences.
+ */
+const stableItemId = (...parts: (string | null | undefined)[]) => `item:${parts.filter(Boolean).join("|")}`;
+
+/** Old sequential id -> stable id, for migrating favorites/templates saved before the change. */
+export const LEGACY_ITEM_IDS = new Map<string, string>();
+
 export const prepareData = (): KategoriaData[] => {
   const allKategorias: KategoriaData[] = [];
   let idCounter = 0;
@@ -78,10 +88,12 @@ export const prepareData = (): KategoriaData[] => {
           const fullNote = `${foMegjegyzes} ${alpontMegjegyzes}`.trim();
           idCounter++;
           const warningType = checkWarning(fullNote, alpont.megnevezes);
+          const id = stableItemId(tetel.paragrafus, alpont.paragrafus, alpont.rovidites);
+          LEGACY_ITEM_IDS.set(`item-${idCounter}`, id);
 
           return {
             ...alpont,
-            id: `item-${idCounter}`,
+            id,
             kategoria_nev: kategoria.kategoria_nev,
             fo_tetel_nev: tetel.megnevezes,
             fo_tetel_paragrafus: tetel.paragrafus,
@@ -95,8 +107,10 @@ export const prepareData = (): KategoriaData[] => {
       } else if (tetel.rovidites) {
         idCounter++;
         const warningType = checkWarning(tetel.megjegyzes, tetel.megnevezes);
+        const id = stableItemId(tetel.paragrafus, tetel.rovidites);
+        LEGACY_ITEM_IDS.set(`item-${idCounter}`, id);
         const item: PenalCodeItem = {
-          id: `item-${idCounter}`,
+          id,
           kategoria_nev: kategoria.kategoria_nev,
           paragrafus: tetel.paragrafus,
           megnevezes: tetel.megnevezes,

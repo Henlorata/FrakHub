@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,11 +9,40 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Edit, Save, Lock, CheckCircle2, Settings, ArrowRight, LayoutTemplate, Globe } from "lucide-react";
 import { FACTION_RANKS, type Profile } from "@/types/supabase";
-import { cn } from "@/lib/utils";
+import { cn, errorMessage, getRankPriority } from "@/lib/utils";
 import { AcademyEditor } from "../components/AcademyEditor";
+import type { LucideIcon } from "lucide-react";
+import { deleteCloudinaryAssets } from "@/lib/cloudinary";
+import { extractImageUrls } from "@/lib/blocknote-content";
+import {
+  fetchMaterialContent,
+  forgetMaterialContent,
+  MATERIAL_LIST_COLUMNS,
+  setMaterialContent,
+  useMaterialContent
+} from "../useMaterialContent";
+
+const TABLE = "academy_division_materials";
+
+interface CourseConfig {
+  id: string;
+  is_open: boolean;
+  linear_progression: boolean;
+  required_rank: string | null;
+}
+
+interface DivisionMaterial {
+  id: string;
+  course_id: string;
+  title: string;
+  page_order: number;
+  theme: string | null;
+}
 
 // --- SEGÉDKOMPONENS A BEÁLLÍTÁSOKHOZ (EXAM EDITOR STÍLUS) ---
-const SettingToggle = ({title, description, active, onChange, icon: Icon, activeColorClass}: any) => (
+const SettingToggle = ({title, description, active, onChange, icon: Icon, activeColorClass}: {
+  title: string, description: string, active?: boolean, onChange: (value: boolean) => void, icon: LucideIcon, activeColorClass?: string
+}) => (
   <div onClick={() => onChange(!active)}
        className={cn("flex items-center justify-between p-4 rounded-lg border transition-all cursor-pointer select-none group hover:border-slate-600", active ? cn("bg-slate-900/80", activeColorClass || "border-blue-500/50") : "bg-slate-950 border-slate-800")}>
     <div className="flex items-center gap-3">
@@ -25,7 +54,7 @@ const SettingToggle = ({title, description, active, onChange, icon: Icon, active
         <div className="text-[10px] text-slate-500">{description}</div>
       </div>
     </div>
-    <Switch checked={active} onCheckedChange={onChange}/>
+    <Switch checked={!!active} onCheckedChange={onChange}/>
   </div>
 );
 
@@ -41,8 +70,8 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
 
-  const [courseConfig, setCourseConfig] = useState<any>(null);
-  const [materials, setMaterials] = useState<any[]>([]);
+  const [courseConfig, setCourseConfig] = useState<CourseConfig | null>(null);
+  const [materials, setMaterials] = useState<DivisionMaterial[]>([]);
   const [completedMaterialIds, setCompletedMaterialIds] = useState<string[]>([]);
 
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -50,46 +79,47 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
   const isQual = courseId.startsWith('qual_');
   const displayName = isQual ? `${courseId.split('_')[1]} Képesítés Tananyaga` : `${courseId.toUpperCase()} Akadémia`;
 
-  const fetchData = async () => {
+  const currentUserId = currentUser?.id;
+  // Called before any early return (hooks must run in the same order on every render).
+  const {content: currentContent, loading: contentLoading} = useMaterialContent(TABLE, materials[currentPageIndex]?.id);
+
+  // Keyed on ids only: a Realtime profile update must not reload the course.
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      let { data: config } = await supabase.from('academy_courses').select('*').eq('id', courseId).single();
+      // Course settings, page list (without content) and progress in parallel.
+      const [configResult, materialResult, progressResult] = await Promise.all([
+        supabase.from('academy_courses').select('*').eq('id', courseId).maybeSingle(),
+        supabase.from(TABLE).select(MATERIAL_LIST_COLUMNS[TABLE]).eq('course_id', courseId).order('page_order', { ascending: true }),
+        currentUserId
+          ? supabase.from('academy_progress').select('material_id').eq('user_id', currentUserId)
+          : Promise.resolve({ data: [] as {material_id: string}[] }),
+      ]);
 
+      let config = (configResult.data ?? null) as CourseConfig | null;
       if (!config && isInstructor) {
         const { data: newConfig } = await supabase.from('academy_courses').insert({
           id: courseId,
           is_open: false,
           linear_progression: true
         }).select().single();
-        config = newConfig;
+        config = newConfig as CourseConfig | null;
       }
       setCourseConfig(config);
-
-      const { data: mats } = await supabase.from('academy_division_materials')
-        .select('*')
-        .eq('course_id', courseId)
-        .order('page_order', { ascending: true });
-
-      setMaterials(mats || []);
-
-      if (currentUser) {
-        const { data: prog } = await supabase.from('academy_progress')
-          .select('material_id')
-          .eq('user_id', currentUser.id);
-        setCompletedMaterialIds(prog?.map(p => p.material_id) || []);
-      }
+      setMaterials((materialResult.data ?? []) as unknown as DivisionMaterial[]);
+      setCompletedMaterialIds((progressResult.data ?? []).map((p: {material_id: string}) => p.material_id));
     } catch (e) {
       console.error(e);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [supabase, courseId, currentUserId, isInstructor]);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
     setIsEditing(false);
     setCurrentPageIndex(0);
-  }, [courseId, currentUser]);
+  }, [fetchData]);
 
   const handleCompletePage = async (materialId: string) => {
     if (!currentUser) return;
@@ -105,53 +135,61 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
       if (currentPageIndex < materials.length - 1) {
         setCurrentPageIndex(prev => prev + 1);
       }
-    } catch (e: any) {
-      toast.error("Hiba a mentéskor: " + e.message);
+    } catch (e) {
+      toast.error("Hiba a mentéskor: " + errorMessage(e));
     }
   };
 
   const handleSaveConfig = async () => {
-    try {
-      await supabase.from('academy_courses').update({
-        is_open: courseConfig.is_open,
-        linear_progression: courseConfig.linear_progression,
-        required_rank: courseConfig.required_rank
-      }).eq('id', courseId);
-      toast.success("Beállítások mentve.");
-    } catch (e) {
-      toast.error("Hiba a mentéskor.");
-    }
+    if (!courseConfig) return;
+    const { error } = await supabase.from('academy_courses').update({
+      is_open: courseConfig.is_open,
+      linear_progression: courseConfig.linear_progression,
+      required_rank: courseConfig.required_rank
+    }).eq('id', courseId);
+    if (error) toast.error("Hiba a mentéskor.");
+    else toast.success("Beállítások mentve.");
   };
 
   const addNewPage = async () => {
     try {
-      const { data, error } = await supabase.from('academy_division_materials').insert({
+      const { data, error } = await supabase.from(TABLE).insert({
         course_id: courseId,
         title: "Új Tananyag Oldal",
         page_order: materials.length + 1,
-        content: {},
+        content: [],
         theme: 'default'
-      }).select().single();
+      }).select(MATERIAL_LIST_COLUMNS[TABLE]).single();
 
       if (error) throw error;
-      setMaterials([...materials, data]);
+      const created = data as unknown as DivisionMaterial;
+      setMaterialContent(TABLE, created.id, []);
+      setMaterials(prev => [...prev, created]);
       setCurrentPageIndex(materials.length);
       toast.success("Új oldal létrehozva!");
-    } catch (e) {
+    } catch {
       toast.error("Hiba az oldal létrehozásakor.");
     }
   };
 
   const deletePage = async (id: string) => {
     try {
-      await supabase.from('academy_division_materials').delete().eq('id', id);
-      setMaterials(materials.filter(m => m.id !== id));
+      const images = extractImageUrls(await fetchMaterialContent(TABLE, id));
+      const { error } = await supabase.from(TABLE).delete().eq('id', id);
+      if (error) throw error;
+      forgetMaterialContent(TABLE, id);
+      void deleteCloudinaryAssets(images);
+      setMaterials(prev => prev.filter(m => m.id !== id));
       if (currentPageIndex > 0) setCurrentPageIndex(prev => prev - 1);
       toast.success("Oldal törölve.");
-    } catch (e) {
+    } catch {
       toast.error("Hiba a törléskor.");
     }
   };
+
+  /** Immutable update of one page's list fields. */
+  const patchMaterial = (id: string, patch: Partial<DivisionMaterial>) =>
+    setMaterials(prev => prev.map(m => m.id === id ? {...m, ...patch} : m));
 
   const hasAccess = () => {
     if (isInstructor) return true;
@@ -159,9 +197,8 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
     if (!courseConfig.is_open) return false;
 
     if (courseConfig.required_rank && currentUser) {
-      const reqIdx = FACTION_RANKS.indexOf(courseConfig.required_rank);
-      const userIdx = FACTION_RANKS.indexOf(currentUser.faction_rank);
-      if (userIdx > reqIdx) return false;
+      const required = getRankPriority(courseConfig.required_rank);
+      if (required !== 999 && getRankPriority(currentUser.faction_rank) > required) return false;
     }
     return true;
   };
@@ -299,7 +336,7 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
                     title="Nyilvános"
                     description="A tananyag elérhető a jogosultaknak"
                     active={courseConfig?.is_open}
-                    onChange={(v: boolean) => setCourseConfig({ ...courseConfig, is_open: v })}
+                    onChange={(v: boolean) => setCourseConfig(prev => prev && { ...prev, is_open: v })}
                     icon={Globe}
                     activeColorClass="border-green-500/50 text-green-200"
                   />
@@ -307,14 +344,14 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
                     title="Lineáris Haladás"
                     description="A tanulóknak sorrendben kell haladniuk"
                     active={courseConfig?.linear_progression}
-                    onChange={(v: boolean) => setCourseConfig({ ...courseConfig, linear_progression: v })}
+                    onChange={(v: boolean) => setCourseConfig(prev => prev && { ...prev, linear_progression: v })}
                     icon={ArrowRight}
                     activeColorClass="border-blue-500/50 text-blue-200"
                   />
 
                   <div className="space-y-2">
                     <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Minimum Rang</Label>
-                    <Select value={courseConfig?.required_rank || "none"} onValueChange={(v) => setCourseConfig({ ...courseConfig, required_rank: v === "none" ? null : v })}>
+                    <Select value={courseConfig?.required_rank || "none"} onValueChange={(v) => setCourseConfig(prev => prev && { ...prev, required_rank: v === "none" ? null : v })}>
                       <SelectTrigger className="bg-[#0f172a] border-slate-800 focus-visible:ring-yellow-500/30 focus-visible:border-yellow-500/50 font-mono text-sm text-white h-[72px] rounded-lg">
                         <SelectValue placeholder="Nincs megkötés"/>
                       </SelectTrigger>
@@ -346,13 +383,10 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
                       <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Oldal Címe</Label>
                       <Input
                         value={currentMaterial.title}
-                        onChange={(e) => {
-                          const newMats = [...materials];
-                          newMats[currentPageIndex].title = e.target.value;
-                          setMaterials(newMats);
-                        }}
+                        onChange={(e) => patchMaterial(currentMaterial.id, {title: e.target.value})}
                         onBlur={async () => {
-                          await supabase.from('academy_division_materials').update({ title: currentMaterial.title }).eq('id', currentMaterial.id);
+                          const { error } = await supabase.from(TABLE).update({ title: currentMaterial.title }).eq('id', currentMaterial.id);
+                          if (error) toast.error("Nem sikerült menteni a címet.");
                         }}
                         className="bg-[#0f172a] border-slate-800 focus-visible:ring-yellow-500/30 focus-visible:border-yellow-500/50 font-mono text-white h-12 text-lg font-bold"
                       />
@@ -362,10 +396,9 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
                       <Select
                         value={currentMaterial.theme || 'default'}
                         onValueChange={async (v) => {
-                          const newMats = [...materials];
-                          newMats[currentPageIndex].theme = v;
-                          setMaterials(newMats);
-                          await supabase.from('academy_division_materials').update({ theme: v }).eq('id', currentMaterial.id);
+                          patchMaterial(currentMaterial.id, {theme: v});
+                          const { error } = await supabase.from(TABLE).update({ theme: v }).eq('id', currentMaterial.id);
+                          if (error) toast.error("Nem sikerült menteni a témát.");
                         }}
                       >
                         <SelectTrigger className="bg-[#0f172a] border-slate-800 focus-visible:ring-yellow-500/30 focus-visible:border-yellow-500/50 font-mono text-sm text-white h-12">
@@ -384,18 +417,21 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
                   </div>
 
                   <div className="min-h-[600px] rounded-xl overflow-hidden shadow-2xl">
-                    <AcademyEditor
-                      pageId={currentMaterial.id}
-                      initialContent={currentMaterial.content}
-                      readOnly={false}
-                      theme={currentMaterial.theme || 'default'}
-                      onSave={async (content) => {
-                        const newMats = [...materials];
-                        newMats[currentPageIndex].content = content;
-                        setMaterials(newMats);
-                        await supabase.from('academy_division_materials').update({ content }).eq('id', currentMaterial.id);
-                      }}
-                    />
+                    {contentLoading ? (
+                      <div className="flex h-64 items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-sky-500"/></div>
+                    ) : (
+                      <AcademyEditor
+                        pageId={currentMaterial.id}
+                        initialContent={currentContent}
+                        readOnly={false}
+                        theme={currentMaterial.theme || 'default'}
+                        onSave={async (content) => {
+                          const { error } = await supabase.from(TABLE).update({ content }).eq('id', currentMaterial.id);
+                          if (error) throw error;
+                          setMaterialContent(TABLE, currentMaterial.id, content);
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               ) : (
@@ -405,13 +441,17 @@ export function DivisionAcademyView({ courseId, isInstructor, currentUser }: Div
                   </h1>
 
                   <div className="min-h-[400px]">
-                    <AcademyEditor
-                      pageId={currentMaterial.id}
-                      initialContent={currentMaterial.content}
-                      readOnly={true}
-                      theme={currentMaterial.theme || 'default'}
-                      onSave={async () => {}} // Nem hívódik meg readonly módban
-                    />
+                    {contentLoading ? (
+                      <div className="flex h-64 items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-sky-500"/></div>
+                    ) : (
+                      <AcademyEditor
+                        pageId={currentMaterial.id}
+                        initialContent={currentContent}
+                        readOnly={true}
+                        theme={currentMaterial.theme || 'default'}
+                        onSave={async () => {}} // Nem hívódik meg readonly módban
+                      />
+                    )}
                   </div>
 
                   {/* PROGRESSZIÓ GOMB */}

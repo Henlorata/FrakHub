@@ -3,7 +3,8 @@ export interface AcademyMaterial {
   title: string;
   day_number: number;
   page_order: number;
-  content: any;
+  /** Loaded per page on demand (see useMaterialContent); absent in list queries. */
+  content?: unknown;
   category: 'basic' | 'mcb' | 'seb' | 'other';
   theme: string;
   updated_at: string;

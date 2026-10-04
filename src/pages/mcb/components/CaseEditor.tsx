@@ -1,5 +1,5 @@
 import {useEffect, useState, useMemo, useRef, useCallback} from "react";
-import {BlockNoteSchema, defaultBlockSpecs} from "@blocknote/core";
+import {BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs} from "@blocknote/core";
 import {BlockNoteView} from "@blocknote/mantine";
 import {useCreateBlockNote} from "@blocknote/react";
 import {SuggestionMenuController, getDefaultReactSlashMenuItems} from "@blocknote/react";
@@ -14,10 +14,12 @@ import {CaseEditorProvider} from "./CaseEditorContext";
 import {EvidenceBlock} from "./EvidenceBlock";
 import {cn} from "@/lib/utils";
 import {useSuspects} from "@/context/SuspectCacheContext";
+import {useProfileDirectory} from "@/lib/profile-directory";
+import {toInitialContent} from "@/lib/blocknote-content";
 
 interface CaseEditorProps {
   caseId: string;
-  initialContent: any;
+  initialContent: unknown;
   readOnly?: boolean;
   evidenceList: CaseEvidence[];
   theme?: string;
@@ -68,10 +70,32 @@ const Mention = createReactInlineContentSpec({
   }
 });
 
+/** Officer ids mentioned anywhere in a BlockNote document (nested blocks and tables included). */
+function collectOfficerMentions(node: unknown, found = new Set<string>()): Set<string> {
+  if (Array.isArray(node)) {
+    node.forEach((child) => collectOfficerMentions(child, found));
+  } else if (node && typeof node === "object") {
+    const record = node as {type?: unknown; props?: {role?: unknown; id?: unknown}};
+    if (record.type === "mention" && record.props?.role === "officer" && typeof record.props.id === "string" && record.props.id) {
+      found.add(record.props.id);
+    }
+    Object.values(node).forEach((value) => collectOfficerMentions(value, found));
+  }
+  return found;
+}
+
+// BlockNote replaces (does not merge) the default inline content when custom specs are
+// given, so text and links must be listed explicitly next to the mention.
 const schema = BlockNoteSchema.create({
   blockSpecs: {...defaultBlockSpecs, evidence: EvidenceBlock()},
-  inlineContentSpecs: {mention: Mention}
+  inlineContentSpecs: {...defaultInlineContentSpecs, mention: Mention}
 });
+
+interface CaseReference {
+  id: string;
+  case_number: number | string;
+  title: string;
+}
 
 export function CaseEditor({
                              caseId,
@@ -80,32 +104,42 @@ export function CaseEditor({
                              evidenceList,
                              theme = 'default'
                            }: CaseEditorProps) {
-  const {supabase} = useAuth();
+  const {supabase, user} = useAuth();
   const {suspects} = useSuspects();
-  const [officers, setOfficers] = useState<any[]>([]);
-  const [availableCases, setAvailableCases] = useState<any[]>([]);
+  // Shared, cached member list (no fresh profiles query per opened case).
+  const {profiles: officers} = useProfileDirectory();
+  const [availableCases, setAvailableCases] = useState<CaseReference[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const hasChangesRef = useRef(false);
 
   useEffect(() => {
-    const fetchRefData = async () => {
-      const {data: offData} = await supabase.from('profiles').select('id, full_name, badge_number, faction_rank');
-      if (offData) setOfficers(offData);
-
-      const {data: caseData} = await supabase.from('cases')
-        .select('id, case_number, title')
-        .neq('id', caseId)
-        .limit(50);
-      if (caseData) setAvailableCases(caseData);
+    if (readOnly) return;
+    let active = true;
+    supabase.from('cases')
+      .select('id, case_number, title')
+      .neq('id', caseId)
+      .order('updated_at', {ascending: false})
+      .limit(50)
+      .then(({data}) => {
+        if (active && data) setAvailableCases(data as CaseReference[]);
+      });
+    return () => {
+      active = false;
     };
-    fetchRefData();
-  }, [caseId]);
+  }, [caseId, readOnly, supabase]);
 
-  const safeContent = useMemo(() => {
-    if (Array.isArray(initialContent) && initialContent.length > 0) return initialContent;
-    return undefined;
-  }, [initialContent]);
+  // Warn before leaving the page with unsaved investigation notes.
+  useEffect(() => {
+    if (!hasChanges) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasChanges]);
+
+  const safeContent = useMemo(() => toInitialContent<never>(initialContent), [initialContent]);
+  // Officers already mentioned in the saved version: only new mentions are notified.
+  const notifiedMentionsRef = useRef<Set<string> | null>(null);
 
   const editor = useCreateBlockNote({initialContent: safeContent, schema: schema});
 
@@ -131,7 +165,7 @@ export function CaseEditor({
     const usedIds = new Set();
 
     officers.forEach(officer => {
-      if (usedIds.has(officer.id)) return;
+      if (officer.system_role === 'pending' || usedIds.has(officer.id)) return;
       usedIds.add(officer.id);
 
       items.push({
@@ -229,15 +263,26 @@ export function CaseEditor({
     setIsSaving(true);
     const content = editor.document;
     try {
-      const {error} = await (supabase.from('cases' as any) as any).update({
+      const {error} = await supabase.from('cases').update({
         body: content,
         updated_at: new Date().toISOString()
       }).eq('id', caseId);
       if (error) throw error;
       toast.success("Mentve.");
+
+      // Tell newly @mentioned officers (once per mention, never the author).
+      const mentioned = collectOfficerMentions(content);
+      const previous = notifiedMentionsRef.current ?? collectOfficerMentions(safeContent);
+      const fresh = [...mentioned].filter((id) => !previous.has(id) && id !== user?.id);
+      notifiedMentionsRef.current = mentioned;
+      if (fresh.length > 0) {
+        void supabase.rpc('notify_case_mentions', {_case_id: caseId, _user_ids: fresh}).then(({error: notifyError}) => {
+          if (notifyError) console.error('Említés értesítése sikertelen:', notifyError);
+        });
+      }
       setHasChanges(false);
       hasChangesRef.current = false;
-    } catch (error) {
+    } catch {
       toast.error("Hiba a mentés során.");
     } finally {
       setIsSaving(false);

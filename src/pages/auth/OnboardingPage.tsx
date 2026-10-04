@@ -1,4 +1,4 @@
-import {useState, useEffect} from "react";
+import {useEffect, useState} from "react";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
 import {Card, CardContent} from "@/components/ui/card";
@@ -6,57 +6,54 @@ import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Checkbox} from "@/components/ui/checkbox";
 import {toast} from "sonner";
-import {useNavigate} from "react-router-dom";
 import {CheckCircle2, Play, HelpCircle, Loader2, LogOut} from "lucide-react";
 import {Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger} from "@/components/ui/dialog";
+import {errorMessage} from "@/lib/utils";
 
 export function OnboardingPage() {
-  const {user, profile, supabase, signOut} = useAuth();
-  const navigate = useNavigate();
+  const {user, profile, supabase, signOut, refreshProfile} = useAuth();
+  const userId = user?.id;
 
   const [claimCode, setClaimCode] = useState("");
   const [isExamLinked, setIsExamLinked] = useState(false);
   const [hasWatchedVideo, setHasWatchedVideo] = useState(false); // Checkbox state
   const [isLoading, setIsLoading] = useState(false);
 
-  const checkExamStatus = async () => {
-    if (!user) return;
-    const { data, error } = await supabase
+  // AppLayout redirects away from this page once onboarding is complete.
+  useEffect(() => {
+    if (!userId) return;
+    let active = true;
+    supabase
       .from('exam_submissions')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('status', 'passed')
       .not('claim_token', 'is', null)
-      .limit(1);
-    if (!error && data && data.length > 0) {
-      setIsExamLinked(true);
-    } else {
-      setIsExamLinked(false);
-    }
-  };
-
-  useEffect(() => {
-    checkExamStatus();
-    if (profile && profile.faction_rank !== 'Deputy Sheriff Trainee' && profile.onboarding_completed) {
-      navigate('/');
-    }
-  }, [profile, user]);
+      .limit(1)
+      .then(({data, error}) => {
+        if (active) setIsExamLinked(!error && !!data && data.length > 0);
+      });
+    return () => {
+      active = false;
+    };
+  }, [supabase, userId]);
 
   const handleClaim = async () => {
-    if (!claimCode) return;
+    if (!claimCode.trim()) return;
     setIsLoading(true);
     try {
-      const {data, error} = await supabase.rpc('claim_exam_submission', {_token: claimCode});
+      const {data, error} = await supabase.rpc('claim_exam_submission', {_token: claimCode.trim()});
       if (error) throw error;
 
-      if (data.success) {
-        toast.success(data.message);
+      const result = data as {success?: boolean; message?: string} | null;
+      if (result?.success) {
+        toast.success(result.message ?? "Vizsga csatolva.");
         setIsExamLinked(true);
       } else {
-        toast.error(data.message);
+        toast.error(result?.message ?? "A kód nem érvényes.");
       }
-    } catch (e: any) {
-      toast.error("Hiba: " + e.message);
+    } catch (e) {
+      toast.error("Hiba: " + errorMessage(e));
     } finally {
       setIsLoading(false);
     }
@@ -72,9 +69,10 @@ export function OnboardingPage() {
       if (error) throw error;
 
       toast.success("Kiképzés sikeres! Üdv a csapatban!");
-      window.location.href = '/';
-    } catch (e: any) {
-      toast.error("Hiba: " + e.message);
+      // Realtime usually delivers the change already; refreshing makes it deterministic.
+      await refreshProfile();
+    } catch (e) {
+      toast.error("Hiba: " + errorMessage(e));
     } finally {
       setIsLoading(false);
     }
@@ -85,7 +83,7 @@ export function OnboardingPage() {
 
       {/* HEADER */}
       <div className="max-w-4xl w-full text-center space-y-4 mb-8 animate-in slide-in-from-top-4">
-        <img src="/mcb_logo.png" className="h-24 mx-auto drop-shadow-2xl" alt="SFSD Logo"/>
+        <img src="/favicon.svg" className="h-24 mx-auto drop-shadow-2xl" alt="SFSD Logo"/>
         <h1 className="text-4xl font-bold tracking-tight text-white">Üdvözöl a San Fierro Sheriff's Departmentnél!</h1>
         <p className="text-slate-400 text-lg max-w-2xl mx-auto">
           Gratulálunk a felvételhez, {profile?.full_name}! Mielőtt szolgálatba állnál, kérlek végezd el az alábbi

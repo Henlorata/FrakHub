@@ -1,19 +1,12 @@
-import React from "react";
 import {useAuth} from "@/context/AuthContext";
+import {useSystemStatus} from "@/context/SystemStatusContext";
 import {Button} from "@/components/ui/button";
 import {Shield, LogOut, Clock, CheckCircle2, AlertTriangle} from "lucide-react";
 
 export function PendingApprovalPage() {
-  const {profile, signOut, supabase} = useAuth();
-  const [isRecruitmentClosed, setIsRecruitmentClosed] = React.useState(false);
-
-  React.useEffect(() => {
-    const checkStatus = async () => {
-      const {data} = await supabase.from('system_status').select('recruitment_open').eq('id', 'global').single();
-      if (data && data.recruitment_open === false) setIsRecruitmentClosed(true);
-    };
-    checkStatus();
-  }, [supabase]);
+  const {profile, signOut} = useAuth();
+  const {recruitmentOpen} = useSystemStatus();
+  const isRecruitmentClosed = !recruitmentOpen;
 
   return (
     <div
