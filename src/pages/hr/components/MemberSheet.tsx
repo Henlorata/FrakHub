@@ -50,7 +50,7 @@ export function MemberSheet(props: MemberSheetProps) {
   const {member, onOpenChange} = props;
   return (
     <Sheet open={!!member} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-2xl">
+      <SheetContent className="sm:max-w-2xl" data-tour="member-sheet">
         {member && <MemberSheetBody key={member.id} {...props} member={member}/>}
       </SheetContent>
     </Sheet>
@@ -112,7 +112,7 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
         </div>
 
         {/* Rank: one click up or down, or pick any allowed rank */}
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/5">
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/5" data-tour="member-rank">
           <div className="text-xs text-slate-400">Rendfokozat</div>
           <RankStepper member={member} viewer={viewer} busy={busy} onChange={(rank) => onRankChange(member, rank)}/>
           {allowedRanks.length > 0 && (
@@ -561,7 +561,7 @@ function RecordsTab({member, viewer, onRecordChanged}: {member: HrMember; viewer
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-tour="member-records">
       {canWrite && (
         <section className="space-y-3 rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/5">
           <div className="flex flex-wrap gap-1.5">

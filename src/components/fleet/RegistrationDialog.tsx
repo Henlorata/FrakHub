@@ -1,10 +1,11 @@
-import {useCallback, useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type ReactNode} from "react";
+import {useCallback, useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type ReactNode} from "react";
 import {Link} from "react-router";
 import {toast} from "sonner";
 import {
-  CalendarCheck, CalendarClock, Check, ClipboardPaste, FileImage, Hourglass, ImageUp, Loader2, PenLine, ScanLine, Send, ShieldCheck,
-  Undo2, X, XCircle,
+  CalendarCheck, CalendarClock, Check, Hourglass, Loader2, PenLine, ScanLine, Send, ShieldCheck, Undo2, X, XCircle,
 } from "lucide-react";
+import {ImageDropZone, imageFileProblem, pastedImage} from "@/components/scan/ImageDropZone";
+import {ScanProgress} from "@/components/scan/ScanProgress";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
@@ -37,7 +38,6 @@ const STAGES: {stage: ScanStage; label: string}[] = [
   {stage: "done", label: "Összevetés a nyilvántartással"},
 ];
 
-const MAX_FILE = 15 * 1024 * 1024;
 const today = () => todayKey();
 const dotted = (iso: string | null) => (iso ? `${iso.replaceAll("-", ".")}.` : "–");
 /** "2026.11.20-ig" (a suffix replaces the date's closing dot). */
@@ -68,8 +68,6 @@ export function RegistrationDialog({vehicle, open, onOpenChange, onChanged}: {
   const [note, setNote] = useState("");
   const [manualDate, setManualDate] = useState(vehicle.registration_expires_on ?? "");
   const [busy, setBusy] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const runRef = useRef(0);
 
   // Pending review of this vehicle (one per vehicle), and an early start of the OCR engine.
@@ -104,8 +102,8 @@ export function RegistrationDialog({vehicle, open, onOpenChange, onChanged}: {
   };
 
   const scan = useCallback(async (picked: File) => {
-    if (!picked.type.startsWith("image/")) return toast.error("Képfájlt válassz (PNG, JPG vagy WEBP).");
-    if (picked.size > MAX_FILE) return toast.error("A kép legfeljebb 15 MB lehet.");
+    const problem = imageFileProblem(picked);
+    if (problem) return toast.error(problem);
     const run = ++runRef.current;
     setFile(picked);
     setPreview(URL.createObjectURL(picked));
@@ -131,24 +129,12 @@ export function RegistrationDialog({vehicle, open, onOpenChange, onChanged}: {
     }
   }, [vehicle]);
 
-  const onFiles = (files: FileList | null) => {
-    const picked = files?.[0];
-    if (picked) void scan(picked);
-  };
-
   const onPaste = (event: ClipboardEvent) => {
-    const item = [...event.clipboardData.items].find((entry) => entry.type.startsWith("image/"));
-    const pasted = item?.getAsFile();
+    const pasted = pastedImage(event);
     if (pasted && (step.kind === "pick" || step.kind === "result")) {
       event.preventDefault();
-      void scan(new File([pasted], pasted.name || "kepernyokep.png", {type: pasted.type}));
+      void scan(pasted);
     }
-  };
-
-  const onDrop = (event: DragEvent) => {
-    event.preventDefault();
-    setDragging(false);
-    onFiles(event.dataTransfer.files);
   };
 
   const finish = (updated: FleetVehicle, title: string, message: string) => {
@@ -263,34 +249,16 @@ export function RegistrationDialog({vehicle, open, onOpenChange, onChanged}: {
               </div>
             ) : step.kind === "pick" ? (
               <div key="pick" className="animate-fade space-y-3">
-                <button type="button" onClick={() => inputRef.current?.click()}
-                        onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-                        onDragLeave={() => setDragging(false)} onDrop={onDrop}
-                        className={cn("group relative flex w-full flex-col items-center gap-3 overflow-hidden rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-all",
-                          dragging ? "scale-[1.01] border-primary bg-primary/10 shadow-[0_0_40px_-10px_rgb(234_179_8/0.6)]"
-                            : "border-white/15 bg-white/[0.02] hover:border-primary/50 hover:bg-white/[0.04]")}>
-                  <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgb(234_179_8/0.12),transparent_60%)] opacity-0 transition-opacity group-hover:opacity-100"/>
-                  <span className="relative grid size-14 place-items-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/25 motion-safe:animate-[float-y_4s_ease-in-out_infinite]">
-                    <ImageUp className="size-7"/>
-                  </span>
-                  <span className="relative">
-                    <span className="block text-sm font-semibold text-white">Töltsd fel a forgalmi engedély képét</span>
-                    <span className="mt-1 block text-xs text-slate-400">Kattints, húzd ide, vagy illeszd be (Ctrl+V) a képernyőképet.</span>
-                  </span>
-                  <span className="relative flex flex-wrap justify-center gap-2 text-[11px] text-slate-500">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 ring-1 ring-white/10"><FileImage className="size-3"/> PNG, JPG, WEBP</span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 ring-1 ring-white/10"><ClipboardPaste className="size-3"/> Beillesztés</span>
-                  </span>
-                </button>
-                <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-                       onChange={(event) => { onFiles(event.target.files); event.target.value = ""; }}/>
+                <ImageDropZone title="Töltsd fel a forgalmi engedély képét" hint="Kattints, húzd ide, vagy illeszd be (Ctrl+V) a képernyőképet."
+                               onFile={(picked) => void scan(picked)}/>
                 <p className="flex items-start gap-2 rounded-xl bg-sky-500/[0.06] px-3 py-2 text-xs text-sky-200/90 ring-1 ring-sky-500/20">
                   <ScanLine className="mt-0.5 size-3.5 shrink-0"/>
                   Nem kell kivágnod: a teljes képernyőképen is megkeressük a forgalmit, és kiolvassuk a nevet, a rendszámot és a lejáratot.
                 </p>
               </div>
             ) : step.kind === "scanning" ? (
-              <Scanning key="scanning" preview={preview} stage={step.stage} progress={step.progress}/>
+              <ScanProgress key="scanning" preview={preview} stages={STAGES} stage={step.stage} progress={step.progress}
+                            progressStages={["locating", "reading"]}/>
             ) : step.kind === "result" ? (
               <Result key="result" vehicle={vehicle} step={step} cropPreview={cropPreview ?? preview} staff={staff} busy={busy}
                       onAccept={() => void apply(step.reading, step.check)}
@@ -358,41 +326,6 @@ function PendingNotice({request, own, staff, busy, onCancel}: {
         {staff && <Button size="sm" variant="outline" asChild><Link to="/logistics?tab=fleet&view=reviews">Elbírálás</Link></Button>}
         {own && <Button size="sm" variant="ghost" className="text-slate-300" disabled={busy} onClick={onCancel}><X/> Visszavonom</Button>}
       </div>
-    </div>
-  );
-}
-
-function Scanning({preview, stage, progress}: {preview: string | null; stage: ScanStage; progress: number}) {
-  const current = STAGES.findIndex((item) => item.stage === stage);
-  return (
-    <div className="animate-fade space-y-4">
-      <div className="scan-frame relative overflow-hidden rounded-2xl bg-black/40 ring-1 ring-white/10">
-        {preview && <img src={preview} alt="" className="max-h-60 w-full object-contain opacity-80"/>}
-        <span className="scan-grid pointer-events-none absolute inset-0"/>
-        <span className="scan-line pointer-events-none absolute inset-x-0"/>
-        {(["top-2 left-2 border-t-2 border-l-2", "top-2 right-2 border-t-2 border-r-2", "bottom-2 left-2 border-b-2 border-l-2",
-          "bottom-2 right-2 border-b-2 border-r-2"] as const).map((corner) => (
-          <span key={corner} className={cn("pointer-events-none absolute size-6 rounded-sm border-primary/80", corner)}/>
-        ))}
-      </div>
-      <ol className="space-y-1.5">
-        {STAGES.map((item, index) => {
-          const done = index < current;
-          const active = index === current;
-          return (
-            <li key={item.stage} className={cn("flex items-center gap-2.5 text-sm transition-colors", done ? "text-emerald-300" : active ? "text-white" : "text-slate-500")}>
-              <span className={cn("grid size-5 place-items-center rounded-full ring-1 transition-all",
-                done ? "bg-emerald-500/20 ring-emerald-400/50" : active ? "ring-primary/60" : "ring-white/15")}>
-                {done ? <Check className="animate-pop size-3"/> : active ? <Loader2 className="size-3 animate-spin text-primary"/> : null}
-              </span>
-              {item.label}
-              {active && (item.stage === "locating" || item.stage === "reading") && progress > 0 && (
-                <span className="ml-auto text-xs tabular-nums text-slate-400">{Math.round(progress * 100)}%</span>
-              )}
-            </li>
-          );
-        })}
-      </ol>
     </div>
   );
 }

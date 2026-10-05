@@ -6,7 +6,7 @@ import {Button} from "@/components/ui/button";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
-import {formatDuty, monthLabel, parseDuty, recentMonths} from "@/lib/registry";
+import {autoFormatDuty, formatDuty, monthLabel, parseDuty, recentMonths} from "@/lib/registry";
 import {cn, errorMessage, getStaffCategory, type StaffCategory} from "@/lib/utils";
 import {CATEGORY_META} from "../hr-utils";
 import type {HrMember} from "../useHrData";
@@ -76,11 +76,15 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
 
   const totals = months.map((month) => filtered.reduce((sum, member) => sum + (storedMinutes(member, month) ?? 0), 0));
 
+  // Enter, Tab and the arrows move down/up the month column (filled member by member).
   const moveFocus = (event: KeyboardEvent<HTMLInputElement>, row: number, column: number) => {
-    const step = event.key === "ArrowUp" ? -1 : event.key === "Enter" || event.key === "ArrowDown" ? 1 : 0;
+    const step = event.key === "ArrowUp" || (event.key === "Tab" && event.shiftKey) ? -1
+      : event.key === "Enter" || event.key === "ArrowDown" || event.key === "Tab" ? 1 : 0;
     if (!step) return;
-    event.preventDefault();
     const target = document.querySelector<HTMLInputElement>(`[data-duty-cell="${row + step}:${column}"]`);
+    // At the end of the column Tab leaves the table as usual.
+    if (!target && event.key === "Tab") return;
+    event.preventDefault();
     target?.focus();
     target?.select();
   };
@@ -110,7 +114,7 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
         <p className="flex items-center gap-2 text-xs text-slate-400 lg:ml-auto">
           <Info className="size-3.5 shrink-0 text-primary"/>
           {editable
-            ? <>A játék számlálóját írd be: <span className="font-mono text-slate-200">95:48</span>, <span className="font-mono text-slate-200">95 óra 48 perc</span> vagy <span className="font-mono text-slate-200">95,5</span>. Enter: következő tag.</>
+            ? <>A játék számlálóját írd be: <span className="font-mono text-slate-200">9548</span> (→ 95:48), <span className="font-mono text-slate-200">95 óra 48 perc</span> vagy <span className="font-mono text-slate-200">95,5</span>. Tab / Enter: következő tag.</>
             : <>A duty időket a vezetőség rögzíti a havi gyűlésen.</>}
         </p>
       </div>
@@ -172,7 +176,7 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
                                   data-duty-cell={`${row}:${column}`}
                                   value={draft ?? (stored === null ? "" : formatDuty(stored, true))}
                                   placeholder="–"
-                                  onChange={(event) => setDrafts((prev) => ({...prev, [key]: event.target.value}))}
+                                  onChange={(event) => setDrafts((prev) => ({...prev, [key]: autoFormatDuty(event.target.value)}))}
                                   onKeyDown={(event) => moveFocus(event, row, column)}
                                   onFocus={(event) => event.target.select()}
                                   aria-label={`${member.full_name} – ${monthLabel(month)}`}

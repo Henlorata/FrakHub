@@ -1,5 +1,5 @@
 import {expect, test} from "@playwright/test";
-import {folderCode, normalizeForumUrl, reportCode, reportDateKey, type ReportForm} from "../src/lib/report-templates";
+import {folderCode, folderThreadId, normalizeForumUrl, reportCode, reportDateKey, type ReportForm} from "../src/lib/report-templates";
 
 // The forum requires this exact layout (agreed template). A change here must be deliberate.
 const FORM: ReportForm = {
@@ -64,8 +64,11 @@ test.describe("forum report template", () => {
     expect(reportDateKey("2026. 10. 05.")).toBe("2026-10-05");
     expect(reportDateKey("05/10/2026")).toBe("2026-10-05");
     expect(reportDateKey("2026.02.30.")).toBeNull();
-    expect(normalizeForumUrl("https://forum.hl-rpg.eu/threads/john-smith-jelentesi-mappaja.123/post-456789")).toBe("https://forum.hl-rpg.eu/posts/456789/");
-    expect(normalizeForumUrl("https://forum.hl-rpg.eu/threads/x.123/#post-456789")).toBe("https://forum.hl-rpg.eu/posts/456789/");
+    // Members only see their folder's (thread's) link: page numbers and anchors are dropped.
+    expect(normalizeForumUrl("https://forum.hl-rpg.eu/threads/john-smith-jelentesi-mappaja.123/")).toBe("https://forum.hl-rpg.eu/threads/john-smith-jelentesi-mappaja.123/");
+    expect(normalizeForumUrl("https://forum.hl-rpg.eu/threads/john-smith-jelentesi-mappaja.123/page-3#post-456789")).toBe("https://forum.hl-rpg.eu/threads/john-smith-jelentesi-mappaja.123/");
+    expect(normalizeForumUrl("https://forum.hl-rpg.eu/threads/x.123?foo=1")).toBe("https://forum.hl-rpg.eu/threads/x.123/");
+    expect(folderThreadId("https://forum.hl-rpg.eu/threads/john-smith-jelentesi-mappaja.123/")).toBe("123");
     expect(normalizeForumUrl("https://forum.hl-rpg.eu/posts/456789/")).toBe("https://forum.hl-rpg.eu/posts/456789/");
     expect(normalizeForumUrl("https://example.com/posts/1/")).toBeNull();
   });

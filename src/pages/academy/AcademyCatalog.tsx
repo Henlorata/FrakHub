@@ -22,7 +22,7 @@ export function AcademyCatalog({overview, onOpenBasic, onOpenCourse, onNewCourse
     .filter((group) => group.courses.length > 0);
 
   return (
-    <div className="space-y-8">
+    <div data-tour="academy-catalog" className="space-y-8">
       <section className="panel animate-rise relative overflow-hidden p-6">
         <div className="pointer-events-none absolute -top-24 -right-16 size-72 rounded-full bg-cyan-500/10 blur-3xl"/>
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center">
@@ -94,7 +94,7 @@ function CourseCard({course, index, instructor, onOpen}: {course: CourseSummary;
   const percent = course.pages ? Math.round((course.completed / course.pages) * 100) : 0;
   const finished = course.pages > 0 && course.completed >= course.pages;
   return (
-    <button type="button" onClick={onOpen} style={{"--i": index} as CSSProperties}
+    <button type="button" onClick={onOpen} style={{"--i": index} as CSSProperties} data-tour={`academy-course-${course.id}`}
             className={cn("panel lift group animate-rise relative flex flex-col overflow-hidden p-5 text-left", !course.readable && "opacity-75")}>
       <div className={cn("pointer-events-none absolute -top-12 -right-12 size-36 rounded-full opacity-50 blur-2xl transition-opacity group-hover:opacity-90", tone.soft)}/>
       <div className="relative flex items-start gap-3">

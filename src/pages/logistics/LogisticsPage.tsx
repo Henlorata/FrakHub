@@ -138,7 +138,7 @@ export function LogisticsPage() {
 
       <div className="flex gap-1 border-b">
         {([["requests", "Igénylések", Box, stats.pending], ["fleet", "Járműpark", Car, 0]] as const).map(([id, label, Icon, count]) => (
-          <button key={id} type="button" onClick={() => setTab(id)}
+          <button key={id} type="button" onClick={() => setTab(id)} data-tour={`logistics-tab-${id}`}
                   className={cn("relative inline-flex h-10 items-center gap-2 px-3 text-sm font-medium transition-colors",
                     tab === id ? "text-white" : "text-slate-400 hover:text-slate-200")}>
             <Icon className={cn("size-4", tab === id && "text-orange-400")}/>{label}
@@ -151,7 +151,7 @@ export function LogisticsPage() {
       {tab === "fleet" ? (
         <div key="fleet" className="animate-fade"><FleetPanel/></div>
       ) : (
-        <div key="requests" className="animate-fade space-y-6">
+        <div key="requests" data-tour="logistics-requests" className="animate-fade space-y-6">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {(["all", "pending", "approved", "rejected"] as Filter[]).map((value, index) => (
               <StatCard key={value} index={index} label={value === "all" ? "Összes igénylés" : STATUS_META[value].label}
@@ -206,7 +206,7 @@ export function LogisticsPage() {
                       )}
                     </div>
                     {canManage && request.status === "pending" && (
-                      <div className="grid grid-cols-2 border-t">
+                      <div className="grid grid-cols-2 border-t" data-tour="request-decide">
                         <button type="button" onClick={() => { setSelectedRequest(request); setActionType("approve"); }}
                                 className="flex items-center justify-center gap-2 border-r py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-emerald-500/10 hover:text-emerald-300">
                           <CheckCircle2 className="size-4"/> Jóváhagyás

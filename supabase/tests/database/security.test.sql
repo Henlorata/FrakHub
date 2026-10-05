@@ -97,12 +97,13 @@ select lives_ok($$select public.hr_apply_member_update((select sergeant_id from 
 reset role;
 
 -- --- Investigator III. approves warrants ------------------------------------
+select pg_temp.act_as((select sergeant_id from ids));
+insert into public.case_warrants (case_id, type, target_name, reason, requested_by)
+values ('30000000-0000-4000-8000-000000000001', 'search', '3-as dokk', 'Raktár átvizsgálása', (select sergeant_id from ids));
 select pg_temp.act_as((select investigator_id from ids));
 select is((select count(*) from public.cases), 1::bigint, 'MCB investigators see the cases');
-with updated as (
-  update public.case_warrants set status = 'approved', approved_by = (select investigator_id from ids)
-  where status = 'pending' returning 1)
-select is((select count(*) from updated), 1::bigint, 'Investigator III. can approve warrants');
+select is((public.decide_warrant((select id from public.case_warrants where requested_by = (select sergeant_id from ids)), 'approved')) ->> 'status',
+  'approved', 'Investigator III. can approve warrants');
 
 -- --- Results, checked as the database owner -----------------------------------
 select pg_temp.act_postgres();

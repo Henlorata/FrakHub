@@ -34,6 +34,12 @@ export interface RecordedRequest {
 
 export const TEST_USER_ID = "11111111-1111-4111-8111-111111111111";
 
+/** Every training as already played, so the automatic training start stays out of the other tests. */
+export const TRAINING_IDS = ["basic", "mcb", "supervisor", "instructor", "command", "executive", "bureau_commander", "bureau_manager"];
+export const playedTrainings = (userId = TEST_USER_ID): Row[] => TRAINING_IDS.map((training_id) => ({
+  user_id: userId, training_id, status: "completed", version: 1, updated_at: "2026-10-01T10:00:00Z",
+}));
+
 export const testProfile = (overrides: Row = {}): Row => ({
   id: TEST_USER_ID,
   email: "deputy@sfsd.test",
@@ -118,6 +124,7 @@ export class MockSupabase {
     this.tables = {
       profiles: [testProfile()],
       system_status: [{id: "global", alert_level: "normal", recruitment_open: true}],
+      training_progress: playedTrainings(),
       ...options.tables,
     };
     this.rpc = options.rpc ?? {};
@@ -200,8 +207,16 @@ export class MockSupabase {
   }
 
   private async handleRest(route: Route, request: Request, table: string, url: URL) {
-    this.record(request, "rest", table);
     const method = request.method();
+    let body: Record<string, unknown> | null = null;
+    if (method !== "GET" && method !== "HEAD") {
+      try {
+        body = request.postDataJSON() as Record<string, unknown> | null;
+      } catch {
+        body = null;
+      }
+    }
+    this.requests.push({method, kind: "rest", name: table, url: request.url(), body});
     const rows = applyFilters(this.tables[table] ?? [], url.searchParams);
     const headers = await request.allHeaders();
     const prefer = headers["prefer"] ?? "";

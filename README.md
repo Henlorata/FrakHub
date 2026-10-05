@@ -5,7 +5,9 @@ management, HR (roster with one-click promotions, monthly duty time sheet, forme
 the old Google Sheet's registry columns), logistics (requests, the vehicle fleet with key
 holders, registration renewals read from a screenshot of the in-game licence, vehicle warnings
 and tuning) and finance, penal code calculator, report
-generator, exams and academy training. The user interface is Hungarian.
+generator (with the person's data read from an in-game screenshot, in the browser), exams and
+academy training, an events calendar with attendance, a radio code book, plus interactive guided
+trainings per rank that run on demo data. The user interface is Hungarian.
 
 **Stack:** React 19 · Vite 8 (Rolldown) · TypeScript 6 · Tailwind CSS 4 · shadcn/Radix ·
 BlockNote · Supabase (Postgres, Auth, Realtime, Storage) · Cloudinary · Vercel (static
@@ -71,9 +73,11 @@ api/                 Vercel serverless functions (Web standard handlers: export 
   _lib/              Shared helpers: env, HTTP, service-role client + caller auth, Cloudinary
 shared/ranks.ts      Rank hierarchy and HR permission rules, used by BOTH src/ and api/
 src/
-  context/           Auth (session + live profile), system status, MCB suspect cache
+  context/           Auth (session + live profile), system status, MCB suspect cache, trainings
   layouts/           App shell (sidebar) and the MCB area shell
   lib/               Supabase client, API wrapper, Cloudinary helpers, caches, utilities
+    training/        Training catalogue, tour scripts, progress
+    sandbox/         Practice mode: in-memory PostgREST engine and the demo world
   pages/<feature>/   One folder per domain (mcb, hr, logistics, exams, academy, ...)
   components/ui/     shadcn/Radix primitives
 e2e/                 Playwright tests and the network-level Supabase mock
@@ -92,6 +96,24 @@ tooling/             Build tooling (dev-server middleware for api/)
   the browser.
 - **Routes are code-split**: each page (and heavy dependencies such as the BlockNote
   editor) downloads on first visit.
+- **Trainings** walk members through the site with a spotlight and short cards: a basic
+  training for everyone and further ones for MCB, supervisory staff, instructors, high
+  command, the executive staff, division commanders and the bureau manager. A training starts
+  by itself once it is unlocked (or on the next visit), can be skipped after a warning and
+  replayed from the profile. While it plays, the app runs in **practice mode**: every
+  database, API and upload request is answered by an in-memory demo world built in that
+  browser tab, so members can grade a demo exam or edit a demo case without touching real
+  data, and several people can train at the same time. Only the result is stored
+  (`training_progress`, mirrored in localStorage so a steady-state visit sends no request).
+- **Events**: meetings, trainings, exam days and joint actions with attendance (going / maybe /
+  not coming). Organisers are the supervisory staff and above, and unit leaders for their unit; the
+  audience is notified, those who come get a reminder on the day. The dashboard shows the next
+  three and the member's monthly requirement (reports and recorded duty time).
+- **Screenshots are read in the browser** (Tesseract.js): the vehicle licence for registration
+  renewals and the in-game tablet's person page for the report form. The report's picture is
+  never uploaded; the member is always told to check the result.
+- **New trainees** finish an onboarding page first (link the admission exam with its code,
+  first-day rules, a small practice corner) and then get the basic training.
 - **Images** are resized and converted to WebP in the browser before upload
   (`src/lib/image-compression.ts`) and delivered through Cloudinary transformations
   (`f_auto,q_auto`, bounded sizes). Files that are no longer referenced are deleted through
@@ -151,6 +173,15 @@ it. Before applying a migration, replay the deployed client's queries against it
 - Notifications are created by database triggers (cases, warrants, requests, exams, HR,
   ribbons, announcements), with categories, actor and de-duplication; clients cannot insert
   them. Users can mute categories (`notification_preferences`).
+- MCB cases: the database decides who may open a case (owner, collaborators, the MCB
+  leadership and high command); everyone else in the MCB area sees only the list row. Pages
+  load with one call each (`get_case_list()`, `get_case_detail()`, `get_suspect_dossier()`,
+  `get_mcb_overview()`). Documents are saved with a version check
+  (`save_case_document()`), so two investigators cannot overwrite each other unnoticed; the
+  editor autosaves and keeps a local draft. Status, hand-over and warrant decisions go through
+  `set_case_status()`, `transfer_case()` and `decide_warrant()` (no approval of one's own
+  request); `case_events` keeps the history of every case. The direct table updates of the
+  old frontend are removed by the post-deploy step.
 - Exams run on the server: `start_exam()` creates the attempt with a server-side deadline
   (question pools and shuffling per attempt, no answer key sent), `save_exam_progress()`
   autosaves, `finish_exam()` hands in (claim codes for guests). Choice questions are scored
@@ -201,6 +232,12 @@ it. Before applying a migration, replay the deployed client's queries against it
   time). Course pages are readable when `private.can_read_academy_course()` allows it (open
   and rank, or instructor). Images pasted into the editors are uploaded to Cloudinary before
   saving (`src/lib/inline-images.ts`), so no `data:` image is stored in the page JSON.
+- Events: `events` and `event_responses`; who sees and organises an event is decided by
+  `private.can_see_event()` / `private.can_manage_event()` (audience: everyone, supervisory staff,
+  command staff, or a division/unit). Answers go through `respond_to_event()`; the calendar loads
+  with one `get_events()` call.
+- Trainings: `training_progress` holds one row per member and training (completed or
+  skipped, with the training's version); members read, insert and update only their own rows.
 - Dates: the database stays in UTC; the UI formats in Europe/Budapest (`src/lib/datetime.ts`)
   and SQL functions that use calendar dates carry `set timezone = 'Europe/Budapest'`
   (`supabase/tests/database/time.test.sql` checks it).

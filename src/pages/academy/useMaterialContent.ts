@@ -1,5 +1,6 @@
 import {useEffect, useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
+import {onClientCachesCleared} from "@/lib/cache";
 
 export type MaterialTable = "academy_materials" | "academy_division_materials";
 
@@ -12,6 +13,7 @@ export const MATERIAL_LIST_COLUMNS = {
 const TTL_MS = 10 * 60 * 1000;
 const cache = new Map<string, {content: unknown; at: number}>();
 const cacheKey = (table: MaterialTable, id: string) => `${table}:${id}`;
+onClientCachesCleared(() => cache.clear());
 
 function readCache(key: string) {
   const entry = cache.get(key);

@@ -4,7 +4,7 @@ import {Dialog, DialogContent, DialogDescription, DialogTitle} from "@/component
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
-import {formatAccountNumber, formatDuty, parseDuty} from "@/lib/registry";
+import {autoFormatDuty, formatAccountNumber, formatDuty, parseDuty} from "@/lib/registry";
 import {formatMoney} from "@/lib/finance";
 import {cn} from "@/lib/utils";
 import type {PayrollInput, PayrollRow, PayrollSettings} from "@/types/finance";
@@ -100,12 +100,13 @@ export function PayrollMemberDialog({row, input, settings, editable, onInput, on
                   <option value="false">Nem</option>
                 </select>
               </Field>
-              <Field label="Duty idő" hint="pl. 95:48">
+              <Field label="Duty idő" hint="pl. 9548 → 95:48">
                 <Input disabled={!editable} value={duty} aria-invalid={dutyInvalid}
                        className={cn("font-mono", dutyInvalid && "ring-2 ring-red-500/60")}
                        onChange={(event) => {
-                         setDuty(event.target.value);
-                         const minutes = event.target.value.trim() ? parseDuty(event.target.value) : 0;
+                         const value = autoFormatDuty(event.target.value);
+                         setDuty(value);
+                         const minutes = value.trim() ? parseDuty(value) : 0;
                          if (minutes !== null) onInput({duty_minutes: minutes});
                        }}/>
               </Field>

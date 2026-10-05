@@ -33,7 +33,7 @@ function IntegrityChip({summary}: {summary: QueueSheet["integrity"]}) {
 export function GradingTab({queue, live, clockOffset, canTrash, workingId, onTrash}: GradingTabProps) {
   const navigate = useNavigate();
   return (
-    <div className="space-y-6">
+    <div data-tour="grading-list" className="space-y-6">
       {live.length > 0 && (
         <section className="space-y-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -80,7 +80,7 @@ export function GradingTab({queue, live, clockOffset, canTrash, workingId, onTra
         ) : (
           <ul className="panel divide-y divide-white/5 overflow-hidden">
             {queue.map((sheet, index) => (
-              <li key={sheet.id} style={{"--i": Math.min(index, 12)} as CSSProperties} className="animate-fade">
+              <li key={sheet.id} style={{"--i": Math.min(index, 12)} as CSSProperties} className="animate-fade" data-tour="grading-sheet">
                 <div className="flex flex-col gap-3 p-4 transition-colors hover:bg-white/[0.02] sm:flex-row sm:items-center">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <CandidateAvatar name={sheet.candidate_name} url={sheet.avatar_url}/>

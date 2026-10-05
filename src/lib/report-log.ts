@@ -51,6 +51,40 @@ export const reportLog = {
   },
 };
 
+// --- The member's folder link ---------------------------------------------------------
+// Members only get their folder's (thread's) link from the forum, so every report of a month
+// carries the same link: it is remembered in the browser (and found in the log otherwise).
+
+const folderKey = (userId: string) => `frakhub.report.folder.${userId}`;
+
+export interface RememberedFolder {
+  url: string;
+  /** The month ("2026-10-01") the link was last used in: folders are opened monthly. */
+  month: string;
+}
+
+export function rememberFolder(userId: string, url: string | null, month: string) {
+  if (!url) return;
+  try {
+    localStorage.setItem(folderKey(userId), JSON.stringify({url, month}));
+  } catch {
+    // Storage disabled: the log still has the link.
+  }
+}
+
+export async function lastFolder(userId: string): Promise<RememberedFolder | null> {
+  try {
+    const saved = localStorage.getItem(folderKey(userId));
+    if (saved) return JSON.parse(saved) as RememberedFolder;
+  } catch {
+    // Broken entry: ask the log.
+  }
+  const {data} = await supabase.from("report_logs").select("forum_url, month").eq("user_id", userId).not("forum_url", "is", null)
+    .order("created_at", {ascending: false}).limit(1).maybeSingle();
+  const row = data as {forum_url: string; month: string} | null;
+  return row ? {url: row.forum_url, month: row.month} : null;
+}
+
 /** Hungarian text for the errors a log insert can hit. */
 export function reportLogError(error: unknown): string {
   const code = typeof error === "object" && error && "code" in error ? String((error as {code: unknown}).code) : "";

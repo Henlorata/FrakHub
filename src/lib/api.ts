@@ -1,4 +1,5 @@
 import {supabase} from "./supabaseClient";
+import {sandbox} from "./sandbox/state";
 
 /** Error returned by one of our Vercel functions; `message` is user-facing (Hungarian). */
 export class ApiError extends Error {
@@ -20,6 +21,10 @@ export async function postApi<T = unknown>(
   body: unknown,
   {authenticated = true}: {authenticated?: boolean} = {},
 ): Promise<T> {
+  // Practice mode: the demo world answers, nothing reaches the server.
+  const backend = sandbox.backend();
+  if (backend) return (await backend.api(path, body)) as T;
+
   const headers: Record<string, string> = {"Content-Type": "application/json"};
   if (authenticated) {
     // getSession() refreshes an expired access token before returning it.

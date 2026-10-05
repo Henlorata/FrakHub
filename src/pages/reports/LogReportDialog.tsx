@@ -1,16 +1,17 @@
 import {useMemo, useState} from "react";
 import {toast} from "sonner";
-import {Link2, ListPlus, Loader2, Save} from "lucide-react";
+import {FolderOpen, ListPlus, Loader2, Minus, Plus, Save} from "lucide-react";
 import {Dialog, DialogContent, DialogDescription, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
-import {Textarea} from "@/components/ui/textarea";
 import {useProfileDirectory} from "@/lib/profile-directory";
 import {todayKey} from "@/lib/datetime";
 import {normalizeForumUrl} from "@/lib/report-templates";
 import {reportLog, reportLogError, type ReportLog} from "@/lib/report-log";
 import {cn} from "@/lib/utils";
+
+const MAX_AT_ONCE = 50;
 
 interface LogReportDialogProps {
   /** Whose report it is (the caller unless staff pick someone). */
@@ -20,20 +21,22 @@ interface LogReportDialogProps {
   /** Editing an existing entry. */
   entry?: ReportLog | null;
   defaultDate?: string;
+  /** The folder link used last (members only see their folder's link, not the posts'). */
+  defaultLink?: string | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (link: string | null) => void;
 }
 
-/** Records a report posted on the forum (or several at once by their links), or edits one. */
-export function LogReportDialog({userId, pickMember, entry, defaultDate, onClose, onSaved}: LogReportDialogProps) {
+/** Records reports posted into the member's forum folder (one, or several at once), or edits one entry. */
+export function LogReportDialog({userId, pickMember, entry, defaultDate, defaultLink, onClose, onSaved}: LogReportDialogProps) {
   const {profiles} = useProfileDirectory();
   const [member, setMember] = useState(entry?.user_id ?? userId);
   const [term, setTerm] = useState("");
   const [date, setDate] = useState(entry?.occurred_on ?? defaultDate ?? todayKey());
   const [title, setTitle] = useState(entry?.title ?? "");
-  const [link, setLink] = useState(entry?.forum_url ?? "");
+  const [link, setLink] = useState(entry?.forum_url ?? defaultLink ?? "");
   const [bulk, setBulk] = useState(false);
-  const [links, setLinks] = useState("");
+  const [count, setCount] = useState(2);
   const [saving, setSaving] = useState(false);
 
   const members = useMemo(() => {
@@ -42,37 +45,31 @@ export function LogReportDialog({userId, pickMember, entry, defaultDate, onClose
       && (!needle || profile.full_name.toLowerCase().includes(needle) || profile.badge_number.includes(needle))).slice(0, 8);
   }, [profiles, term]);
   const chosen = profiles.find((profile) => profile.id === member);
-
-  const bulkLines = links.split(/\s+/).map((line) => line.trim()).filter(Boolean);
-  const bulkUrls = bulkLines.map(normalizeForumUrl);
-  const bulkInvalid = bulkUrls.filter((url) => url === null).length;
   const linkInvalid = link.trim() !== "" && normalizeForumUrl(link) === null;
 
   const submit = async () => {
     if (!date) return toast.error("Add meg a dátumot.");
+    if (linkInvalid) return toast.error("Csak forum.hl-rpg.eu link adható meg.");
+    const url = normalizeForumUrl(link);
     setSaving(true);
     try {
       if (entry) {
         if (!title.trim()) return toast.error("Adj címet a bejegyzésnek.");
-        if (linkInvalid) return toast.error("Csak forum.hl-rpg.eu link adható meg.");
-        await reportLog.update(entry.id, {title: title.trim(), forum_url: normalizeForumUrl(link), occurred_on: date});
+        await reportLog.update(entry.id, {title: title.trim(), forum_url: url, occurred_on: date});
         toast.success("Bejegyzés mentve.");
       } else if (bulk) {
-        if (bulkLines.length === 0) return toast.error("Illeszd be a fórum-linkeket (soronként egyet).");
-        if (bulkInvalid > 0) return toast.error(`${bulkInvalid} link nem a fórumra mutat.`);
-        const unique = [...new Set(bulkUrls as string[])];
-        await reportLog.add(unique.map((url) => ({
+        const rows = Array.from({length: count}, (_, index) => ({
           user_id: member, occurred_on: date, source: "manual" as const, forum_url: url,
-          title: `Fórum-jelentés ${url.match(/posts\/(\d+)/)?.[1] ? `#${url.match(/posts\/(\d+)/)?.[1]}` : ""}`.trim(),
-        })));
-        toast.success(`${unique.length} jelentés rögzítve.`);
+          title: `${title.trim() || "Fórum-jelentés"} (${index + 1}/${count})`,
+        }));
+        await reportLog.add(rows);
+        toast.success(`${count} jelentés rögzítve.`);
       } else {
         if (!title.trim()) return toast.error("Adj címet a jelentésnek (pl. a gyanúsított neve és a vád).");
-        if (linkInvalid) return toast.error("Csak forum.hl-rpg.eu link adható meg.");
-        await reportLog.add([{user_id: member, occurred_on: date, title: title.trim(), forum_url: normalizeForumUrl(link), source: "manual"}]);
+        await reportLog.add([{user_id: member, occurred_on: date, title: title.trim(), forum_url: url, source: "manual"}]);
         toast.success("Jelentés rögzítve.");
       }
-      onSaved();
+      onSaved(url);
     } catch (error) {
       toast.error(reportLogError(error));
     } finally {
@@ -86,7 +83,7 @@ export function LogReportDialog({userId, pickMember, entry, defaultDate, onClose
         <div>
           <DialogTitle className="flex items-center gap-2"><ListPlus className="size-4 text-sky-400"/> {entry ? "Bejegyzés szerkesztése" : "Jelentés rögzítése"}</DialogTitle>
           <DialogDescription className="mt-1">
-            A havi fizetés a rögzített jelentéseket számolja. A fórum-link nem kötelező, de a vezetőség ebből ellenőrzi a jelentést.
+            A havi fizetés a rögzített jelentéseket számolja. A mappád linkjéből a vezetőség ellenőrzi őket a fórumon.
           </DialogDescription>
         </div>
 
@@ -116,45 +113,48 @@ export function LogReportDialog({userId, pickMember, entry, defaultDate, onClose
             {[false, true].map((value) => (
               <button key={String(value)} type="button" onClick={() => setBulk(value)}
                       className={cn("rounded-md px-3 py-1 text-xs font-medium transition-colors", bulk === value ? "bg-white/10 text-white" : "text-slate-400 hover:text-slate-200")}>
-                {value ? "Több link egyszerre" : "Egy jelentés"}
+                {value ? "Több jelentés egyszerre" : "Egy jelentés"}
               </button>
             ))}
           </div>
         )}
 
-        <div className="space-y-1.5">
-          <Label htmlFor="log-date">Az intézkedés napja</Label>
-          <Input id="log-date" type="date" value={date} max={todayKey()} onChange={(event) => setDate(event.target.value)} className="w-48"/>
+        <div className={cn("grid grid-cols-1 gap-3", bulk && !entry && "sm:grid-cols-2")}>
+          <div className="space-y-1.5">
+            <Label htmlFor="log-date">{bulk && !entry ? "Dátum" : "Az intézkedés napja"}</Label>
+            <Input id="log-date" type="date" value={date} max={todayKey()} onChange={(event) => setDate(event.target.value)} className="w-48"/>
+          </div>
+          {bulk && !entry && (
+            <div className="space-y-1.5">
+              <Label>Darabszám</Label>
+              <div className="flex h-9 w-fit items-center rounded-md ring-1 ring-white/10">
+                <button type="button" aria-label="Kevesebb" onClick={() => setCount((value) => Math.max(1, value - 1))}
+                        className="grid h-full w-9 place-items-center text-slate-300 hover:bg-white/5"><Minus className="size-4"/></button>
+                <input aria-label="Darabszám" inputMode="numeric" value={count}
+                       onChange={(event) => setCount(Math.min(MAX_AT_ONCE, Math.max(1, Number(event.target.value.replace(/\D/g, "") || 1))))}
+                       className="h-full w-14 bg-transparent text-center font-mono text-sm text-white outline-none"/>
+                <button type="button" aria-label="Több" onClick={() => setCount((value) => Math.min(MAX_AT_ONCE, value + 1))}
+                        className="grid h-full w-9 place-items-center text-slate-300 hover:bg-white/5"><Plus className="size-4"/></button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {bulk && !entry ? (
-          <div className="space-y-1.5">
-            <Label htmlFor="log-links">Fórum-linkek (soronként egy)</Label>
-            <Textarea id="log-links" value={links} onChange={(event) => setLinks(event.target.value)} className="min-h-32 font-mono text-xs"
-                      placeholder={"https://forum.hl-rpg.eu/threads/.../post-123456\nhttps://forum.hl-rpg.eu/posts/123457/"}/>
-            <p className={cn("text-xs", bulkInvalid ? "text-red-300" : "text-slate-500")}>
-              {bulkLines.length} link{bulkInvalid ? ` · ${bulkInvalid} nem fórum-link` : ""}. Ugyanaz a bejegyzés csak egyszer számít.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="space-y-1.5">
-              <Label htmlFor="log-title">Cím</Label>
-              <Input id="log-title" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)}
-                     placeholder="pl. John Doe – gyorshajtás, rendőri utasítás megtagadása"/>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="log-link" className="flex items-center gap-1.5"><Link2 className="size-3.5"/> Fórum-link (nem kötelező)</Label>
-              <Input id="log-link" value={link} onChange={(event) => setLink(event.target.value)} aria-invalid={linkInvalid}
-                     className={cn("font-mono text-xs", linkInvalid && "ring-2 ring-red-500/60")} placeholder="https://forum.hl-rpg.eu/threads/.../post-123456"/>
-              <p className="text-[11px] text-slate-500">A hozzászólás „#” számára kattintva kapod meg a linkjét.</p>
-            </div>
-          </>
-        )}
+        <div className="space-y-1.5">
+          <Label htmlFor="log-title">{bulk && !entry ? "Megjegyzés (nem kötelező)" : "Cím"}</Label>
+          <Input id="log-title" value={title} maxLength={bulk && !entry ? 120 : 160} onChange={(event) => setTitle(event.target.value)}
+                 placeholder={bulk && !entry ? "pl. Kézzel írt jelentések" : "pl. John Doe – gyorshajtás, rendőri utasítás megtagadása"}/>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="log-link" className="flex items-center gap-1.5"><FolderOpen className="size-3.5"/> A mappád linkje</Label>
+          <Input id="log-link" value={link} onChange={(event) => setLink(event.target.value)} aria-invalid={linkInvalid}
+                 className={cn("font-mono text-xs", linkInvalid && "ring-2 ring-red-500/60")} placeholder="https://forum.hl-rpg.eu/threads/…-jelentesi-mappaja.123/"/>
+          <p className="text-[11px] text-slate-500">A fórumon a jelentési mappád (témád) címe a böngésző címsorából. Minden jelentéshez ugyanaz.</p>
+        </div>
 
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={saving}>Mégse</Button>
-          <Button onClick={() => void submit()} disabled={saving}>{saving ? <Loader2 className="animate-spin"/> : <Save/>} {entry ? "Mentés" : "Rögzítés"}</Button>
+          <Button onClick={() => void submit()} disabled={saving}>{saving ? <Loader2 className="animate-spin"/> : <Save/>} {entry ? "Mentés" : bulk ? `${count} jelentés rögzítése` : "Rögzítés"}</Button>
         </div>
       </DialogContent>
     </Dialog>

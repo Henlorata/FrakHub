@@ -38,7 +38,7 @@ interface PageHeaderProps {
 export function PageHeader({icon: Icon, eyebrow, title, description, actions, tone = "gold", className}: PageHeaderProps) {
   const toneClasses = TONE_CLASSES[tone];
   return (
-    <header className={cn("animate-rise flex flex-col gap-4 md:flex-row md:items-end md:justify-between", className)}>
+    <header data-tour="page-header" className={cn("animate-rise flex flex-col gap-4 md:flex-row md:items-end md:justify-between", className)}>
       <div className="flex min-w-0 items-start gap-4">
         {Icon && (
           <div className="relative shrink-0">
@@ -58,7 +58,7 @@ export function PageHeader({icon: Icon, eyebrow, title, description, actions, to
           {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
         </div>
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div data-tour="page-actions" className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>
   );
 }

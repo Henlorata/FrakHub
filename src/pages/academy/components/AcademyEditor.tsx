@@ -11,6 +11,7 @@ import {cn, errorMessage} from "@/lib/utils";
 import {deleteCloudinaryAssets, getOptimizedImageUrl, uploadToCloudinary} from "@/lib/cloudinary";
 import {extractImageUrls, toInitialContent} from "@/lib/blocknote-content";
 import {countInlineImages, uploadInlineImages} from "@/lib/inline-images";
+import {hu} from "@/lib/blocknote-hu";
 
 interface AcademyEditorProps {
   initialContent: unknown;
@@ -28,17 +29,18 @@ const schema = BlockNoteSchema.create({
 });
 
 /** Page looks of the material (stored per page; the keys are kept for the existing pages). */
-export const ACADEMY_THEMES: Record<string, {label: string; className: string; editorTheme: "light" | "dark"; background: string; text: string; font?: string}> = {
+export const ACADEMY_THEMES: Record<string, {label: string; className: string; editorTheme: "light" | "dark"; background: string; text: string}> = {
   default: {label: "Sötét", className: "bg-[#0b1221]/70", editorTheme: "dark", background: "transparent", text: "#e2e8f0"},
-  paper: {label: "Papír", className: "bg-[#f5f0e6]", editorTheme: "light", background: "#f5f0e6", text: "#3d342b", font: "Georgia, 'Times New Roman', serif"},
+  paper: {label: "Papír", className: "bg-[#f5f0e6]", editorTheme: "light", background: "#f5f0e6", text: "#3d342b"},
   classic: {label: "Hivatalos (fehér)", className: "bg-white", editorTheme: "light", background: "#ffffff", text: "#0f172a"},
   blue: {label: "Kék", className: "bg-[#0f172a]", editorTheme: "dark", background: "#0f172a", text: "#bfdbfe"},
-  terminal: {label: "Terminál", className: "bg-[#0c0c0c]", editorTheme: "dark", background: "#0c0c0c", text: "#4ade80", font: "ui-monospace, monospace"},
-  amber: {label: "Borostyán", className: "bg-[#1a1200]", editorTheme: "dark", background: "#1a1200", text: "#ffb000", font: "ui-monospace, monospace"},
+  terminal: {label: "Terminál", className: "bg-[#0c0c0c]", editorTheme: "dark", background: "#0c0c0c", text: "#4ade80"},
+  amber: {label: "Borostyán", className: "bg-[#1a1200]", editorTheme: "dark", background: "#1a1200", text: "#ffb000"},
 };
 
-// BlockNote sets its colours on .bn-container; the page look overrides them.
-const THEME_CSS = Object.entries(ACADEMY_THEMES).map(([key, look]) => `.academy-theme-${key} .bn-container { --bn-colors-editor-background: ${look.background} !important; --bn-colors-editor-text: ${look.text} !important;${look.font ? ` --bn-font-family: ${look.font} !important;` : ""} }${look.font ? ` .academy-theme-${key} .bn-default-styles { font-family: ${look.font}; }` : ""}`).join("\n");
+// BlockNote sets its colours on .bn-container; the page look overrides them (the font stays
+// BlockNote's, as the existing pages were written with it).
+const THEME_CSS = Object.entries(ACADEMY_THEMES).map(([key, look]) => `.academy-theme-${key} .bn-container { --bn-colors-editor-background: ${look.background} !important; --bn-colors-editor-text: ${look.text} !important;}`).join("\n");
 
 interface Block {
   type?: string;
@@ -77,6 +79,7 @@ export function AcademyEditor({initialContent, onSave, readOnly = false, theme =
   const editor = useCreateBlockNote({
     initialContent: safeContent as never,
     schema,
+    dictionary: hu,
     uploadFile: async (file: File) => {
       const toastId = toast.loading("Kép feltöltése…");
       try {

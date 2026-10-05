@@ -1,5 +1,6 @@
 import {useState} from "react";
 import {toast} from "sonner";
+import {useConfirm} from "@/components/ConfirmDialog";
 import {Loader2, Save, Settings2, Trash2} from "lucide-react";
 import {Dialog, DialogContent, DialogDescription, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
@@ -22,6 +23,7 @@ export function CourseSettingsDialog({course, onClose, onSaved, onDeleted}: {
   onDeleted?: () => void;
 }) {
   const {supabase} = useAuth();
+  const confirm = useConfirm();
   const [title, setTitle] = useState(course?.title ?? "");
   const [description, setDescription] = useState(course?.description ?? "");
   const [category, setCategory] = useState<CourseCategory>(course?.category ?? "other");
@@ -59,7 +61,7 @@ export function CourseSettingsDialog({course, onClose, onSaved, onDeleted}: {
 
   const remove = async () => {
     if (!course || course.pages > 0) return;
-    if (!window.confirm(`Törlöd a(z) „${course.title}” tananyagot?`)) return;
+    if (!(await confirm({title: "Tananyag törlése", description: `Törlöd a(z) „${course.title}” tananyagot?`, confirmLabel: "Törlés", destructive: true, kind: "delete"}))) return;
     const {error} = await supabase.from("academy_courses").delete().eq("id", course.id);
     if (error) return toast.error("A törlés nem sikerült: " + errorMessage(error));
     toast.success("Tananyag törölve.");

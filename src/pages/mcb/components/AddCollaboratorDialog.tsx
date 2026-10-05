@@ -1,185 +1,188 @@
-import * as React from "react";
-import {useAuth} from "@/context/AuthContext";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogFooter
-} from "@/components/ui/dialog";
+import {useEffect, useMemo, useState} from "react";
+import {ArrowRightLeft, Check, Loader2, Search, UserPlus} from "lucide-react";
+import {toast} from "sonner";
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {Search, Loader2, UserCog} from "lucide-react";
-import {toast} from "sonner";
-import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {ScrollArea} from "@/components/ui/scroll-area";
-import type {Profile} from "@/types/supabase";
-import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
+import {useAuth} from "@/context/AuthContext";
+import {useProfileDirectory, type DirectoryProfile} from "@/lib/profile-directory";
+import {COLLABORATOR_ROLE, mcbApi} from "@/lib/mcb";
+import {cn, errorMessage, getRankPriority, isHighCommand, isSupervisory} from "@/lib/utils";
+import {MemberAvatar} from "./McbBadges";
 
-interface AddCollaboratorDialogProps {
+const fold = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
+/** Members who can work in the MCB area (canViewCaseList / private.can_view_cases()). */
+const canWorkOnCases = (member: DirectoryProfile) => member.system_role !== "pending"
+  && (member.division === "MCB" || member.system_role === "admin" || member.system_role === "supervisor" || !!member.is_bureau_manager
+    || isSupervisory(member) || isHighCommand(member));
+
+function MemberPicker({exclude, selected, onSelect}: {exclude: string[]; selected: string | null; onSelect: (member: DirectoryProfile) => void}) {
+  const {profiles, loading} = useProfileDirectory();
+  const [query, setQuery] = useState("");
+  const members = useMemo(() => {
+    const term = fold(query.trim());
+    return profiles.filter((member) => canWorkOnCases(member) && !exclude.includes(member.id)
+      && (!term || fold(member.full_name).includes(term) || member.badge_number.includes(term)))
+      .sort((a, b) => Number(b.division === "MCB") - Number(a.division === "MCB") || getRankPriority(a.faction_rank) - getRankPriority(b.faction_rank))
+      .slice(0, 60);
+  }, [exclude, profiles, query]);
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
+        <Input value={query} autoFocus onChange={(event) => setQuery(event.target.value)} className="pl-9" placeholder="Név vagy jelvényszám…"/>
+      </div>
+      <ul className="max-h-[300px] space-y-1 overflow-y-auto pr-1">
+        {loading && <li className="flex justify-center py-6"><Loader2 className="size-5 animate-spin text-slate-500"/></li>}
+        {members.map((member) => (
+          <li key={member.id}>
+            <button type="button" onClick={() => onSelect(member)}
+                    className={cn("flex w-full min-w-0 items-center gap-3 rounded-xl p-2 text-left ring-1 transition",
+                      selected === member.id ? "bg-sky-500/10 ring-sky-500/40" : "ring-transparent hover:bg-white/[0.05]")}>
+              <MemberAvatar url={member.avatar_url} name={member.full_name} size={34}/>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-white">{member.full_name}</span>
+                <span className="block truncate text-[11px] text-slate-500">
+                  #{member.badge_number} · {member.faction_rank}{member.division === "MCB" && member.division_rank ? ` · ${member.division_rank}` : ""}
+                </span>
+              </span>
+              {member.division === "MCB" && <span className="rounded-md bg-sky-500/10 px-1.5 text-[10px] font-semibold text-sky-300">MCB</span>}
+              {selected === member.id && <Check className="size-4 text-sky-300"/>}
+            </button>
+          </li>
+        ))}
+        {!loading && members.length === 0 && <li className="py-6 text-center text-xs text-slate-500">Nincs találat.</li>}
+      </ul>
+    </div>
+  );
+}
+
+export function AddCollaboratorDialog({open, onOpenChange, caseId, existingUserIds, onAdded}: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   caseId: string;
-  onCollaboratorAdded: () => void;
   existingUserIds: string[];
+  onAdded: () => void;
+}) {
+  const {supabase} = useAuth();
+  const [member, setMember] = useState<DirectoryProfile | null>(null);
+  const [role, setRole] = useState<"editor" | "viewer">("editor");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setMember(null);
+    setRole("editor");
+  }, [open]);
+
+  const add = async () => {
+    if (!member) return;
+    setBusy(true);
+    const {error} = await supabase.from("case_collaborators").insert({case_id: caseId, user_id: member.id, role});
+    setBusy(false);
+    if (error) return void toast.error("A hozzáadás nem sikerült.", {description: errorMessage(error)});
+    toast.success(`${member.full_name} csatlakozott az aktához.`, {description: "Értesítést kapott."});
+    onOpenChange(false);
+    onAdded();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-2xl bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/30"><UserPlus className="size-5"/></span>
+            <div>
+              <DialogTitle>Közreműködő hozzáadása</DialogTitle>
+              <DialogDescription>Az MCB tagjai és a felügyelő állomány vehető fel az aktára.</DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+        <MemberPicker exclude={existingUserIds} selected={member?.id ?? null} onSelect={setMember}/>
+        <div className="space-y-1.5">
+          <Label>Jogosultság</Label>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {(["editor", "viewer"] as const).map((value) => (
+              <button key={value} type="button" onClick={() => setRole(value)}
+                      className={cn("rounded-xl p-3 text-left ring-1 transition",
+                        role === value ? "bg-sky-500/10 ring-sky-500/40" : "bg-white/[0.02] ring-white/10 hover:bg-white/[0.05]")}>
+                <span className="block text-sm font-semibold text-white">{COLLABORATOR_ROLE[value].label}</span>
+                <span className="block text-[11px] text-slate-400">{COLLABORATOR_ROLE[value].hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Mégse</Button>
+          <Button onClick={() => void add()} disabled={busy || !member} className="bg-sky-600 text-white hover:bg-sky-500">
+            {busy ? <Loader2 className="size-4 animate-spin"/> : <UserPlus className="size-4"/>} Hozzáadás
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
-export function AddCollaboratorDialog({
-                                        open,
-                                        onOpenChange,
-                                        caseId,
-                                        onCollaboratorAdded,
-                                        existingUserIds
-                                      }: AddCollaboratorDialogProps) {
-  const {supabase} = useAuth();
-  const [search, setSearch] = React.useState("");
-  const [results, setResults] = React.useState<Profile[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [selectedUser, setSelectedUser] = React.useState<Profile | null>(null);
-  const [role, setRole] = React.useState("editor");
+export function TransferCaseDialog({open, onOpenChange, caseId, ownerId, onTransferred}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  caseId: string;
+  ownerId: string | null;
+  onTransferred: () => void;
+}) {
+  const [member, setMember] = useState<DirectoryProfile | null>(null);
+  const [keep, setKeep] = useState(true);
+  const [busy, setBusy] = useState(false);
 
-  React.useEffect(() => {
-    const term = search.trim();
-    if (term.length < 2) {
-      setResults([]);
-      return;
-    }
-    let active = true;
-    const debounce = setTimeout(async () => {
-      setLoading(true);
-      // Digits search the badge number, anything else the name (as the placeholder promises).
-      const column = /^\d+$/.test(term) ? 'badge_number' : 'full_name';
-      const {data} = await supabase
-        .from('profiles')
-        .select('id, full_name, badge_number, faction_rank, avatar_url')
-        .eq('division', 'MCB')
-        .ilike(column, `%${term}%`)
-        .limit(10);
-      if (active) {
-        setResults((data ?? []) as Profile[]);
-        setLoading(false);
-      }
-    }, 400);
-    return () => {
-      active = false;
-      clearTimeout(debounce);
-    };
-  }, [search, supabase]);
+  useEffect(() => {
+    if (!open) return;
+    setMember(null);
+    setKeep(true);
+  }, [open]);
 
-  // Filtered at render time, so a parent re-render does not trigger a new query.
-  const visibleResults = results.filter(u => !existingUserIds.includes(u.id));
-
-  const handleAdd = async () => {
-    if (!selectedUser) return;
+  const transfer = async () => {
+    if (!member) return;
+    setBusy(true);
     try {
-      const {error} = await supabase.from('case_collaborators').insert({
-        case_id: caseId,
-        user_id: selectedUser.id,
-        role: role as any
-      });
-      if (error) throw error;
-      toast.success(`${selectedUser.full_name} hozzáadva.`);
-      onCollaboratorAdded();
-      handleClose();
-    } catch {
-      toast.error("Hiba történt.");
+      await mcbApi.transfer(caseId, member.id, keep);
+      toast.success(`Az akta új vezető nyomozója: ${member.full_name}.`);
+      mcbApi.invalidateList();
+      onOpenChange(false);
+      onTransferred();
+    } catch (error) {
+      toast.error("Az átadás nem sikerült.", {description: errorMessage(error)});
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleClose = () => {
-    setSearch("");
-    setSelectedUser(null);
-    setRole("editor");
-    onOpenChange(false);
-  }
-
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent
-        className="bg-[#0a0f1c]/80 backdrop-blur-xl border border-blue-900/50 text-white sm:max-w-md p-0 overflow-hidden shadow-2xl">
-        <div className="bg-blue-950/20 border-b border-blue-900/30 px-6 py-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-            <UserCog className="w-5 h-5 text-blue-400"/>
-          </div>
-          <div>
-            <DialogTitle className="text-lg font-black tracking-tight text-white uppercase font-mono">HOZZÁFÉRÉS
-              KEZELÉS</DialogTitle>
-            <p className="text-[10px] text-blue-500/70 font-mono tracking-widest uppercase">Grant Personnel Access</p>
-          </div>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {!selectedUser ? (
-            <>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"/>
-                <Input placeholder="Név vagy jelvényszám..."
-                       className="pl-9 bg-slate-950 border-slate-800 focus-visible:ring-blue-500/50 h-10 text-sm"
-                       value={search} onChange={e => setSearch(e.target.value)} autoFocus/>
-              </div>
-              <ScrollArea className="h-[200px] rounded border border-slate-800 bg-slate-950/30 p-2">
-                {loading ?
-                  <div className="flex justify-center p-4"><Loader2 className="animate-spin w-5 h-5 text-blue-500"/>
-                  </div> :
-                  visibleResults.length === 0 ? <p
-                    className="text-center text-xs text-slate-500 p-4 font-mono">{search.length < 2 ? "KERESÉS..." : "NINCS TALÁLAT"}</p> : (
-                    <div className="space-y-1">
-                      {visibleResults.map(user => (
-                        <button key={user.id}
-                                className="w-full flex items-center gap-3 p-2 rounded hover:bg-blue-500/10 hover:border-blue-500/30 border border-transparent transition-all text-left group"
-                                onClick={() => setSelectedUser(user)}>
-                          <Avatar className="h-8 w-8 border border-slate-700 group-hover:border-blue-500"><AvatarImage
-                            src={getOptimizedAvatarUrl(user.avatar_url, 64) || undefined}/><AvatarFallback
-                            className="bg-slate-900 text-[10px]">{user.full_name.charAt(0)}</AvatarFallback></Avatar>
-                          <div>
-                            <p className="text-sm font-bold text-white group-hover:text-blue-400">{user.full_name}</p>
-                            <p
-                              className="text-[10px] text-slate-500 font-mono uppercase">{user.faction_rank} • {user.badge_number}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-              </ScrollArea>
-            </>
-          ) : (
-            <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
-              <div
-                className="flex items-center gap-4 p-4 bg-slate-950/80 rounded border border-blue-500/30 relative overflow-hidden">
-                <div className="absolute inset-0 bg-blue-500/5 pointer-events-none"></div>
-                <Avatar className="h-12 w-12 border-2 border-blue-500/50"><AvatarImage
-                  src={getOptimizedAvatarUrl(selectedUser.avatar_url, 96) || undefined}/><AvatarFallback
-                  className="bg-slate-900 font-bold">{selectedUser.full_name.charAt(0)}</AvatarFallback></Avatar>
-                <div>
-                  <p className="font-black text-white text-lg">{selectedUser.full_name}</p>
-                  <p className="text-xs text-blue-400 font-mono uppercase">{selectedUser.faction_rank}</p>
-                  <button onClick={() => setSelectedUser(null)}
-                          className="text-[10px] text-slate-500 hover:text-white mt-1 underline decoration-slate-700">MÁSIK
-                    SZEMÉLY VÁLASZTÁSA
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-slate-500">Jogosultsági Szint</Label>
-                <Select value={role} onValueChange={setRole}>
-                  <SelectTrigger className="bg-slate-950 border-slate-800 h-10"><SelectValue/></SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                    <SelectItem value="editor" className="font-bold text-blue-400">SZERKESZTŐ (Editor)</SelectItem>
-                    <SelectItem value="viewer">MEGFIGYELŐ (Viewer)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[10px] text-slate-500 italic mt-1">
-                  {role === 'editor' ? 'Teljes hozzáférést kap az akta szerkesztéséhez, bizonyítékok kezeléséhez.' : 'Csak olvasási jogot kap, nem módosíthatja a tartalmat.'}
-                </p>
-              </div>
+    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-2xl bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/30"><ArrowRightLeft className="size-5"/></span>
+            <div>
+              <DialogTitle>Akta átadása</DialogTitle>
+              <DialogDescription>Az új vezető nyomozó értesítést kap, és kezeli az akta státuszát és csapatát.</DialogDescription>
             </div>
-          )}
-        </div>
-        <DialogFooter className="p-4 bg-slate-950/50 border-t border-slate-800/50">
-          <Button variant="ghost" onClick={handleClose} size="sm">Mégse</Button>
-          <Button onClick={handleAdd} disabled={!selectedUser} size="sm"
-                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold">HOZZÁADÁS</Button>
+          </div>
+        </DialogHeader>
+        <MemberPicker exclude={ownerId ? [ownerId] : []} selected={member?.id ?? null} onSelect={setMember}/>
+        {ownerId && (
+          <label className="flex items-center gap-2.5 rounded-lg bg-white/[0.03] p-3 text-sm text-slate-300 ring-1 ring-white/10">
+            <input type="checkbox" checked={keep} onChange={(event) => setKeep(event.target.checked)} className="size-4 accent-amber-500"/>
+            Az eddigi vezető nyomozó szerkesztőként maradjon az aktán
+          </label>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Mégse</Button>
+          <Button onClick={() => void transfer()} disabled={busy || !member} className="bg-amber-500 text-black hover:bg-amber-400">
+            {busy ? <Loader2 className="size-4 animate-spin"/> : <ArrowRightLeft className="size-4"/>} Átadás
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -12,6 +12,7 @@ const SETTINGS: PayrollSettings = {
   unit_pay: {BM: 3_000_000, SEB: 500_000, MCB: 500_000, TSB: 0, SAHP: 450_000, GW: 400_000, AB: 400_000, FAB: 400_000, TB: 500_000, MU: 400_000},
   duty_tiers: [30, 40, 50, 60, 70, 80, 90, 100].map((hours) => ({hours, pay: hours * 100_000})),
   min_duty_hours: 30,
+  min_reports: 8,
   top_duty_pay: [6_000_000, 5_000_000, 4_000_000],
   top_report_pay: [6_000_000, 5_000_000, 4_000_000],
   report_pay: 500_000,

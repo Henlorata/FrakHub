@@ -1,5 +1,6 @@
 import {useCallback, useState, type CSSProperties, type ReactNode} from "react";
 import {toast} from "sonner";
+import {DISCARD_CHANGES, useConfirm} from "@/components/ConfirmDialog";
 import {
   ArrowDown, ArrowUp, BookOpenCheck, CheckCircle2, ChevronLeft, ChevronRight, Circle, FilePlus2, Loader2, Lock, Palette, PencilLine, Trash2,
 } from "lucide-react";
@@ -44,6 +45,7 @@ interface MaterialWorkspaceProps {
  */
 export function MaterialWorkspace({table, pages, onPagesChange, index, onIndexChange, canEdit, onCreatePage, progress, aside, emptyTitle}: MaterialWorkspaceProps) {
   const {supabase, user} = useAuth();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -56,9 +58,9 @@ export function MaterialWorkspace({table, pages, onPagesChange, index, onIndexCh
     return !progress.completed.has(pages[position - 1]?.id);
   }, [progress, canEdit, pages]);
 
-  const go = (position: number) => {
+  const go = async (position: number) => {
     if (position < 0 || position >= pages.length || locked(position)) return;
-    if (dirty && !window.confirm("Mentetlen változások vannak ezen az oldalon. Elveted őket?")) return;
+    if (dirty && !(await confirm({...DISCARD_CHANGES, description: "Mentetlen változások vannak ezen az oldalon."}))) return;
     setDirty(false);
     onIndexChange(position);
   };
@@ -91,7 +93,7 @@ export function MaterialWorkspace({table, pages, onPagesChange, index, onIndexCh
   };
 
   const remove = async (page: MaterialPage) => {
-    if (!window.confirm(`Törlöd ezt az oldalt? („${page.title}”) A tartalma és a képei végleg elvesznek.`)) return;
+    if (!(await confirm({title: "Oldal törlése", description: `„${page.title}” tartalma és képei végleg elvesznek.`, confirmLabel: "Törlés", destructive: true, kind: "delete"}))) return;
     setBusy(true);
     try {
       const images = extractImageUrls(await fetchMaterialContent(table, page.id));
@@ -145,14 +147,14 @@ export function MaterialWorkspace({table, pages, onPagesChange, index, onIndexCh
     <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
       <aside className="space-y-3 lg:sticky lg:top-20">
         {aside}
-        <nav className="panel overflow-hidden" aria-label="Tartalomjegyzék">
+        <nav className="panel overflow-hidden" aria-label="Tartalomjegyzék" data-tour="material-pages">
           <header className="flex items-center gap-2 border-b border-white/5 px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Tartalom</p>
             {progress && pages.length > 0 && <span className="ml-auto text-[11px] text-slate-400 tabular-nums">{completed}/{pages.length}</span>}
             {canEdit && (
-              <Button size="sm" variant={editing ? "default" : "ghost"} className={cn("h-7 px-2 text-xs", !progress && "ml-auto")}
-                      onClick={() => {
-                        if (editing && dirty && !window.confirm("Mentetlen változások vannak. Kilépsz a szerkesztésből?")) return;
+              <Button size="sm" variant={editing ? "default" : "ghost"} className={cn("h-7 px-2 text-xs", !progress && "ml-auto")} data-tour="material-edit"
+                      onClick={async () => {
+                        if (editing && dirty && !(await confirm({...DISCARD_CHANGES, title: "Kilépsz a szerkesztésből?"}))) return;
                         setEditing(!editing);
                         setDirty(false);
                       }}>

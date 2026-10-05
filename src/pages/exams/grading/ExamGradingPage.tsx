@@ -248,7 +248,7 @@ export function ExamGradingPage() {
           </section>
 
           {canEdit && (
-            <section className="panel animate-rise space-y-4 p-5" style={{"--i": 1} as CSSProperties}>
+            <section className="panel animate-rise space-y-4 p-5" style={{"--i": 1} as CSSProperties} data-tour="grading-decision">
               <h3 className="text-sm font-semibold text-white">{decided ? "Értékelés módosítása" : "Döntés"}</h3>
               <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={4000}
                         placeholder="Összegzés a vizsgázónak (nem kötelező)" className="min-h-24"/>

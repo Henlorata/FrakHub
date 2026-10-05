@@ -21,7 +21,7 @@ export const ALERT_LEVELS: Record<AlertLevelId, AlertLevelMeta> = {
     text: "text-yellow-400", badge: "bg-yellow-500/10 text-yellow-300 ring-yellow-500/30",
   },
   border: {
-    label: "Határzár", description: "A megye határai lezárva, fokozott készültség.", icon: AlertTriangle, color: "#f97316",
+    label: "Határellenőrzés", description: "Határellenőrzés, fokozott készültség.", icon: AlertTriangle, color: "#f97316",
     text: "text-orange-400", badge: "bg-orange-500/10 text-orange-300 ring-orange-500/30",
   },
   tactical: {

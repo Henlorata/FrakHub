@@ -219,3 +219,28 @@ insert into public.academy_division_materials (id, course_id, title, page_order,
    '[{"type":"paragraph","content":"Zárt tananyag: csak az oktatók látják."}]');
 insert into public.academy_progress (user_id, material_id) values
   ('00000000-0000-4000-8000-000000000003', '31000000-0000-4000-8000-000000000001');
+
+-- Events: a meeting to answer, a unit training, a staff briefing, a past action and a cancelled one.
+-- (Inserted as the database owner, so the new-event notifications go out as from the system.)
+insert into public.events (id, title, description, kind, starts_at, ends_at, location, audience, rsvp, cancelled_at, created_by) values
+  ('40000000-0000-4000-8000-000000000001', 'Heti állománygyűlés',
+   'Napirend: a hét értékelése, előléptetések, a havi duty idők rögzítése. Egyenruhában gyere.', 'meeting',
+   date_trunc('day', now()) + interval '2 days 18 hours', date_trunc('day', now()) + interval '2 days 19 hours', 'Downtown Station, eligazító',
+   'all', true, null, '00000000-0000-4000-8000-000000000001'),
+  ('40000000-0000-4000-8000-000000000002', 'MU elsősegély-gyakorlat', 'Sebellátás, újraélesztés, mentés járműből.', 'training',
+   date_trunc('day', now()) + interval '5 days 17 hours', date_trunc('day', now()) + interval '5 days 19 hours', 'Angel Pine kórház',
+   'MU', true, null, '00000000-0000-4000-8000-000000000007'),
+  ('40000000-0000-4000-8000-000000000003', 'Felügyelői eligazítás', null, 'meeting',
+   date_trunc('day', now()) + interval '3 days 19 hours', null, 'Downtown Station', 'staff', true, null, '00000000-0000-4000-8000-000000000005'),
+  ('40000000-0000-4000-8000-000000000004', 'Közös akció a kikötőben', null, 'patrol',
+   date_trunc('day', now()) - interval '3 days' + interval '20 hours', date_trunc('day', now()) - interval '3 days' + interval '22 hours',
+   'San Fierro kikötő', 'all', true, null, '00000000-0000-4000-8000-000000000005'),
+  ('40000000-0000-4000-8000-000000000005', 'Lőtéri edzés', null, 'training',
+   date_trunc('day', now()) + interval '4 days 16 hours', null, 'Fort Carson lőtér', 'all', true, now(), '00000000-0000-4000-8000-000000000002');
+insert into public.event_responses (event_id, user_id, status, note) values
+  ('40000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'going', null),
+  ('40000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000005', 'going', null),
+  ('40000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000006', 'maybe', 'Csak 20:30-tól tudok jönni.'),
+  ('40000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000007', 'absent', 'Szabadságon leszek.'),
+  ('40000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000003', 'going', null),
+  ('40000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000006', 'going', null);

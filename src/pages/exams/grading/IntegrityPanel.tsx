@@ -47,7 +47,7 @@ export function IntegrityPanel({summary, log, legacyCount, questionNumbers}: Int
   const number = (id: string | undefined) => (id && questionNumbers.has(id) ? ` · ${questionNumbers.get(id)}. kérdés` : "");
 
   return (
-    <section className="panel animate-rise p-5" style={{"--i": 2} as CSSProperties}>
+    <section className="panel animate-rise p-5" style={{"--i": 2} as CSSProperties} data-tour="grading-integrity">
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><ShieldCheck className="size-4 text-slate-400"/> Integritási napló</h3>
         {hasLog && <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1", TONE_CLASSES[meta.tone].tile)}>{meta.label}</span>}

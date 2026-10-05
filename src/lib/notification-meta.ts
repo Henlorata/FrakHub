@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, Banknote, Bell, CheckCircle2, ClipboardList, Fingerprint, GraduationCap, Info,
+  AlertTriangle, Banknote, Bell, CalendarDays, CheckCircle2, ClipboardList, Fingerprint, GraduationCap, Info,
   Megaphone, ShieldCheck, Siren, Truck, Users, type LucideIcon,
 } from "lucide-react";
 import type {NotificationCategory, NotificationType} from "@/types/supabase";
@@ -21,11 +21,12 @@ export const NOTIFICATION_CATEGORIES: Record<NotificationCategory, CategoryMeta>
   logistics: {label: "Logisztika", icon: Truck, tone: "bg-orange-500/10 text-orange-400 ring-orange-500/20", mutable: true},
   finance: {label: "Pénzügy", icon: Banknote, tone: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20", mutable: true},
   announcement: {label: "Hirdetmények", icon: Megaphone, tone: "bg-yellow-500/10 text-yellow-400 ring-yellow-500/20", mutable: true},
+  event: {label: "Események", icon: CalendarDays, tone: "bg-rose-500/10 text-rose-300 ring-rose-500/20", mutable: true},
   system: {label: "Rendszer", icon: ShieldCheck, tone: "bg-slate-500/10 text-slate-300 ring-slate-500/20", mutable: false},
 };
 
 export const CATEGORY_ORDER: NotificationCategory[] = [
-  "hr", "mcb", "exam", "academy", "logistics", "finance", "announcement", "system",
+  "hr", "mcb", "exam", "academy", "logistics", "finance", "announcement", "event", "system",
 ];
 
 export const NOTIFICATION_TYPES: Record<NotificationType, {label: string; icon: LucideIcon; accent: string; dot: string}> = {

@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
 import {toast} from "sonner";
+import {useConfirm} from "@/components/ConfirmDialog";
 import {DoorOpen, Loader2, Pencil, Plus, Save, Search, Trash2, UserX} from "lucide-react";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
@@ -41,6 +42,7 @@ export function findFormerMatch(rows: FormerMember[] | null, person: {full_name:
 
 export function FormerMembersPanel({viewer}: {viewer: Profile}) {
   const {supabase} = useAuth();
+  const confirm = useConfirm();
   const {rows, setRows} = useFormerMembers();
   const [search, setSearch] = useState("");
   const [rehire, setRehire] = useState<"all" | RehireStatus>("all");
@@ -55,7 +57,7 @@ export function FormerMembersPanel({viewer}: {viewer: Profile}) {
   }, [rows, search, rehire]);
 
   const remove = async (row: FormerMember) => {
-    if (!window.confirm(`Biztosan törlöd ${row.full_name} bejegyzését?`)) return;
+    if (!(await confirm({title: "Bejegyzés törlése", description: `Biztosan törlöd ${row.full_name} bejegyzését a volt tagok közül?`, confirmLabel: "Törlés", destructive: true, kind: "delete"}))) return;
     const {error} = await supabase.from("former_members").delete().eq("id", row.id);
     if (error) return toast.error("Hiba: " + errorMessage(error));
     setRows((prev) => (prev ?? []).filter((item) => item.id !== row.id));

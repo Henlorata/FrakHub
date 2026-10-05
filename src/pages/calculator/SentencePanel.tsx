@@ -36,7 +36,7 @@ export function SentencePanel(props: SentencePanelProps) {
 
   return (
     <div className="space-y-4">
-      <section className="panel overflow-hidden">
+      <section className="panel overflow-hidden" data-cart={count}>
         <header className="flex items-center gap-2 border-b border-white/5 px-4 py-3">
           <ClipboardList className="size-4 text-sky-300"/>
           <h3 className="font-semibold text-white">Jegyzőkönyv</h3>
@@ -83,7 +83,7 @@ export function SentencePanel(props: SentencePanelProps) {
         )}
       </section>
 
-      <section className="panel space-y-5 p-4">
+      <section data-tour="calc-sentence" className="panel space-y-5 p-4">
         <header className="flex items-center gap-2">
           <Gavel className="size-4 text-amber-300"/>
           <h3 className="font-semibold text-white">Kiszabás</h3>
@@ -157,7 +157,7 @@ export function SentencePanel(props: SentencePanelProps) {
           </div>
         </div>
 
-        <Button variant="outline" className="w-full" disabled={empty} onClick={onReport}>
+        <Button variant="outline" className="w-full" disabled={empty} onClick={onReport} data-tour="calc-report">
           <FileText/> Jelentés készítése ezekkel
         </Button>
       </section>

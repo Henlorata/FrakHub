@@ -1,5 +1,5 @@
 import {
-  Banknote, Bell, Calculator, ClipboardList, FileText, Fingerprint, GraduationCap, LayoutDashboard, Truck, Users,
+  Banknote, Bell, Calculator, CalendarDays, ClipboardList, FileText, Fingerprint, GraduationCap, LayoutDashboard, Radio, Truck, Users,
   type LucideIcon,
 } from "lucide-react";
 import {canViewCaseList} from "@/lib/utils";
@@ -25,12 +25,13 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       {label: "Irányítópult", path: "/dashboard", icon: LayoutDashboard, keywords: "dashboard főoldal kezdőlap"},
       {label: "Értesítések", path: "/notifications", icon: Bell, keywords: "üzenetek értesítés"},
+      {label: "Események", path: "/events", icon: CalendarDays, keywords: "naptár gyűlés képzés esemény jelentkezés program"},
     ],
   },
   {
     label: "Operatív",
     items: [
-      {label: "Nyomozó Iroda", path: "/mcb", icon: Fingerprint, keywords: "mcb akta gyanúsított körözés", visible: canViewCaseList},
+      {label: "Nyomozó Iroda", path: "/mcb", icon: Fingerprint, keywords: "mcb akta gyanúsított körözés nyilvántartás parancs elfogató házkutatás", visible: canViewCaseList},
       {label: "Logisztika", path: "/logistics", icon: Truck, keywords: "jármű igénylés"},
       {label: "Pénzügy", path: "/finance", icon: Banknote, keywords: "költségtérítés pénz fizetés havi fizetés bér"},
     ],
@@ -47,6 +48,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       {label: "Büntető kalkulátor", path: "/calculator", icon: Calculator, keywords: "btk bírság kalkulátor"},
       {label: "Jelentések", path: "/reports", icon: FileText, keywords: "jelentés riport fórum napló bbcode"},
+      {label: "Kódtár", path: "/codes", icon: Radio, keywords: "rádió kód 10-es kódok fónia hívójel egységjel"},
     ],
   },
   {
@@ -68,8 +70,9 @@ export const pageTitleFor = (pathname: string): string => {
   if (pathname.startsWith("/exams/editor")) return "Vizsgaszerkesztő";
   if (pathname.startsWith("/exams/grading")) return "Vizsgalap";
   if (pathname.startsWith("/mcb/case")) return "Akta";
-  if (pathname.startsWith("/mcb/suspects")) return "Gyanúsítottak";
-  if (pathname.startsWith("/mcb/admin")) return "MCB adminisztráció";
+  if (pathname.startsWith("/mcb/suspects")) return "Bűnügyi nyilvántartás";
+  if (pathname.startsWith("/mcb/warrants")) return "Parancsok";
+  if (pathname.startsWith("/mcb/admin")) return "Az iroda vezetése";
   if (pathname.startsWith("/logistics/fleet/")) return "Jármű";
   const match = NAV_SECTIONS.flatMap((section) => section.items)
     .filter((item) => pathname.startsWith(item.path))

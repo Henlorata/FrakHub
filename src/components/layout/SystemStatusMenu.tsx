@@ -27,14 +27,14 @@ export function SystemStatusMenu() {
     </span>
   );
 
-  if (!canManage) return <span title={`Készültség: ${level.label}`}>{pill}</span>;
+  if (!canManage) return <span title={`Készültség: ${level.label}`} data-tour="status">{pill}</span>;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{pill}</button>
+        <button type="button" data-tour="status" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{pill}</button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent align="end" className="w-72" data-tour="status-menu">
         <DropdownMenuLabel className="text-xs text-muted-foreground">Készültségi szint</DropdownMenuLabel>
         {ALERT_LEVEL_ORDER.map((id) => {
           const meta = ALERT_LEVELS[id];

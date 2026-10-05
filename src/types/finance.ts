@@ -34,6 +34,8 @@ export interface PayrollSettings {
   unit_pay: Record<string, number>;
   duty_tiers: DutyTier[];
   min_duty_hours: number;
+  /** Monthly report requirement (shown on the dashboard; not part of the pay). */
+  min_reports: number;
   top_duty_pay: number[];
   top_report_pay: number[];
   report_pay: number;
@@ -103,6 +105,10 @@ export interface PayrollMonth {
   /** False until something was saved for the month. */
   saved: boolean;
   withdrawn: number | null;
+  /** The faction account balance typed in for the month (read in the game). */
+  balance: number | null;
+  balance_at: string | null;
+  balance_by_name: string | null;
   note: string | null;
   closed_at: string | null;
   closed_by_name: string | null;

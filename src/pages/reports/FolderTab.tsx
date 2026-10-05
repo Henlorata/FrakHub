@@ -36,8 +36,8 @@ export function FolderTab() {
         </div>
         <p className="flex items-start gap-2 rounded-lg bg-white/[0.03] p-3 text-xs text-slate-300 ring-1 ring-white/10">
           <Info className="mt-0.5 size-3.5 shrink-0 text-sky-300"/>
-          Utána minden jelentésedet ebbe a témába válaszként töltsd fel. A hozzászólás linkjét (a „#” számra kattintva)
-          a Jelentéseim fülön rögzítheted.
+          Utána minden jelentésedet ebbe a témába válaszként töltsd fel. A téma linkjét (a böngésző címsorából) a jelentések
+          rögzítésekor add meg: a weboldal megjegyzi, a hónap minden jelentéséhez ugyanaz.
         </p>
       </section>
 

@@ -8,7 +8,7 @@ import {
   SUPERVISORY_STAFF,
   type RankSubject,
 } from "@shared/ranks";
-import type {Case, Profile} from "@/types/supabase";
+import type {Profile} from "@/types/supabase";
 import type {Exam} from "@/types/exams";
 
 export function cn(...inputs: ClassValue[]) {
@@ -98,28 +98,6 @@ export const canDeleteExam = (user: RankSubject, exam: Pick<Exam, "division">) =
 export const canViewCaseList = (p?: Profile | null) => {
   if (!p) return false;
   return isMcbMember(p) || isSupervisory(p) || isHighCommand(p) || p.system_role === "admin";
-};
-
-export const canViewCaseDetails = (p?: Profile | null, caseData?: Case | null, isCollaborator = false) => {
-  if (!p || !caseData) return false;
-  if (caseData.owner_id === p.id || isCollaborator) return true;
-  if (p.is_bureau_manager) return true;
-  if (isInvestigatorIII(p)) return true;
-  if (p.is_bureau_commander && p.division === "MCB") return true;
-  return isHighCommand(p) || p.system_role === "admin";
-};
-
-export const canEditCase = (p?: Profile | null, caseData?: Case | null, isCollaboratorEditor = false) => {
-  if (!p || !caseData) return false;
-  if (caseData.status !== "open") return false;
-  return caseData.owner_id === p.id || isCollaboratorEditor;
-};
-
-export const canApproveWarrant = (p?: Profile | null) => {
-  if (!p) return false;
-  if (p.system_role === "admin") return true;
-  if (isSupervisory(p) || isHighCommand(p)) return true;
-  return isInvestigatorIII(p);
 };
 
 export const getDepartmentLabel = (div: string) => {

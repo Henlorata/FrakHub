@@ -30,7 +30,8 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
   const supabase = getSupabaseAdmin();
   const results = {
     financeProofsCleared: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0,
-    registrationReminders: 0, registrationFilesDeleted: 0, registrationReviewsExpired: 0, examAttemptsClosed: 0, errors: [] as string[],
+    registrationReminders: 0, registrationFilesDeleted: 0, registrationReviewsExpired: 0, examAttemptsClosed: 0, eventReminders: 0,
+    errors: [] as string[],
   };
   const fail = (step: string, error: unknown) => {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
@@ -130,6 +131,16 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
     results.examAttemptsClosed = typeof data === "number" ? data : 0;
   } catch (error) {
     fail("exam_attempts", error);
+  }
+
+  // 8. Today's events: a reminder to those who said they come (or might). The cron runs early in
+  //    the morning (Hungarian time), before any event of the day.
+  try {
+    const {data, error} = await supabase.rpc("events_send_reminders");
+    if (error) throw error;
+    results.eventReminders = typeof data === "number" ? data : 0;
+  } catch (error) {
+    fail("event_reminders", error);
   }
 
   console.log("[api/cron/daily-cleanup] done", results);

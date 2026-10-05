@@ -19,8 +19,9 @@ const ROUTES: {path: string; text: RegExp}[] = [
   {path: "/hr?tab=history", text: /Állományváltozások/i},
   {path: "/hr?tab=stats", text: /Rendfokozatok/i},
   {path: "/mcb", text: /Major Crimes Bureau/i},
-  {path: "/mcb/suspects", text: /Bűnügyi Nyilvántartás/i},
-  {path: "/mcb/admin", text: /ACCESS CONTROL/i},
+  {path: "/mcb/suspects", text: /Bűnügyi nyilvántartás/i},
+  {path: "/mcb/warrants", text: /Elbírálásra vár/i},
+  {path: "/mcb/admin", text: /Az iroda vezetése/i},
   {path: "/exams", text: /Vizsgák, eredmények és javítás/i},
   {path: "/exams?tab=grading", text: /Javításra vár/i},
   {path: "/exams?tab=all_history", text: /Minden állapot/i},
@@ -41,6 +42,10 @@ const ROUTES: {path: string; text: RegExp}[] = [
   {path: "/academy", text: /Trainee akadémia/i},
   {path: "/academy?course=basic&day=1", text: /még nincs tananyag/i},
   {path: "/academy?course=qual_AB", text: /Ebben a tananyagban még nincs oldal/i},
+  {path: "/events", text: /Nincs tervezett esemény/i},
+  {path: "/codes", text: /10-es kódok/i},
+  {path: "/codes?tab=callsign", text: /Igazoltatott jármű/i},
+  {path: "/codes?tab=quiz", text: /Mit jelent|Melyik kód/i},
 ];
 
 test("every page renders without runtime errors", async ({page}) => {
@@ -83,6 +88,14 @@ test("every page renders without runtime errors", async ({page}) => {
           report_pay: 0, picture_pay: 0, training_pay: 0, tax_percent: 3, executive_unit: "BM"},
         total: 0, tax: 0, paid_total: 0, can_edit_settings: true, months: [],
       }),
+      get_case_list: [],
+      get_events: [],
+      get_mcb_overview: {
+        viewer: {is_lead: true},
+        totals: {open: 0, closed: 0, archived: 0, critical: 0, opened_30d: 0, closed_30d: 0, avg_close_days: null, warrants_pending: 0,
+          warrants_active: 0, wanted: 0, suspects: 0},
+        monthly: [{month: "2026-10", opened: 0, closed: 0}], categories: [], members: [], unattended: [], recent: [],
+      },
       get_finance_overview: {pending: {count: 0, amount: 0}, months: [{month: "2026-10-01", reimbursed: 0, reimbursements: 0, payroll_status: null,
         payroll_total: null, payroll_withdrawn: null, payroll_tax_percent: null}]},
     },

@@ -8,6 +8,7 @@ import {useSystemStatus} from "@/context/SystemStatusContext";
 import {NotificationsProvider, useNotifications} from "@/context/NotificationsContext";
 import {LoadingScreen} from "@/components/ui/loading-screen";
 import {PendingApprovalPage} from "@/pages/auth/PendingApprovalPage";
+import {PageErrorBoundary} from "@/components/PageErrorBoundary";
 import {Button} from "@/components/ui/button";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {
@@ -110,16 +111,18 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
 
   return (
     <div className="relative flex min-h-screen text-slate-100 selection:bg-primary/30">
-      <AppBackdrop/>
-      <div className="status-line-top"/>
+      <div className="contents print:hidden">
+        <AppBackdrop/>
+        <div className="status-line-top"/>
+      </div>
 
       {showChrome && (
         <aside className={cn(
-          "fixed inset-y-0 left-0 z-40 hidden flex-col border-r bg-gradient-to-b from-[#0a1324]/65 via-[#060b16]/60 to-[#060b16]/75 backdrop-blur-2xl transition-[width] duration-300 lg:flex",
+          "fixed inset-y-0 left-0 z-40 hidden flex-col border-r bg-gradient-to-b from-[#0a1324]/65 via-[#060b16]/60 to-[#060b16]/75 backdrop-blur-2xl transition-[width] duration-300 lg:flex print:hidden",
           collapsed ? "w-[76px]" : "w-64",
         )}>
           <Brand collapsed={collapsed}/>
-          <SidebarNav profile={profile} collapsed={collapsed}/>
+          <SidebarNav profile={profile} collapsed={collapsed} tour/>
           <div className="border-t p-3">
             <button
               type="button"
@@ -136,10 +139,10 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
         </aside>
       )}
 
-      <div className={cn("flex min-w-0 flex-1 flex-col transition-[padding] duration-300", showChrome && (collapsed ? "lg:pl-[76px]" : "lg:pl-64"))}>
+      <div className={cn("flex min-w-0 flex-1 flex-col transition-[padding] duration-300 print:pl-0", showChrome && (collapsed ? "lg:pl-[76px]" : "lg:pl-64"))}>
         {showChrome && (
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-[#050913]/60 px-3 backdrop-blur-2xl sm:gap-3 sm:px-5">
-            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Menü">
+          <header data-shell-header="" className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-[#050913]/60 px-3 backdrop-blur-2xl sm:gap-3 sm:px-5 print:hidden">
+            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Menü" data-tour="menu-button">
               <Menu className="size-5"/>
             </Button>
             <h2 className="min-w-0 truncate text-sm font-semibold text-white">{pageTitleFor(location.pathname)}</h2>
@@ -148,6 +151,7 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
               type="button"
               onClick={() => setPaletteOpen(true)}
               aria-label="Gyorskereső"
+              data-tour="search"
               className="ml-auto flex h-9 items-center gap-2 rounded-lg border bg-white/[0.03] px-2.5 text-sm text-slate-500 transition-colors hover:border-white/20 hover:text-slate-300 md:w-72 md:px-3"
             >
               <Search className="size-4"/>
@@ -161,12 +165,14 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
           </header>
         )}
 
-        <main className="relative flex min-w-0 flex-1 flex-col p-4 md:p-6 lg:p-8">
+        <main className="relative flex min-w-0 flex-1 flex-col p-4 md:p-6 lg:p-8 print:p-0">
           {/* Pages never stretch past ~1800 px; sparse pages set a narrower width themselves. */}
           <div key={location.pathname.split("/")[1]} className="page-enter mx-auto flex w-full max-w-[1800px] min-w-0 flex-1 flex-col">
-            <Suspense fallback={<PageLoader/>}>
-              <Outlet/>
-            </Suspense>
+            <PageErrorBoundary key={location.pathname}>
+              <Suspense fallback={<PageLoader/>}>
+                <Outlet/>
+              </Suspense>
+            </PageErrorBoundary>
           </div>
         </main>
       </div>
@@ -200,12 +206,12 @@ function Brand({collapsed}: {collapsed: boolean}) {
   );
 }
 
-function SidebarNav({profile, collapsed, onNavigate}: {profile: Profile; collapsed: boolean; onNavigate?: () => void}) {
+function SidebarNav({profile, collapsed, onNavigate, tour}: {profile: Profile; collapsed: boolean; onNavigate?: () => void; tour?: boolean}) {
   const location = useLocation();
   const {unreadCount} = useNotifications();
 
   return (
-    <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+    <nav data-tour={tour ? "nav" : undefined} className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
       {visibleSections(profile).map((section) => (
         <div key={section.label}>
           {!collapsed && (
@@ -221,6 +227,7 @@ function SidebarNav({profile, collapsed, onNavigate}: {profile: Profile; collaps
                   key={item.path}
                   to={item.path}
                   onClick={onNavigate}
+                  data-tour={tour ? `nav-${item.path.slice(1)}` : undefined}
                   className={cn(
                     "group relative flex h-9 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
                     collapsed && "justify-center px-0",
@@ -260,7 +267,7 @@ function UserMenu({profile, signOut}: {profile: Profile; signOut: () => Promise<
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" aria-label="Fiók"
+        <button type="button" aria-label="Fiók" data-tour="user-menu"
                 className="flex items-center gap-2 rounded-full p-0.5 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:pr-2">
           <Avatar className="size-8 ring-1 ring-white/10">
             <AvatarImage src={getOptimizedAvatarUrl(profile.avatar_url, 64) || undefined} alt=""/>
@@ -276,7 +283,7 @@ function UserMenu({profile, signOut}: {profile: Profile; signOut: () => Promise<
           {profile.email && <p className="truncate text-xs text-slate-500">{profile.email}</p>}
         </DropdownMenuLabel>
         <DropdownMenuSeparator/>
-        <DropdownMenuItem onSelect={() => navigate("/profile")}>
+        <DropdownMenuItem onSelect={() => navigate("/profile")} data-tour="user-menu-profile">
           <User/> Profilom
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => navigate("/notifications?view=settings")}>

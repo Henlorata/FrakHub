@@ -259,5 +259,6 @@ const CATEGORY_HINTS: Record<NotificationCategory, string> = {
   logistics: "Járműigénylések.",
   finance: "Költségtérítési kérelmek.",
   announcement: "Új hirdetmények az irányítópulton.",
-  system: "Fiókot és biztonságot érintő üzenetek, készültségi szint.",
+  event: "Új események, lemondás, időpont-változás, és emlékeztető az esemény napján.",
+  system:"Fiókot és biztonságot érintő üzenetek, készültségi szint.",
 };

@@ -34,6 +34,7 @@ export function NotificationBell() {
       <PopoverTrigger asChild>
         <button
           type="button"
+          data-tour="bell"
           aria-label={unreadCount > 0 ? `Értesítések (${unreadCount} olvasatlan)` : "Értesítések"}
           className={cn(
             "relative grid size-9 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white",
@@ -49,7 +50,7 @@ export function NotificationBell() {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(420px,calc(100vw-1.5rem))] p-0">
+      <PopoverContent align="end" className="w-[min(420px,calc(100vw-1.5rem))] p-0" data-tour="bell-panel">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-white">Értesítések</p>

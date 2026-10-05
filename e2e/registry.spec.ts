@@ -53,6 +53,27 @@ test.describe("HR registry", () => {
     expect(mock.count("rest", "duty_time_entries")).toBe(1);
   });
 
+  test("four or five digits become hours and minutes, Tab moves down the month", async ({page}) => {
+    const second = testProfile({id: PENDING_ID, full_name: "Második Márta", badge_number: "2002", faction_rank: "Deputy Sheriff I.", system_role: "user"});
+    await mockSupabase(page, {tables: {profiles: [viewer, deputy, second]}, rpc: {get_hr_registry: registry()}});
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/hr?tab=duty");
+
+    const first = page.locator("tr", {hasText: "Deputy Dénes"}).locator("input").nth(5);
+    await first.click();
+    await first.pressSequentially("11457");
+    await expect(first).toHaveValue("114:57");
+    await first.press("Tab");
+    const next = page.locator("tr", {hasText: "Második Márta"}).locator("input").nth(5);
+    await expect(next).toBeFocused();
+    await next.pressSequentially("1235");
+    await expect(next).toHaveValue("12:35");
+    // Three digits are ambiguous (hours or minutes?): kept as typed, read as hours.
+    await next.fill("123");
+    await expect(next).toHaveValue("123");
+  });
+
   test("a dismissal is archived with its reason", async ({page}) => {
     await mockSupabase(page, {tables: {profiles: [viewer, deputy]}});
     let body: Record<string, unknown> | null = null;

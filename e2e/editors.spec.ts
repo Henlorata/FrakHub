@@ -33,42 +33,44 @@ function collectPageErrors(page: Page) {
 test.describe("rich text editors (BlockNote)", () => {
   test("a case document renders text, mentions and evidence blocks", async ({page}) => {
     const errors = collectPageErrors(page);
-    await mockSupabase(page, {
-      tables: {
-        cases: [{
-          id: CASE_ID,
-          case_number: 7,
-          title: "Éjszakai Bagoly",
-          description: "Teszt akta",
-          status: "open",
-          priority: "high",
-          owner_id: TEST_USER_ID,
-          theme: "default",
-          created_at: NOW,
-          updated_at: NOW,
-          owner: {full_name: "John Doe", badge_number: "1192"},
-          body: [
-            paragraph("b1", [
-              {type: "text", text: "Helyszíni szemle jegyzőkönyve ", styles: {}},
-              {type: "mention", props: {user: "1192 John Doe", id: TEST_USER_ID, role: "officer"}},
-            ]),
-            {
-              id: "b2",
-              type: "evidence",
-              props: {evidenceId: EVIDENCE_ID, caption: "Bejárati ajtó", layout: "side", width: "full"},
-              children: [],
-            },
-          ],
-        }],
-        case_evidence: [{
-          id: EVIDENCE_ID,
-          case_id: CASE_ID,
-          file_path: "https://res.cloudinary.com/e2e-cloud/image/upload/v1700000000/evidence/door.jpg",
-          file_name: "door.jpg",
-          file_type: "image",
-          uploaded_by: TEST_USER_ID,
-          created_at: NOW,
-        }],
+    const mock = await mockSupabase(page, {
+      rpc: {
+        get_case_detail: {
+          case: {
+            id: CASE_ID, case_number: "SD-192/007/261001", title: "Éjszakai Bagoly", description: "Teszt akta", status: "open",
+            priority: "high", category: null, theme: "default", owner_id: TEST_USER_ID, created_at: NOW, updated_at: NOW, closed_at: null,
+            body_version: 3, body_updated_by: TEST_USER_ID, body_updated_by_name: "John Doe",
+            body: [
+              paragraph("b1", [
+                {type: "text", text: "Helyszíni szemle jegyzőkönyve ", styles: {}},
+                {type: "mention", props: {user: "1192 John Doe", id: TEST_USER_ID, role: "officer"}},
+              ]),
+              {
+                id: "b2",
+                type: "evidence",
+                props: {evidenceId: EVIDENCE_ID, caption: "Bejárati ajtó", layout: "side", width: "full"},
+                children: [],
+              },
+            ],
+          },
+          owner: {id: TEST_USER_ID, full_name: "John Doe", badge_number: "1192", faction_rank: "Sergeant I.", division: "TSB",
+            division_rank: null, avatar_url: null},
+          collaborators: [],
+          evidence: [{
+            id: EVIDENCE_ID,
+            case_id: CASE_ID,
+            file_path: "https://res.cloudinary.com/e2e-cloud/image/upload/v1700000000/evidence/door.jpg",
+            file_name: "door.jpg",
+            file_type: "image",
+            uploaded_by: TEST_USER_ID,
+            uploader_name: "John Doe",
+            created_at: NOW,
+          }],
+          people: [],
+          warrants: [],
+          viewer: {role: "owner", can_edit: true, can_manage: true, is_lead: false, can_approve: true},
+        },
+        get_case_list: [],
       },
     });
 
@@ -82,15 +84,20 @@ test.describe("rich text editors (BlockNote)", () => {
     await expect(page.getByText("BIZONYÍTÉK: door.jpg")).toBeVisible();
     // Inline evidence is served resized through a Cloudinary transformation.
     await expect(page.locator('img[alt="door.jpg"]').first()).toHaveAttribute("src", /\/upload\/c_limit,w_1200,q_auto,f_auto\//);
+    // One call for the whole case; the cases table itself is never read by the page.
+    expect(mock.count("rpc", "get_case_detail")).toBe(1);
+    expect(mock.count("rest", "cases")).toBe(0);
     expect(errors).toEqual([]);
   });
 
   test("the case list does not download document bodies", async ({page}) => {
     const mock = await mockSupabase(page, {
-      tables: {
-        cases: [{
-          id: CASE_ID, case_number: 7, title: "Éjszakai Bagoly", status: "open", priority: "high",
-          owner_id: TEST_USER_ID, updated_at: NOW, owner: {full_name: "John Doe"},
+      rpc: {
+        get_case_list: [{
+          id: CASE_ID, case_number: "SD-192/007/261001", title: "Éjszakai Bagoly", description: null, status: "open", priority: "high",
+          category: "weapons", created_at: NOW, updated_at: NOW, closed_at: null, owner_id: TEST_USER_ID, owner_name: "John Doe",
+          owner_badge: "1192", owner_avatar: null, evidence: 2, people: 1, collaborators: 0, warrants_pending: 0, warrants_active: 0,
+          my_role: "owner", can_open: true,
         }],
       },
     });
@@ -98,12 +105,12 @@ test.describe("rich text editors (BlockNote)", () => {
     await expect(page).toHaveURL(/\/dashboard$/);
     await page.goto("/mcb");
 
-    await expect(page.getByRole("cell", {name: "Éjszakai Bagoly"})).toBeVisible();
-    const listQueries = mock.requests.filter((r) => r.name === "cases" && r.method === "GET");
-    expect(listQueries.length).toBeGreaterThan(0);
-    for (const query of listQueries) {
-      expect(decodeURIComponent(new URL(query.url).searchParams.get("select") ?? "")).not.toMatch(/\*|body/);
+    await expect(page.getByRole("heading", {name: "Éjszakai Bagoly"})).toBeVisible();
+    expect(mock.count("rpc", "get_case_list")).toBeGreaterThan(0);
+    for (const query of mock.requests.filter((r) => r.kind === "rest")) {
+      expect(decodeURIComponent(new URL(query.url).searchParams.get("select") ?? "")).not.toMatch(/\bbody\b/);
     }
+    expect(mock.count("rest", "cases")).toBe(0);
   });
 
   test("academy material loads page content on demand", async ({page}) => {

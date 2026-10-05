@@ -1,5 +1,6 @@
 import {useState, type ReactNode} from "react";
 import {toast} from "sonner";
+import {useConfirm} from "@/components/ConfirmDialog";
 import {Loader2, Save, Trash2} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -27,6 +28,7 @@ export function VehicleEditorDialog({vehicle, categories, defaultCategory, onOpe
   onSaved?: (vehicle: FleetVehicle | null) => void;
 }) {
   const {supabase} = useAuth();
+  const confirm = useConfirm();
   const existing = vehicle && vehicle !== "new" ? vehicle : null;
   const [plate, setPlate] = useState(existing?.plate ?? "");
   const [model, setModel] = useState(existing?.model ?? "");
@@ -76,7 +78,7 @@ export function VehicleEditorDialog({vehicle, categories, defaultCategory, onOpe
   };
 
   const retire = async () => {
-    if (!existing || !window.confirm(`${existing.plate} kivezetése a flottából? A kulcsosok elveszítik a kulcsukat.`)) return;
+    if (!existing || !(await confirm({title: "Jármű kivezetése", description: `${existing.plate} kikerül a flottából, a kulcsosok elveszítik a kulcsukat.`, confirmLabel: "Kivezetés", destructive: true}))) return;
     const {error} = await supabase.from("fleet_vehicles").update({is_active: false}).eq("id", existing.id);
     if (error) return toast.error(errorMessage(error, "A művelet nem sikerült."));
     // Keys of a retired vehicle are worthless: take them back (notifies the holders).

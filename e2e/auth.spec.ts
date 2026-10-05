@@ -7,7 +7,7 @@ test.describe("authentication", () => {
     await login(page);
 
     await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByRole("heading", {name: /john!/i})).toBeVisible();
+    await expect(page.getByRole("heading", {name: /,\s*john\.$/i})).toBeVisible();
   });
 
   test("wrong password is rejected", async ({page}) => {
@@ -31,7 +31,7 @@ test.describe("authentication", () => {
     await expect(page).toHaveURL(/\/dashboard$/);
 
     await page.reload();
-    await expect(page.getByRole("heading", {name: /john!/i})).toBeVisible();
+    await expect(page.getByRole("heading", {name: /,\s*john\.$/i})).toBeVisible();
 
     await page.getByRole("button", {name: "Fiók"}).click();
     await page.getByRole("menuitem", {name: /kijelentkezés/i}).click();

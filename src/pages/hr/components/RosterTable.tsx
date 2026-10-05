@@ -223,7 +223,7 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
   const division = DIVISION_META[member.division] ?? DIVISION_META.TSB;
 
   return (
-    <tr onClick={() => onOpen(member)}
+    <tr onClick={() => onOpen(member)} data-tour="hr-member" data-member-id={member.id}
         className="group cursor-pointer border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.03]">
       <td className="py-2.5 pr-3 pl-4">
         <div className="flex items-center gap-3">

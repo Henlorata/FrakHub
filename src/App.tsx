@@ -9,6 +9,9 @@ import {LoginPage} from "@/pages/auth/LoginPage";
 import {ActiveExamAlert} from "@/components/ActiveExamAlert";
 import {AppErrorBoundary} from "@/components/AppErrorBoundary";
 import {ConfigErrorScreen} from "@/components/ConfigErrorScreen";
+import {ConfirmProvider} from "@/components/ConfirmDialog";
+import {SandboxBoundary} from "@/components/training/SandboxBoundary";
+import {TrainingProvider} from "@/context/TrainingContext";
 import {missingRequiredEnv} from "@/lib/env";
 
 /**
@@ -31,6 +34,8 @@ const McbDashboard = lazyPage(() => import("@/pages/mcb/McbDashboard"), "McbDash
 const CaseDetailPage = lazyPage(() => import("@/pages/mcb/CaseDetailPage"), "CaseDetailPage");
 const AdminPage = lazyPage(() => import("@/pages/mcb/AdminPage"), "AdminPage");
 const SuspectsPage = lazyPage(() => import("@/pages/mcb/SuspectsPage"), "SuspectsPage");
+const WarrantsPage = lazyPage(() => import("@/pages/mcb/WarrantsPage"), "WarrantsPage");
+const CasePrintPage = lazyPage(() => import("@/pages/mcb/CasePrintPage"), "CasePrintPage");
 const ExamHub = lazyPage(() => import("@/pages/exams/ExamHub"), "ExamHub");
 const ExamEditor = lazyPage(() => import("@/pages/exams/ExamEditor"), "ExamEditor");
 const ExamGradingPage = lazyPage(() => import("@/pages/exams/grading/ExamGradingPage"), "ExamGradingPage");
@@ -40,6 +45,53 @@ const FinancePage = lazyPage(() => import("@/pages/finance/FinancePage"), "Finan
 const ProfilePage = lazyPage(() => import("@/pages/profile/ProfilePage"), "ProfilePage");
 const CalculatorPage = lazyPage(() => import("@/pages/calculator/CalculatorPage"), "CalculatorPage");
 const AcademyPage = lazyPage(() => import("@/pages/academy/AcademyPage"), "default");
+const EventsPage = lazyPage(() => import("@/pages/events/EventsPage"), "EventsPage");
+const CodesPage = lazyPage(() => import("@/pages/codes/CodesPage"), "CodesPage");
+
+function AppRoutes() {
+  return (
+    <Suspense fallback={<LoadingScreen/>}>
+      <Routes>
+        <Route path="/login" element={<LoginPage/>}/>
+        <Route path="/register" element={<RegisterPage/>}/>
+        <Route path="/exam/public/:examId" element={<PublicExamPage/>}/>
+
+        <Route element={<AppLayout/>}>
+          <Route path="/dashboard" element={<DashboardPage/>}/>
+          <Route path="/onboarding" element={<OnboardingPage/>}/>
+          <Route path="/notifications" element={<NotificationsPage/>}/>
+          <Route path="/reports" element={<ReportsPage/>}/>
+          <Route path="/hr" element={<HrPage/>}/>
+
+          <Route path="/mcb" element={<McbLayout/>}>
+            <Route index element={<McbDashboard/>}/>
+            <Route path="case/:caseId" element={<CaseDetailPage/>}/>
+            <Route path="case/:caseId/print" element={<CasePrintPage/>}/>
+            <Route path="admin" element={<AdminPage/>}/>
+            <Route path="suspects" element={<SuspectsPage/>}/>
+            <Route path="warrants" element={<WarrantsPage/>}/>
+          </Route>
+
+          <Route path="/exams" element={<ExamHub/>}/>
+          <Route path="/exams/editor" element={<ExamEditor/>}/>
+          <Route path="/exams/editor/:examId" element={<ExamEditor/>}/>
+          <Route path="/exams/grading/:submissionId" element={<ExamGradingPage/>}/>
+          <Route path="/logistics" element={<LogisticsPage/>}/>
+          <Route path="/logistics/fleet/:vehicleId" element={<VehiclePage/>}/>
+          <Route path="/finance" element={<FinancePage/>}/>
+          <Route path="/profile" element={<ProfilePage/>}/>
+          <Route path="/calculator" element={<CalculatorPage/>}/>
+          <Route path="/academy" element={<AcademyPage/>}/>
+          <Route path="/events" element={<EventsPage/>}/>
+          <Route path="/codes" element={<CodesPage/>}/>
+        </Route>
+
+        <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
+        <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
+      </Routes>
+    </Suspense>
+  );
+}
 
 function App() {
   if (missingRequiredEnv.length > 0) return <ConfigErrorScreen missing={missingRequiredEnv}/>;
@@ -48,48 +100,20 @@ function App() {
     <AppErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
-          <SystemStatusProvider>
-            <div className="min-h-screen text-foreground font-sans antialiased">
-              <ActiveExamAlert/>
-              <Suspense fallback={<LoadingScreen/>}>
-                <Routes>
-                  <Route path="/login" element={<LoginPage/>}/>
-                  <Route path="/register" element={<RegisterPage/>}/>
-                  <Route path="/exam/public/:examId" element={<PublicExamPage/>}/>
-
-                  <Route element={<AppLayout/>}>
-                    <Route path="/dashboard" element={<DashboardPage/>}/>
-                    <Route path="/onboarding" element={<OnboardingPage/>}/>
-                    <Route path="/notifications" element={<NotificationsPage/>}/>
-                    <Route path="/reports" element={<ReportsPage/>}/>
-                    <Route path="/hr" element={<HrPage/>}/>
-
-                    <Route path="/mcb" element={<McbLayout/>}>
-                      <Route index element={<McbDashboard/>}/>
-                      <Route path="case/:caseId" element={<CaseDetailPage/>}/>
-                      <Route path="admin" element={<AdminPage/>}/>
-                      <Route path="suspects" element={<SuspectsPage/>}/>
-                    </Route>
-
-                    <Route path="/exams" element={<ExamHub/>}/>
-                    <Route path="/exams/editor" element={<ExamEditor/>}/>
-                    <Route path="/exams/editor/:examId" element={<ExamEditor/>}/>
-                    <Route path="/exams/grading/:submissionId" element={<ExamGradingPage/>}/>
-                    <Route path="/logistics" element={<LogisticsPage/>}/>
-                    <Route path="/logistics/fleet/:vehicleId" element={<VehiclePage/>}/>
-                    <Route path="/finance" element={<FinancePage/>}/>
-                    <Route path="/profile" element={<ProfilePage/>}/>
-                    <Route path="/calculator" element={<CalculatorPage/>}/>
-                    <Route path="/academy" element={<AcademyPage/>}/>
-                  </Route>
-
-                  <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
-                  <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
-                </Routes>
-              </Suspense>
-              <Toaster position="top-right" theme="dark"/>
-            </div>
-          </SystemStatusProvider>
+          <TrainingProvider>
+            {/* Practice mode (trainings) remounts everything below against the demo world. */}
+            <SandboxBoundary>
+              <SystemStatusProvider>
+                <ConfirmProvider>
+                  <div className="min-h-screen text-foreground font-sans antialiased">
+                    <ActiveExamAlert/>
+                    <AppRoutes/>
+                  </div>
+                </ConfirmProvider>
+              </SystemStatusProvider>
+            </SandboxBoundary>
+            <Toaster position="top-right" theme="dark"/>
+          </TrainingProvider>
         </AuthProvider>
       </BrowserRouter>
     </AppErrorBoundary>

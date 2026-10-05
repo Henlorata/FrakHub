@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
 import {toast} from "sonner";
+import {DISCARD_CHANGES, useConfirm} from "@/components/ConfirmDialog";
 import {CalendarPlus, Check, ClipboardCheck, Loader2, Save, Trash2, UserPlus, Users} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -29,6 +30,7 @@ interface LogEntry {
 /** Academy cycles, the trainees of a cycle and the daily attendance log (instructors). */
 export function InstructorPanel({activeCycle, today = todayKey(), onRefresh}: {activeCycle: Pick<AcademyCycle, "id" | "start_date" | "status"> | null; today?: string; onRefresh: () => void}) {
   const {supabase, user} = useAuth();
+  const confirm = useConfirm();
   const {profiles} = useProfileDirectory();
   const [cycles, setCycles] = useState<AcademyCycle[]>([]);
   const [cycleId, setCycleId] = useState<string | null>(activeCycle?.id ?? null);
@@ -113,7 +115,7 @@ export function InstructorPanel({activeCycle, today = todayKey(), onRefresh}: {a
   };
 
   const removeStudent = async (student: AcademyStudent) => {
-    if (!window.confirm(`Eltávolítod ${byId.get(student.user_id)?.full_name ?? "a tanulót"} a ciklusból?`)) return;
+    if (!(await confirm({title: "Tanuló eltávolítása", description: `Eltávolítod ${byId.get(student.user_id)?.full_name ?? "a tanulót"} a ciklusból?`, confirmLabel: "Eltávolítás", destructive: true, kind: "delete"}))) return;
     const {error} = await supabase.from("academy_students").delete().eq("id", student.id);
     if (error) return toast.error("Hiba: " + errorMessage(error));
     void loadCycle();
@@ -134,7 +136,7 @@ export function InstructorPanel({activeCycle, today = todayKey(), onRefresh}: {a
   };
 
   return (
-    <div className="space-y-4">
+    <div data-tour="instructor-panel" className="space-y-4">
       <div className="panel flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
         <div className="flex items-center gap-3">
           <div className="grid size-10 place-items-center rounded-xl bg-cyan-500/10 text-cyan-300 ring-1 ring-cyan-500/25"><ClipboardCheck className="size-5"/></div>
@@ -160,8 +162,8 @@ export function InstructorPanel({activeCycle, today = todayKey(), onRefresh}: {a
           <div className="flex flex-wrap items-center gap-2 border-b border-white/5 p-4">
             <p className="mr-2 text-sm font-medium text-white">Jelenléti napló</p>
             {ACADEMY_DAYS.map((item) => (
-              <button key={item} type="button" onClick={() => {
-                if (dirty && !window.confirm("Mentetlen napló-bejegyzések vannak. Elveted őket?")) return;
+              <button key={item} type="button" onClick={async () => {
+                if (dirty && !(await confirm({...DISCARD_CHANGES, description: "Mentetlen napló-bejegyzések vannak ezen a napon."}))) return;
                 setDay(item);
               }} className={cn("rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition-colors",
                 day === item ? "bg-cyan-500/15 text-white ring-cyan-400/40" : "text-slate-400 ring-white/10 hover:bg-white/[0.04]")}>

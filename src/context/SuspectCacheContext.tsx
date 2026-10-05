@@ -7,6 +7,9 @@ import {getProfileDirectory} from "@/lib/profile-directory";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+/** List columns: the personal description is only loaded with a person's file. */
+const SUSPECT_COLUMNS = "id, full_name, alias, gender, gang_affiliation, status, mugshot_url, created_by, created_at, updated_at";
+
 interface SuspectData {
   suspects: Suspect[];
   /** suspect id -> ids of the cases the suspect appears in */
@@ -21,7 +24,11 @@ interface SuspectCacheContextType extends SuspectData {
   loading: boolean;
   refreshSuspects: (force?: boolean) => Promise<void>;
   deleteSuspectFromCache: (id: string) => void;
+  /** Opens a person's file (dialog over any MCB page). */
   openSuspectId: (id: string) => void;
+  /** The person whose file is open, if any. */
+  activeSuspectId: string | null;
+  closeSuspect: () => void;
 }
 
 interface CaseLinkRow {
@@ -57,19 +64,19 @@ export function SuspectCacheProvider({children}: {children: React.ReactNode}) {
         setLoading(true);
         try {
           const [suspectResult, linkResult] = await Promise.all([
-            supabase.from("suspects").select("*").order("created_at", {ascending: false}),
+            supabase.from("suspects").select(SUSPECT_COLUMNS).order("created_at", {ascending: false}),
             supabase.from("case_suspects").select("suspect_id, case_id, cases!inner(id, title, case_number)"),
           ]);
           if (suspectResult.error) throw suspectResult.error;
           if (linkResult.error) throw linkResult.error;
 
-          const suspects = (suspectResult.data ?? []) as Suspect[];
+          const suspects = ((suspectResult.data ?? []) as Omit<Suspect, "description">[]).map((row) => ({...row, description: null}));
           const caseMap: Record<string, string[]> = {};
           const cases: Record<string, string> = {};
           for (const link of (linkResult.data ?? []) as unknown as CaseLinkRow[]) {
             if (!link.cases) continue;
             (caseMap[link.suspect_id] ??= []).push(link.case_id);
-            cases[link.case_id] = `#${link.cases.case_number} ${link.cases.title}`;
+            cases[link.case_id] = `${link.cases.case_number} · ${link.cases.title}`;
           }
 
           const creatorIds = new Set(suspects.map((suspect) => suspect.created_by).filter(Boolean));
@@ -82,7 +89,7 @@ export function SuspectCacheProvider({children}: {children: React.ReactNode}) {
           lastFetchRef.current = Date.now();
         } catch (error) {
           console.error(error);
-          toast.error("Adatszinkronizációs hiba.");
+          toast.error("A nyilvántartás betöltése nem sikerült.");
         } finally {
           setLoading(false);
         }
@@ -105,23 +112,23 @@ export function SuspectCacheProvider({children}: {children: React.ReactNode}) {
   }, []);
 
   const openSuspectId = useCallback((id: string) => setActiveSuspectId(id), []);
+  const closeSuspect = useCallback(() => setActiveSuspectId(null), []);
 
   const value = useMemo(
-    () => ({...data, loading, refreshSuspects, deleteSuspectFromCache, openSuspectId}),
-    [data, loading, refreshSuspects, deleteSuspectFromCache, openSuspectId],
+    () => ({...data, loading, refreshSuspects, deleteSuspectFromCache, openSuspectId, activeSuspectId, closeSuspect}),
+    [data, loading, refreshSuspects, deleteSuspectFromCache, openSuspectId, activeSuspectId, closeSuspect],
   );
 
-  const activeSuspect = data.suspects.find((suspect) => suspect.id === activeSuspectId) ?? null;
+  const onDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) setActiveSuspectId(null);
+  }, []);
+  const onChanged = useCallback(() => void refreshSuspects(true), [refreshSuspects]);
 
   return (
     <SuspectCacheContext.Provider value={value}>
       {children}
-      <SuspectDetailDialog
-        open={!!activeSuspect}
-        onOpenChange={(open) => !open && setActiveSuspectId(null)}
-        suspect={activeSuspect}
-        onUpdate={() => refreshSuspects(true)}
-      />
+      <SuspectDetailDialog suspectId={activeSuspectId} onOpenChange={onDialogOpenChange} onChanged={onChanged}
+                           people={data.suspects} onOpenPerson={openSuspectId}/>
     </SuspectCacheContext.Provider>
   );
 }

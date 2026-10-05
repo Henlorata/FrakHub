@@ -1,6 +1,7 @@
 import {Fragment, useCallback, useEffect, useMemo, useState} from "react";
 import {Link as RouterLink} from "react-router";
 import {toast} from "sonner";
+import {useConfirm} from "@/components/ConfirmDialog";
 import {ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, FilePlus2, Medal, Search, Trash2, Wallet} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -16,12 +17,16 @@ import {LogReportDialog} from "./LogReportDialog";
 
 const MEDAL = ["text-amber-300", "text-slate-200", "text-orange-400"];
 
+/** The distinct folder links of a member's reports (usually one per month). */
+const folderLinks = (logs: ReportLog[]) => [...new Set(logs.map((log) => log.forum_url).filter((url): url is string => !!url))];
+
 /**
  * The month's reports per member for the leadership: the count the payroll uses, with the
  * forum links to check them. Members with no report are listed too.
  */
 export function MonthlySummaryTab({canPayroll}: {canPayroll: boolean}) {
   const {user} = useAuth();
+  const confirm = useConfirm();
   const {profiles} = useProfileDirectory();
   const [month, setMonth] = useState(monthKey());
   const [entries, setEntries] = useState<ReportLog[] | null>(null);
@@ -61,7 +66,7 @@ export function MonthlySummaryTab({canPayroll}: {canPayroll: boolean}) {
   const reporting = rows.filter((row) => row.logs.length > 0).length;
 
   const remove = async (entry: ReportLog) => {
-    if (!window.confirm(`Törlöd a bejegyzést? (${entry.title})`)) return;
+    if (!(await confirm({title: "Bejegyzés törlése", description: `Törlöd a(z) „${entry.title}” bejegyzést?`, confirmLabel: "Törlés", destructive: true, kind: "delete"}))) return;
     try {
       await reportLog.remove(entry.id);
       setEntries((current) => current?.filter((item) => item.id !== entry.id) ?? current);
@@ -71,13 +76,13 @@ export function MonthlySummaryTab({canPayroll}: {canPayroll: boolean}) {
   };
 
   const exportCsv = () => downloadCsv(`sfsd-jelentesek-${month.slice(0, 7)}-${todayKey()}.csv`, [
-    ["Név", "Jelvényszám", "Rendfokozat", "Jelentések", "Fórum-linkkel", "Helyezés"],
+    ["Név", "Jelvényszám", "Rendfokozat", "Jelentések", "Mappa", "Helyezés"],
     ...rows.map((row) => [row.profile.full_name, row.profile.badge_number, row.profile.faction_rank, row.logs.length,
-      row.logs.filter((log) => log.forum_url).length, row.place ?? ""]),
+      folderLinks(row.logs).join(" "), row.place ?? ""]),
   ]);
 
   return (
-    <div className="space-y-4">
+    <div data-tour="reports-summary" className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" aria-label="Előző hónap" onClick={() => setMonth(addMonths(month, -1))}><ChevronLeft/></Button>
@@ -86,7 +91,7 @@ export function MonthlySummaryTab({canPayroll}: {canPayroll: boolean}) {
         </div>
         <p className="text-sm text-slate-400">
           <span className="font-semibold text-white">{total}</span> jelentés · <span className="font-semibold text-white">{reporting}</span> tagtól ·{" "}
-          <span className="text-emerald-300">{linked}</span> fórum-linkkel
+          <span className="text-emerald-300">{linked}</span> mappa-linkkel
         </p>
         <div className="flex flex-wrap gap-2 lg:ml-auto">
           {canPayroll && <Button variant="outline" asChild><RouterLink to="/finance?tab=payroll"><Wallet/> Havi fizetés</RouterLink></Button>}
@@ -111,7 +116,7 @@ export function MonthlySummaryTab({canPayroll}: {canPayroll: boolean}) {
                 <th className="w-14 px-4 py-2.5 text-center">Hely</th>
                 <th className="px-3 py-2.5">Tag</th>
                 <th className="px-3 py-2.5 text-center">Jelentés</th>
-                <th className="hidden px-3 py-2.5 text-center sm:table-cell">Fórum-linkkel</th>
+                <th className="hidden px-3 py-2.5 text-center sm:table-cell">Mappa</th>
                 <th className="hidden px-3 py-2.5 md:table-cell">Utolsó</th>
                 <th className="w-10 px-4 py-2.5"/>
               </tr>
@@ -136,7 +141,17 @@ export function MonthlySummaryTab({canPayroll}: {canPayroll: boolean}) {
                         </div>
                       </td>
                       <td className="px-3 py-2 text-center font-mono text-base font-semibold tabular-nums text-white">{logs.length}</td>
-                      <td className="hidden px-3 py-2 text-center font-mono tabular-nums text-slate-300 sm:table-cell">{logs.filter((log) => log.forum_url).length}</td>
+                      <td className="hidden px-3 py-2 text-center sm:table-cell" onClick={(event) => event.stopPropagation()}>
+                        <span className="inline-flex flex-wrap justify-center gap-1">
+                          {folderLinks(logs).map((url, index, all) => (
+                            <a key={url} href={url} target="_blank" rel="noreferrer" title={url}
+                               className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-300 ring-1 ring-emerald-500/25 hover:bg-emerald-500/20">
+                              <ExternalLink className="size-3"/> {all.length > 1 ? `Mappa ${index + 1}` : "Mappa"}
+                            </a>
+                          ))}
+                          {logs.length > 0 && folderLinks(logs).length === 0 && <span className="text-[11px] text-slate-600">nincs link</span>}
+                        </span>
+                      </td>
                       <td className="hidden px-3 py-2 text-xs text-slate-400 md:table-cell">{logs[0] ? formatDate(logs[0].occurred_on) : "–"}</td>
                       <td className="px-4 py-2">{logs.length > 0 && <ChevronDown className={cn("size-4 text-slate-500 transition-transform", expanded && "rotate-180")}/>}</td>
                     </tr>
@@ -149,9 +164,9 @@ export function MonthlySummaryTab({canPayroll}: {canPayroll: boolean}) {
                               <li key={log.id} className="flex items-center gap-3 rounded-md px-2 py-1.5 text-xs hover:bg-white/[0.03]">
                                 <span className="w-20 shrink-0 font-mono text-slate-400">{formatDate(log.occurred_on)}</span>
                                 <span className="min-w-0 flex-1 truncate text-slate-200">{log.title}</span>
-                                {log.forum_url
-                                  ? <a href={log.forum_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-300 hover:underline"><ExternalLink className="size-3"/> Fórum</a>
-                                  : <span className="text-slate-600">nincs link</span>}
+                                {log.forum_url?.includes("/posts/") && (
+                                  <a href={log.forum_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-300 hover:underline"><ExternalLink className="size-3"/> Hozzászólás</a>
+                                )}
                                 <button type="button" onClick={() => void remove(log)} aria-label="Törlés" className="rounded p-1 text-slate-500 hover:bg-red-500/10 hover:text-red-300">
                                   <Trash2 className="size-3.5"/>
                                 </button>

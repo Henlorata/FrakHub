@@ -91,3 +91,21 @@ create trigger reject_inline_images before insert or update of content on public
   for each row execute function private.reject_inline_images('content');
 create trigger reject_inline_images before insert or update of body on public.cases
   for each row execute function private.reject_inline_images('body');
+
+-- 9. MCB cases are changed through save_case_document(), update_case(), set_case_status() and
+--    transfer_case() only (version check, status and archive rules). The document is read
+--    through get_case_detail(), which checks who may open the case; the table API keeps the
+--    list fields for the case list, pickers and the quick search.
+drop policy if exists cases_update on public.cases;
+revoke update on public.cases from anon, authenticated;
+revoke select on public.cases from anon, authenticated;
+grant select (id, case_number, title, description, status, priority, category, theme, owner_id, created_at, updated_at,
+              closed_at, body_version) on public.cases to authenticated;
+
+-- 10. Warrants are decided, executed and revoked through decide_warrant() only (decision time,
+--     note, no approval of one's own request).
+drop policy if exists case_warrants_update on public.case_warrants;
+revoke update on public.case_warrants from anon, authenticated;
+
+-- 11. Mentions are notified by save_case_document().
+drop function if exists public.notify_case_mentions(uuid, uuid[]);

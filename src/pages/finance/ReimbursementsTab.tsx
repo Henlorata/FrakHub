@@ -117,7 +117,7 @@ export function ReimbursementsTab({canDecide, reloadKey, onChanged}: Reimburseme
   }, [requests, stats.pendingCount]);
 
   return (
-    <div className="space-y-5">
+    <div data-tour="reimbursements" className="space-y-5">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard index={0} icon={Clock} tone="orange" label={canDecide ? "Elbírálásra vár" : "Függő kérelmeim"}
                   value={formatMoney(stats.pendingAmount)} hint={`${stats.pendingCount} kérelem`}

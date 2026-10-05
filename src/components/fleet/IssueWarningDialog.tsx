@@ -1,6 +1,6 @@
-import {useMemo, useState, type CSSProperties} from "react";
+import {useEffect, useMemo, useState, type CSSProperties} from "react";
 import {toast} from "sonner";
-import {AlertTriangle, Car, Loader2, Plus, ShieldAlert, Trash2, UserPlus} from "lucide-react";
+import {AlertTriangle, Car, Info, Loader2, Plus, ShieldAlert, Trash2, UserPlus} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
@@ -26,52 +26,84 @@ const NO_VEHICLE = "none";
  * Vehicle warnings ("hibapont") for several people at once, for the same reason. A grave
  * case may be worth two or three points; every three active points of a member become a
  * personal warning (database trigger).
+ *
+ * Opened from a vehicle's page (`vehicle`), the decision is about that vehicle: its key holders
+ * are listed at once and anyone added later is recorded with it too.
  */
-export function IssueWarningDialog({open, onOpenChange, vehicles, categories, people, activePoints, initialTargets, onIssued}: {
+export function IssueWarningDialog({open, onOpenChange, vehicles, categories, people, activePoints, vehicle, onIssued}: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   vehicles: FleetVehicle[];
   categories: FleetCategory[];
   people: DirectoryProfile[];
-  /** Active points per member (before this decision). */
-  activePoints: Map<string, number>;
-  initialTargets?: WarningTarget[];
+  /** Active points per member (before this decision); loaded by the dialog when not given. */
+  activePoints?: Map<string, number>;
+  /** The vehicle the warning is about. */
+  vehicle?: FleetVehicle | null;
   onIssued: () => void;
 }) {
   const {supabase, profile} = useAuth();
-  const [targets, setTargets] = useState<WarningTarget[]>(initialTargets ?? []);
-  const [reason, setReason] = useState("");
-  const [points, setPoints] = useState(1);
-  const [adding, setAdding] = useState<"vehicle" | "person" | null>(initialTargets?.length ? null : "vehicle");
-  const [saving, setSaving] = useState(false);
   const byId = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
-  const vehicleById = useMemo(() => new Map(vehicles.map((vehicle) => [vehicle.id, vehicle])), [vehicles]);
+  const vehicleById = useMemo(() => {
+    const map = new Map(vehicles.map((item) => [item.id, item]));
+    if (vehicle) map.set(vehicle.id, vehicle);
+    return map;
+  }, [vehicles, vehicle]);
 
   const blocker = (person: DirectoryProfile) => {
     if (!profile) return "Nincs jogosultság.";
     if (person.id === profile.id) return "Saját magadnak nem adhatsz.";
     return outranks(profile, person) ? null : "Nem vagy felette a rangsorban.";
   };
+  // The vehicle's key holders: those the issuer may warn are listed, the others named in a hint.
+  const holders = (vehicle?.holders ?? []).map((holder) => byId.get(holder.user_id)).filter((person): person is DirectoryProfile => !!person);
+  const skippedHolders = holders.filter((person) => blocker(person));
 
-  const addVehicle = (vehicle: FleetVehicle) => {
-    const holders = vehicle.holders.map((holder) => holder.user_id).filter((id) => {
+  const [targets, setTargets] = useState<WarningTarget[]>(() =>
+    holders.filter((person) => !blocker(person)).map((person) => ({userId: person.id, vehicleId: vehicle!.id})));
+  const [reason, setReason] = useState("");
+  const [points, setPoints] = useState(1);
+  // Without a listed holder the next step is choosing the person (the vehicle is known already).
+  const [adding, setAdding] = useState<"vehicle" | "person" | null>(targets.length ? null : vehicle ? "person" : "vehicle");
+  const [saving, setSaving] = useState(false);
+  const [loadedPoints, setLoadedPoints] = useState<Map<string, number> | null>(null);
+  const pointsBefore = activePoints ?? loadedPoints ?? new Map<string, number>();
+
+  // Points across every vehicle (a vehicle's page only knows its own warnings).
+  useEffect(() => {
+    if (!open || activePoints) return;
+    let active = true;
+    void supabase.from("vehicle_warnings").select("user_id").is("revoked_at", null).is("converted_record_id", null)
+      .then(({data}) => {
+        if (!active) return;
+        const counts = new Map<string, number>();
+        ((data ?? []) as {user_id: string}[]).forEach((row) => counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + 1));
+        setLoadedPoints(counts);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, activePoints, supabase]);
+
+  const addVehicle = (picked: FleetVehicle) => {
+    const allowed = picked.holders.map((holder) => holder.user_id).filter((id) => {
       const person = byId.get(id);
       return person && !blocker(person);
     });
-    if (!holders.length) {
+    if (!allowed.length) {
       toast.info("Ennek a járműnek nincs olyan kulcsosa, akinek hibapontot adhatsz. Add hozzá a személyt külön.");
       setAdding("person");
       return;
     }
-    setTargets((prev) => [...prev, ...holders.filter((id) => !prev.some((target) => target.userId === id && target.vehicleId === vehicle.id))
-      .map((userId) => ({userId, vehicleId: vehicle.id}))]);
+    setTargets((prev) => [...prev, ...allowed.filter((id) => !prev.some((target) => target.userId === id && target.vehicleId === picked.id))
+      .map((userId) => ({userId, vehicleId: picked.id}))]);
     setAdding(null);
   };
 
   const addPerson = (person: DirectoryProfile) => {
     setTargets((prev) => prev.some((target) => target.userId === person.id) ? prev : [...prev, {
       userId: person.id,
-      vehicleId: vehicles.find((vehicle) => vehicle.holders.some((holder) => holder.user_id === person.id))?.id ?? null,
+      vehicleId: vehicle?.id ?? vehicles.find((item) => item.holders.some((holder) => holder.user_id === person.id))?.id ?? null,
     }]);
     setAdding(null);
   };
@@ -90,7 +122,7 @@ export function IssueWarningDialog({open, onOpenChange, vehicles, categories, pe
     const {error} = await supabase.from("vehicle_warnings").insert(rows);
     setSaving(false);
     if (error) return toast.error(errorMessage(error, "A hibapont rögzítése nem sikerült."));
-    const warned = new Set(targets.filter((target) => (activePoints.get(target.userId) ?? 0) + points * countFor(target.userId) >= 3)
+    const warned = new Set(targets.filter((target) => (pointsBefore.get(target.userId) ?? 0) + points * countFor(target.userId) >= 3)
       .map((target) => target.userId)).size;
     toast.success(`Hibapont rögzítve ${new Set(targets.map((target) => target.userId)).size} főnek.`, {
       description: warned ? `${warned} fő automatikusan figyelmeztetést kapott.` : undefined,
@@ -106,6 +138,26 @@ export function IssueWarningDialog({open, onOpenChange, vehicles, categories, pe
           <DialogTitle className="flex items-center gap-2"><ShieldAlert className="size-5 text-amber-400"/> Jármű-hibapont</DialogTitle>
           <DialogDescription>Egy döntés több személyre és járműre is vonatkozhat, ugyanazzal az indokkal.</DialogDescription>
         </DialogHeader>
+
+        {vehicle && (
+          <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2.5 ring-1 ring-white/10">
+            <LicensePlate plate={vehicle.plate} size="sm"/>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm text-slate-100">{vehicle.model}</span>
+              <span className="block text-[11px] text-slate-500">
+                {holders.length ? "A kulcsosai előre kiválasztva; aki mást hozzáadsz, ehhez a járműhöz kerül." : "Nincs kulcsosa: válaszd ki, ki kapja a hibapontot."}
+              </span>
+            </span>
+          </div>
+        )}
+        {skippedHolders.length > 0 && (
+          <p className="flex items-start gap-2 text-xs text-slate-400">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-slate-500"/>
+            <span className="min-w-0 wrap-anywhere">
+              Nem kerültek a listára (nem adhatsz nekik hibapontot): {skippedHolders.map((person) => person.full_name).join(", ")}.
+            </span>
+          </p>
+        )}
 
         <div className="space-y-1.5">
           <Label>Indok</Label>
@@ -168,9 +220,12 @@ export function IssueWarningDialog({open, onOpenChange, vehicles, categories, pe
             <ul className="space-y-1.5">
               {targets.map((target, index) => {
                 const person = byId.get(target.userId);
-                const before = activePoints.get(target.userId) ?? 0;
+                const before = pointsBefore.get(target.userId) ?? 0;
                 const after = before + points * countFor(target.userId);
-                const ownVehicles = vehicles.filter((vehicle) => vehicle.holders.some((holder) => holder.user_id === target.userId));
+                const ownVehicles = vehicles.filter((item) => item.holders.some((holder) => holder.user_id === target.userId));
+                const choices = [...new Map([...(vehicle ? [vehicle] : []), ...ownVehicles,
+                  ...(target.vehicleId && vehicleById.get(target.vehicleId) ? [vehicleById.get(target.vehicleId)!] : [])]
+                  .map((item) => [item.id, item])).values()];
                 return (
                   <li key={`${target.userId}-${index}`} className="animate-rise flex flex-wrap items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/5"
                       style={{"--i": Math.min(index, 8)} as CSSProperties}>
@@ -179,8 +234,8 @@ export function IssueWarningDialog({open, onOpenChange, vehicles, categories, pe
                       <span className="block truncate text-sm text-slate-100">{person?.full_name ?? "Ismeretlen"}</span>
                       <span className="flex items-center gap-2 text-[11px] text-slate-500">
                         <StrikeDots count={Math.min(before, 3)}/>
-                        <span>→ {Math.min(after, 3)}/3</span>
-                        {after >= 3 && <span className="rounded bg-red-500/15 px-1 text-red-300 ring-1 ring-red-500/30">figyelmeztetés lesz</span>}
+                        <span className="whitespace-nowrap">→ {Math.min(after, 3)}/3</span>
+                        {after >= 3 && <span className="rounded bg-red-500/15 px-1 whitespace-nowrap text-red-300 ring-1 ring-red-500/30">figyelmeztetés lesz</span>}
                       </span>
                     </span>
                     <Select value={target.vehicleId ?? NO_VEHICLE}
@@ -188,9 +243,8 @@ export function IssueWarningDialog({open, onOpenChange, vehicles, categories, pe
                       <SelectTrigger className="h-8 w-44"><SelectValue/></SelectTrigger>
                       <SelectContent className="max-h-72">
                         <SelectItem value={NO_VEHICLE}>Jármű nélkül</SelectItem>
-                        {[...new Map([...ownVehicles, ...(target.vehicleId && vehicleById.get(target.vehicleId) ? [vehicleById.get(target.vehicleId)!] : [])]
-                          .map((vehicle) => [vehicle.id, vehicle])).values()].map((vehicle) => (
-                          <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plate} · {vehicle.model}</SelectItem>
+                        {choices.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>{item.plate} · {item.model}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

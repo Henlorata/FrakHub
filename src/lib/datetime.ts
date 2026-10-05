@@ -105,5 +105,55 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
+/**
+ * The instant of a Hungarian wall-clock time ("2026-10-09", "20:00" -> "2026-10-09T18:00:00.000Z"),
+ * for date and time inputs. Two rounds settle the summer-time change.
+ */
+export function fromHungarian(date: string, time: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  const wall = Date.UTC(year, month - 1, day, hour, minute);
+  let instant = wall;
+  for (let round = 0; round < 2; round += 1) {
+    const parts = hungarianParts(new Date(instant));
+    instant += wall - Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+  }
+  return new Date(instant).toISOString();
+}
+
+const dayHeading = new Intl.DateTimeFormat("hu-HU", {timeZone: "UTC", month: "long", day: "numeric", weekday: "long"});
+const dayHeadingWithYear = new Intl.DateTimeFormat("hu-HU", {timeZone: "UTC", year: "numeric", month: "long", day: "numeric", weekday: "long"});
+
+/** "október 9., csütörtök" (with the year when it is not this year). */
+export function formatCalendarDay(date: string, today: string = todayKey()): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  return (date.slice(0, 4) === today.slice(0, 4) ? dayHeading : dayHeadingWithYear).format(value);
+}
+
+/** "Ma", "Holnap", "Tegnap", otherwise the calendar day ("október 9., csütörtök"). */
+export function formatDayLabel(date: string, today: string = todayKey()): string {
+  const offset = daysBetween(today, date);
+  if (offset === 0) return "Ma";
+  if (offset === 1) return "Holnap";
+  if (offset === -1) return "Tegnap";
+  return formatCalendarDay(date, today);
+}
+
 /** The hour in Hungary (0–23), e.g. for greetings. */
 export const hungarianHour = (now: DateInput = new Date()) => Number(hungarianParts(now).hour);
+
+/** Compact relative time for tight rows: "most", "5 perce", "3 órája", "2 napja", "4 hónapja", "1 éve". */
+export function formatAgo(value: DateInput, now: Date = new Date()): string {
+  const date = toDate(value);
+  if (!date) return "–";
+  const minutes = Math.max(0, Math.round((now.getTime() - date.getTime()) / 60_000));
+  if (minutes < 1) return "most";
+  if (minutes < 60) return `${minutes} perce`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} órája`;
+  const days = Math.round(hours / 24);
+  if (days < 31) return `${days} napja`;
+  const months = Math.round(days / 30.4);
+  if (months < 12) return `${months} hónapja`;
+  return `${Math.round(days / 365)} éve`;
+}

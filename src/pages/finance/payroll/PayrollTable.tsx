@@ -1,7 +1,7 @@
 import {Fragment, type KeyboardEvent, type ReactNode} from "react";
 import {toast} from "sonner";
 import {Check, CircleDollarSign, Copy, Loader2, PencilLine, Sparkles} from "lucide-react";
-import {formatDuty} from "@/lib/registry";
+import {autoFormatDuty, formatDuty} from "@/lib/registry";
 import {formatMoney} from "@/lib/finance";
 import {cn, getStaffCategory, STAFF_CATEGORY_LABELS, type StaffCategory} from "@/lib/utils";
 import type {PayrollInput, PayrollRow, PayrollSettings} from "@/types/finance";
@@ -145,7 +145,7 @@ function SheetRow({row, index, inputs, settings, editable, texts, invalid, chang
         value={value}
         placeholder={options.placeholder ?? "–"}
         inputMode={field === "duty" ? "text" : "numeric"}
-        onChange={(event) => onText(row.user_id, field, event.target.value)}
+        onChange={(event) => onText(row.user_id, field, field === "duty" ? autoFormatDuty(event.target.value) : event.target.value)}
         onBlur={() => onBlurText(row.user_id, field)}
         onFocus={(event) => event.target.select()}
         onKeyDown={(event) => moveFocus(event, index, column)}
@@ -188,7 +188,7 @@ function SheetRow({row, index, inputs, settings, editable, texts, invalid, chang
                onChange={(event) => onSelect([row.user_id], event.target.checked)} className="size-4 accent-emerald-500 align-middle"/>
       </td>
       <td className="sticky left-10 z-10 border-b border-white/[0.04] bg-[#0a1120]/95 py-2 pr-3 backdrop-blur group-hover:bg-[#0e172a]">
-        <button type="button" onClick={() => onDetails(row.user_id)} className="flex min-w-0 items-center gap-2.5 text-left">
+        <button type="button" onClick={() => onDetails(row.user_id)} className="flex min-w-0 items-center gap-2.5 text-left" data-tour="payroll-member">
           <MemberAvatar name={row.name} avatarUrl={row.avatar_url} size={28}/>
           <span className="min-w-0">
             <span className={cn("block max-w-[190px] truncate text-sm font-medium", dim ? "text-slate-400" : "text-white")}>{row.name}</span>
@@ -266,11 +266,15 @@ function SheetRow({row, index, inputs, settings, editable, texts, invalid, chang
   );
 }
 
+/** Enter, Tab and the arrows move down/up the column (the sheet is filled member by member). */
 function moveFocus(event: KeyboardEvent<HTMLInputElement>, row: number, column: number) {
-  const step = event.key === "ArrowUp" ? -1 : event.key === "Enter" || event.key === "ArrowDown" ? 1 : 0;
+  const step = event.key === "ArrowUp" || (event.key === "Tab" && event.shiftKey) ? -1
+    : event.key === "Enter" || event.key === "ArrowDown" || event.key === "Tab" ? 1 : 0;
   if (!step) return;
-  event.preventDefault();
   const target = document.querySelector<HTMLInputElement>(`[data-pay-cell="${row + step}:${column}"]`);
+  // At the end of the column Tab leaves the sheet as usual.
+  if (!target && event.key === "Tab") return;
+  event.preventDefault();
   target?.focus();
   target?.select();
 }

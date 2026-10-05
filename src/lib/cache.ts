@@ -15,24 +15,34 @@ export function createCachedLoader<T>(load: () => Promise<T>, ttlMs: number): Ca
   let value: T | undefined;
   let loadedAt = 0;
   let pending: Promise<T> | null = null;
+  // A load that was already running when the cache was cleared must not refill it (sign-out,
+  // entering or leaving practice mode).
+  let generation = 0;
 
   const loader: CachedLoader<T> = {
     get(force = false) {
       if (!force && value !== undefined && Date.now() - loadedAt < ttlMs) return Promise.resolve(value);
-      pending ??= load()
+      if (pending) return pending;
+      const started = generation;
+      const request: Promise<T> = load()
         .then((result) => {
-          value = result;
-          loadedAt = Date.now();
+          if (started === generation) {
+            value = result;
+            loadedAt = Date.now();
+          }
           return result;
         })
         .finally(() => {
-          pending = null;
+          if (pending === request) pending = null;
         });
-      return pending;
+      pending = request;
+      return request;
     },
     invalidate() {
       value = undefined;
       loadedAt = 0;
+      pending = null;
+      generation += 1;
     },
   };
   registry.add(loader as CachedLoader<unknown>);

@@ -112,18 +112,27 @@ export interface Announcement {
 // --- MCB / NYOMOZÁS ---
 export type CaseStatus = "open" | "closed" | "archived";
 export type CasePriority = "low" | "medium" | "high" | "critical";
+export type CaseCategory =
+  | "homicide" | "assault" | "robbery" | "vehicle" | "drugs" | "weapons" | "organized" | "fraud" | "corruption" | "kidnapping" | "other";
 
 export interface Case {
   id: string;
   case_number: number | string;
   title: string;
   description: string | null;
-  body: Json;
+  /** The document: only loaded by get_case_detail(), never by lists. */
+  body?: Json;
   status: CaseStatus;
   priority: CasePriority;
-  owner_id: string;
+  category?: CaseCategory | null;
+  owner_id: string | null;
   created_at: string;
   updated_at: string;
+  closed_at?: string | null;
+  /** Increases with every saved document version (save_case_document checks it). */
+  body_version?: number;
+  body_updated_by?: string | null;
+  body_updated_by_name?: string | null;
   theme?: string;
   owner?: {full_name: string; badge_number?: string} | null;
 }
@@ -142,7 +151,8 @@ export interface CaseEvidence {
   file_path: string;
   file_name: string;
   file_type: string;
-  uploaded_by: string;
+  uploaded_by: string | null;
+  uploader_name?: string | null;
   created_at: string;
 }
 
@@ -176,7 +186,7 @@ export interface SuspectProperty {
   id: string;
   suspect_id: string;
   address: string;
-  property_type: "house" | "garage" | "business" | "warehouse" | "other";
+  property_type: "house" | "apartment" | "garage" | "business" | "warehouse" | "other" | string | null;
   notes: string | null;
 }
 
@@ -222,19 +232,28 @@ export interface CaseWarrant {
   status: WarrantStatus;
   reason: string;
   description: string | null;
-  requested_by: string;
+  requested_by: string | null;
   approved_by: string | null;
   created_at: string;
   updated_at: string;
-  requester?: {full_name: string; badge_number: string} | null;
-  approver?: {full_name: string; badge_number: string} | null;
-  suspect?: {full_name: string} | null;
-  property?: {address: string} | null;
-  case?: {title: string; case_number: number | string} | null;
+  /** Approval or rejection (null for warrants decided before the field existed). */
+  decided_at?: string | null;
+  decision_note?: string | null;
+  /** Execution or withdrawal/revocation. */
+  closed_at?: string | null;
+  closed_by?: string | null;
+  closing_note?: string | null;
+  requester?: {full_name: string; badge_number: string; faction_rank?: string} | null;
+  approver?: {full_name: string; badge_number: string; faction_rank?: string} | null;
+  closer?: {full_name: string; badge_number: string} | null;
+  suspect?: {id?: string; full_name: string; alias?: string | null; mugshot_url?: string | null; status?: SuspectStatus;
+    gang_affiliation?: string | null} | null;
+  property?: {address: string; property_type?: string | null} | null;
+  case?: {id?: string; title: string; case_number: number | string; status?: CaseStatus} | null;
 }
 
 export type NotificationType = "info" | "success" | "warning" | "alert";
-export type NotificationCategory = "system" | "hr" | "mcb" | "logistics" | "finance" | "exam" | "academy" | "announcement";
+export type NotificationCategory = "system" | "hr" | "mcb" | "logistics" | "finance" | "exam" | "academy" | "announcement" | "event";
 
 export interface Notification {
   id: string;

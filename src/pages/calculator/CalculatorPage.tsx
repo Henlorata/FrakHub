@@ -227,7 +227,7 @@ export function CalculatorPage() {
         )}
 
         <div className="min-w-0 space-y-4">
-          <div className="panel sticky top-[4.25rem] z-20 flex items-center gap-2 p-2">
+          <div data-tour="calc-search" className="panel sticky top-[4.25rem] z-20 flex items-center gap-2 p-2">
             <div className="relative flex-1">
               <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
               <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)}
@@ -262,7 +262,7 @@ export function CalculatorPage() {
       {!isDesktop && (
         <>
           {/* Portalled: the page wrapper animates with a transform, which would pin "fixed" to it. */}
-          {createPortal(<button type="button" onClick={() => setDrawerOpen(true)}
+          {createPortal(<button type="button" onClick={() => setDrawerOpen(true)} data-tour="calc-drawer" data-cart={count}
                   className="fixed right-5 bottom-5 z-40 flex h-14 items-center gap-2 rounded-full bg-amber-400 px-5 font-semibold text-black shadow-2xl ring-4 ring-[#0a1120] transition-transform active:scale-95">
             <ClipboardList className="size-5"/>
             {count > 0 ? <>{count} tétel · {formatCurrency(fine)}</> : "Jegyzőkönyv"}

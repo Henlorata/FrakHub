@@ -32,7 +32,7 @@ export function ItemList({categories, search, filtering, open, onToggle, quantit
     );
   }
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-tour="calc-list">
       {categories.map((category, index) => {
         const expanded = filtering || open.has(category.kategoria_nev);
         return (
@@ -140,7 +140,7 @@ const ItemRow = memo(function ItemRow({item, search, quantity, favorite, onAdd, 
             <button type="button" onClick={() => onChange(item.id, 1)} aria-label="Több" className="grid h-full w-7 place-items-center text-sky-200 hover:bg-sky-500/20"><Plus className="size-3.5"/></button>
           </div>
         ) : (
-          <button type="button" onClick={() => onAdd(item.id)}
+          <button type="button" onClick={() => onAdd(item.id)} data-tour="calc-add"
                   className="inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-xs font-medium text-slate-300 ring-1 ring-white/10 transition-colors hover:bg-white/[0.06] hover:text-white">
             <Plus className="size-3.5"/> Hozzáad
           </button>

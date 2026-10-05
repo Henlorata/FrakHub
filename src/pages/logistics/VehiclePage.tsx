@@ -96,9 +96,6 @@ export function VehiclePage() {
   const canRenew = staff || canSubmitRegistration(profile, vehicle, category);
   const status = vehicle.registration_required ? registrationStatus(vehicle.registration_expires_on) : null;
   const batches = groupWarnings(warnings ?? []);
-  const activePoints = new Map<string, number>();
-  (warnings ?? []).filter((item) => !item.revoked_at && !item.converted_record_id)
-    .forEach((item) => activePoints.set(item.user_id, (activePoints.get(item.user_id) ?? 0) + 1));
 
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-6">
@@ -266,8 +263,7 @@ export function VehiclePage() {
                             }}/>
       )}
       {dialog === "warning" && (
-        <IssueWarningDialog open vehicles={vehicles} categories={categories} people={profiles} activePoints={activePoints}
-                            initialTargets={vehicle.holders.map((holder) => ({userId: holder.user_id, vehicleId: vehicle.id}))}
+        <IssueWarningDialog open vehicles={vehicles} categories={categories} people={profiles} vehicle={vehicle}
                             onOpenChange={(open) => !open && setDialog(null)} onIssued={() => {
                               toast.message("A hibapontok a tagok profilján is megjelennek.");
                               void loadHistory();

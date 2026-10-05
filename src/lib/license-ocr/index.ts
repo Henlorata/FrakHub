@@ -1,5 +1,9 @@
-import {createWorker, OEM, PSM, type Line, type Page, type Worker} from "tesseract.js";
-import {FIELD_ROWS, lineField, parseLicense, type LicenseReading, type OcrLine} from "./parse";
+import {
+  clampBox, draw, getWorker, median, PSM, recognize, scheduleRelease, setOcrProgress, strokes, type Box, type OcrTextLine,
+} from "@/lib/ocr/engine";
+import {FIELD_ROWS, lineField, parseLicense, type LicenseReading} from "./parse";
+
+export {releaseOcr, setOcrDebug, warmUpOcr} from "@/lib/ocr/engine";
 
 /**
  * Finds the in-game licence on a screenshot and reads it, in the browser (Tesseract in a
@@ -23,16 +27,7 @@ export interface LicenseScan {
   crop: Blob | null;
 }
 
-interface Box {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-}
-
-interface FoundLine extends OcrLine {
-  bbox: Box;
-}
+type FoundLine = OcrTextLine;
 
 /**
  * The card's layout in line pitches (distance between two labelled rows), measured on the
@@ -40,135 +35,6 @@ interface FoundLine extends OcrLine {
  * pitches from the left edge, the card is 21.5 x 12.85 pitches.
  */
 const CARD = {width: 21.5, height: 12.85, firstRow: 3.125, labelX: 5.2, titleRow: 1.25, titleX: 4.8, pitchPerHeight: 1.74};
-
-const IDLE_MS = 90_000;
-let workerPromise: Promise<Worker> | null = null;
-let idleTimer: ReturnType<typeof setTimeout> | undefined;
-let progressListener: ((progress: number) => void) | null = null;
-let debugHook: ((label: string, image: HTMLCanvasElement, lines: FoundLine[]) => void) | null = null;
-
-/** Development aid (temp/ocr harness): sees every pass. */
-export const setOcrDebug = (hook: typeof debugHook) => {
-  debugHook = hook;
-};
-
-function getWorker(): Promise<Worker> {
-  clearTimeout(idleTimer);
-  workerPromise ??= createWorker("eng", OEM.LSTM_ONLY, {
-    logger: (message) => {
-      if (message.status === "recognizing text") progressListener?.(message.progress);
-    },
-  }).then(async (worker) => {
-    await worker.setParameters({preserve_interword_spaces: "1", user_defined_dpi: "300"});
-    return worker;
-  }).catch((error: unknown) => {
-    workerPromise = null;
-    throw error;
-  });
-  return workerPromise;
-}
-
-/** Frees the OCR engine (~100 MB) once nobody used it for a while. */
-function scheduleRelease() {
-  clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => void releaseOcr(), IDLE_MS);
-}
-
-export async function releaseOcr() {
-  const pending = workerPromise;
-  workerPromise = null;
-  if (pending) await pending.then((worker) => worker.terminate()).catch(() => undefined);
-}
-
-/** Starts downloading the engine early (when the dialog opens), so the scan starts faster. */
-export function warmUpOcr() {
-  void getWorker().then(scheduleRelease).catch(() => undefined);
-}
-
-const newCanvas = (width: number, height: number) => {
-  const element = document.createElement("canvas");
-  element.width = Math.max(1, Math.round(width));
-  element.height = Math.max(1, Math.round(height));
-  return element;
-};
-
-/** Draws a part of the picture scaled (`filter`: CSS canvas filter). */
-function draw(source: CanvasImageSource, box: Box, scale: number, filter = "none") {
-  const target = newCanvas((box.x1 - box.x0) * scale, (box.y1 - box.y0) * scale);
-  const context = target.getContext("2d", {willReadFrequently: true})!;
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
-  context.filter = filter;
-  context.fillStyle = "#fff";
-  context.fillRect(0, 0, target.width, target.height);
-  context.drawImage(source, box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0, 0, 0, target.width, target.height);
-  return target;
-}
-
-/**
- * Black where a pixel is darker than the mean of its `size` x `size` neighbourhood by
- * `delta`, white elsewhere: keeps dark text on light backgrounds, drops scenery and HUD.
- */
-function darkStrokes(source: HTMLCanvasElement, size: number, delta: number) {
-  const {width, height} = source;
-  const target = newCanvas(width, height);
-  const context = target.getContext("2d", {willReadFrequently: true})!;
-  context.drawImage(source, 0, 0);
-  const image = context.getImageData(0, 0, width, height);
-  const data = image.data;
-  const luminance = new Float32Array(width * height);
-  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
-    luminance[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-  }
-  const stride = width + 1;
-  const integral = new Float64Array(stride * (height + 1));
-  for (let y = 0; y < height; y += 1) {
-    let row = 0;
-    for (let x = 0; x < width; x += 1) {
-      row += luminance[y * width + x];
-      integral[(y + 1) * stride + x + 1] = integral[y * stride + x + 1] + row;
-    }
-  }
-  const radius = Math.max(1, Math.floor(size / 2));
-  for (let y = 0; y < height; y += 1) {
-    const top = Math.max(0, y - radius);
-    const bottom = Math.min(height, y + radius + 1);
-    for (let x = 0; x < width; x += 1) {
-      const left = Math.max(0, x - radius);
-      const right = Math.min(width, x + radius + 1);
-      const sum = integral[bottom * stride + right] - integral[top * stride + right]
-        - integral[bottom * stride + left] + integral[top * stride + left];
-      const mean = sum / ((right - left) * (bottom - top));
-      const p = y * width + x;
-      const value = luminance[p] < mean - delta ? 0 : 255;
-      data[p * 4] = data[p * 4 + 1] = data[p * 4 + 2] = value;
-      data[p * 4 + 3] = 255;
-    }
-  }
-  context.putImageData(image, 0, 0);
-  return target;
-}
-
-function linesOf(page: Page): FoundLine[] {
-  const lines: Line[] = (page.blocks ?? []).flatMap((block) => block.paragraphs.flatMap((paragraph) => paragraph.lines));
-  return lines
-    .map((line) => ({text: line.text.trim(), confidence: line.confidence, bbox: line.bbox}))
-    .filter((line) => line.text.length > 0);
-}
-
-async function recognize(image: HTMLCanvasElement, mode: PSM, label: string): Promise<FoundLine[]> {
-  const worker = await getWorker();
-  await worker.setParameters({tessedit_pageseg_mode: mode});
-  const {data} = await worker.recognize(image, {}, {blocks: true, text: false});
-  const lines = linesOf(data);
-  debugHook?.(label, image, lines);
-  return lines;
-}
-
-const median = (values: number[]) => {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
-};
 
 interface CardPosition {
   /** The whole card, in picture coordinates. */
@@ -215,13 +81,6 @@ function locate(lines: FoundLine[], scale: number): CardPosition | null {
   };
 }
 
-const clampBox = (box: Box, width: number, height: number): Box => ({
-  x0: Math.max(0, Math.min(width - 1, box.x0)),
-  y0: Math.max(0, Math.min(height - 1, box.y0)),
-  x1: Math.max(1, Math.min(width, box.x1)),
-  y1: Math.max(1, Math.min(height, box.y1)),
-});
-
 const score = (reading: LicenseReading) =>
   (reading.expiresOn ? 4 : 0) + (reading.plate ? 2 : 0) + (reading.model ? 2 : 0) + Math.min(reading.labels, 8) * 0.25;
 
@@ -259,7 +118,7 @@ export async function readLicense(file: Blob, {onStage, onProgress}: {
 } = {}): Promise<LicenseScan> {
   onStage?.("loading");
   const bitmap = await createImageBitmap(file);
-  progressListener = onProgress ?? null;
+  setOcrProgress(onProgress ?? null);
   try {
     await getWorker();
     const {width, height} = bitmap;
@@ -280,7 +139,7 @@ export async function readLicense(file: Blob, {onStage, onProgress}: {
     ].filter((attempt) => longest * attempt.scale <= 4200 && longest * attempt.scale >= 300);
     let position: CardPosition | null = null;
     for (const attempt of tries) {
-      const picture = darkStrokes(draw(bitmap, whole, attempt.scale), attempt.size, attempt.delta);
+      const picture = strokes(draw(bitmap, whole, attempt.scale), attempt.size, attempt.delta);
       const lines = await recognize(picture, PSM.SPARSE_TEXT, `locate x${attempt.scale.toFixed(2)}`);
       readings.push(parseLicense(lines));
       const found = locate(lines, attempt.scale);
@@ -300,8 +159,8 @@ export async function readLicense(file: Blob, {onStage, onProgress}: {
       const scale = Math.min(6, Math.max(0.5, 40 / pitch));
       const area = draw(bitmap, text, scale, "grayscale(1)");
       const passes: [HTMLCanvasElement, PSM, string][] = [
-        [darkStrokes(area, 45, 15), PSM.SINGLE_BLOCK, "card strokes"],
-        [darkStrokes(area, 31, 25), PSM.SINGLE_BLOCK, "card strokes (fine)"],
+        [strokes(area, 45, 15), PSM.SINGLE_BLOCK, "card strokes"],
+        [strokes(area, 31, 25), PSM.SINGLE_BLOCK, "card strokes (fine)"],
         [draw(area, {x0: 0, y0: 0, x1: area.width, y1: area.height}, 1, "contrast(1.4)"), PSM.SINGLE_BLOCK, "card grey"],
       ];
       for (const [image, mode, label] of passes) readings.push(parseLicense(await recognize(image, mode, label)));
@@ -312,13 +171,13 @@ export async function readLicense(file: Blob, {onStage, onProgress}: {
       onStage?.("reading");
       const area = draw(bitmap, whole, Math.min(4, Math.max(1, 1000 / width)), "grayscale(1)");
       readings.push(parseLicense(await recognize(area, PSM.SINGLE_BLOCK, "whole grey")));
-      readings.push(parseLicense(await recognize(darkStrokes(area, 41, 15), PSM.SINGLE_BLOCK, "whole strokes")));
+      readings.push(parseLicense(await recognize(strokes(area, 41, 15), PSM.SINGLE_BLOCK, "whole strokes")));
     }
 
     onStage?.("done");
     return {reading: merge(readings), crop: card ? await toWebp(card) : null};
   } finally {
-    progressListener = null;
+    setOcrProgress(null);
     bitmap.close();
     scheduleRelease();
   }

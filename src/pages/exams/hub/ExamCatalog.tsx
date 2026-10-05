@@ -41,7 +41,7 @@ export function ExamCatalog({exams, profile, clockOffset, onManageAccess}: ExamC
     );
   }
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <div data-tour="exam-catalog" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {shown.map((exam, index) => (
         <ExamCard key={exam.id} exam={exam} profile={profile} index={index} clockOffset={clockOffset} onManageAccess={onManageAccess}/>
       ))}

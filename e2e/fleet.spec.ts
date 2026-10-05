@@ -77,6 +77,45 @@ test.describe("fleet", () => {
     expect(rows.filter((row) => row.user_id === TRAINEE_ID)).toHaveLength(2);
   });
 
+  test("on a vehicle's page the warning is about that vehicle", async ({page}) => {
+    await mockSupabase(page, {
+      tables: {
+        profiles: [viewer, deputy, trainee], fleet_vehicles: fleet, fleet_categories: categories,
+        vehicle_warnings: [{id: "w0", vehicle_id: "v2", plate: "SFSD-015", user_id: DEPUTY_ID, reason: "Parkolás", issued_by: TEST_USER_ID,
+          batch_id: "b0", created_at: NOW, revoked_at: null, revoked_by: null, converted_record_id: null}],
+      },
+    });
+    const bodies: unknown[] = [];
+    page.on("request", (request) => {
+      if (posted(request, "/rest/v1/vehicle_warnings")) bodies.push(request.postDataJSON());
+    });
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/logistics/fleet/v1");
+
+    await page.getByRole("button", {name: "Hibapont", exact: true}).click();
+    const dialog = page.getByRole("dialog");
+    // The vehicle is set; its holder is listed, the viewer (also a holder) is not: nobody warns themselves.
+    await expect(dialog.getByText("Ford Explorer").first()).toBeVisible();
+    await expect(dialog.getByText("Deputy Dénes")).toBeVisible();
+    await expect(dialog.getByText(/Nem kerültek a listára/)).toContainText(String(viewer.full_name));
+    // Points count across every vehicle (the warning above is on another one).
+    await expect(dialog.getByText("→ 2/3")).toBeVisible();
+
+    // Anyone added later is recorded with this vehicle too.
+    await dialog.getByRole("button", {name: "Személy"}).click();
+    await dialog.getByPlaceholder(/Név vagy jelvényszám/).fill("Újonc");
+    await dialog.getByRole("option", {name: /Újonc Ubul/}).click();
+    await dialog.getByPlaceholder(/szabálytalan parkolás/).fill("Sérülten leadott jármű");
+    await dialog.getByRole("button", {name: /^Rögzítés \(2 fő × 1 pont\)/}).click();
+
+    await expect(page.getByText("Hibapont rögzítve 2 főnek.")).toBeVisible();
+    const rows = bodies[0] as {user_id: string; vehicle_id: string | null; plate: string | null}[];
+    expect(rows.map((row) => [row.user_id, row.vehicle_id, row.plate])).toEqual([
+      [DEPUTY_ID, "v1", "SFSD-012"], [TRAINEE_ID, "v1", "SFSD-012"],
+    ]);
+  });
+
   test("assigning shows who holds each vehicle and which ones cannot be given", async ({page}) => {
     const mock = await mockSupabase(page, {tables: {profiles: [viewer, deputy, trainee], fleet_vehicles: fleet, fleet_categories: categories}});
     const bodies: unknown[] = [];

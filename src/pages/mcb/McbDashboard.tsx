@@ -1,358 +1,478 @@
-import * as React from "react";
-import {useAuth} from "@/context/AuthContext";
-import {Card} from "@/components/ui/card";
-import {Button} from "@/components/ui/button";
+import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
+import {Link, useNavigate} from "react-router";
 import {
-  FilePlus,
-  Clock,
-  Search,
-  AlertCircle,
-  FileWarning,
-  FolderSearch,
-  Siren,
-  Archive,
-  Lock,
-  FolderOpen,
-  LayoutList
+  ArrowDownWideNarrow, Check, ChevronRight, FilePlus2, FileText, FolderLock, FolderOpen, Fingerprint, Gavel, LayoutGrid, Lock,
+  Paperclip, Rows3, Search, Siren, Sparkles, Users, X,
 } from "lucide-react";
-import {useNavigate} from "react-router";
-import {Input} from "@/components/ui/input";
-import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
-import {formatDistanceToNow} from "date-fns";
-import {hu} from "date-fns/locale";
 import {toast} from "sonner";
-import {NewCaseDialog} from "./components/NewCaseDialog";
+import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
+import {StatCard} from "@/components/layout/StatCard";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {useAuth} from "@/context/AuthContext";
+import {useSuspects} from "@/context/SuspectCacheContext";
 import {useDialogParam} from "@/lib/use-dialog-param";
-import {canApproveWarrant} from "@/lib/utils";
-import {ScrollArea} from "@/components/ui/scroll-area";
-import {Tabs, TabsList, TabsTrigger} from "@/components/ui/tabs";
-import {Badge} from "@/components/ui/badge";
-import type {LucideIcon} from "lucide-react";
-import type {Case, CaseWarrant} from "@/types/supabase";
+import {formatAgo, formatDate} from "@/lib/datetime";
+import {
+  CATEGORIES, CATEGORY, PRIORITIES, PRIORITY, WARRANT_SELECT, WARRANT_TYPE, canApproveWarrants, mcbApi, warrantTarget,
+  type CaseListItem, type CaseSearchHit,
+} from "@/lib/mcb";
+import {cn, errorMessage} from "@/lib/utils";
+import type {CaseCategory, CasePriority, CaseWarrant} from "@/types/supabase";
+import {NewCaseDialog} from "./components/NewCaseDialog";
+import {CaseStatusChip, CategoryChip, MemberAvatar, PriorityChip} from "./components/McbBadges";
 
-/** List columns only: the case document body (often tens of KB) is loaded on the detail page. */
-const CASE_LIST_COLUMNS = 'id, case_number, title, status, priority, updated_at, owner:owner_id(full_name)';
-const PENDING_WARRANT_COLUMNS = 'id, type, reason, target_name, created_at, case:case_id(title, case_number), suspect:suspect_id(full_name)';
+type StatusFilter = "open" | "closed" | "archived" | "all";
+type SortKey = "updated" | "created" | "priority" | "number";
 
-// --- KOMPONENSEK ---
+const VIEW_KEY = "frakhub.mcb.view";
 
-const StatCard = ({title, value, icon: Icon, colorClass, gradient}: {
-  title: string, value: number, icon: LucideIcon, colorClass: string, gradient: string
-}) => (
-  <div
-    className={`relative overflow-hidden rounded-2xl border border-slate-800/60 p-6 group transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl ${gradient}`}>
-    <div
-      className="absolute -right-6 -top-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:rotate-12 duration-700">
-      <Icon className={`w-32 h-32 ${colorClass}`}/>
-    </div>
-    <div className="relative z-10 flex flex-col h-full justify-between">
-      <div
-        className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${colorClass.replace('text-', 'bg-')}/20 border border-white/5 backdrop-blur-md shadow-inner`}>
-        <Icon className={`w-6 h-6 ${colorClass}`}/>
-      </div>
-      <div>
-        <div className="text-4xl font-black text-white tracking-tighter mb-1 font-mono">{value}</div>
-        <div className="text-[11px] uppercase font-bold text-slate-400 tracking-widest flex items-center gap-2">
-          {title}
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-const PriorityBadge = ({prio}: { prio: string }) => {
-  const styles: Record<string, string> = {
-    critical: "bg-red-500/20 text-red-400 border-red-500/50 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.2)]",
-    high: "bg-orange-500/10 text-orange-400 border-orange-500/30",
-    medium: "bg-yellow-500/10 text-yellow-500 border-yellow-500/30",
-    low: "bg-slate-500/10 text-slate-400 border-slate-500/30"
-  };
-  const labels: Record<string, string> = {critical: "KRITIKUS", high: "MAGAS", medium: "KÖZEPES", low: "ALACSONY"};
-
-  return <span
-    className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${styles[prio] || styles.low}`}>{labels[prio] || "NORMÁL"}</span>
-};
-
-const StatusBadge = ({status}: { status: string }) => {
-  if (status === 'open') return <Badge variant="outline"
-                                       className="border-green-500/50 text-green-400 bg-green-500/10 text-[10px] uppercase tracking-wide">Folyamatban</Badge>;
-  if (status === 'closed') return <Badge variant="outline"
-                                         className="border-slate-600 text-slate-400 bg-slate-800 text-[10px] uppercase tracking-wide">Lezárt</Badge>;
-  if (status === 'archived') return <Badge variant="outline"
-                                           className="border-red-900 text-red-700 bg-red-950/20 text-[10px] uppercase tracking-wide">Archivált</Badge>;
-  return null;
-}
+const fold = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 export function McbDashboard() {
-  const {supabase, profile, user} = useAuth();
+  const {supabase, profile} = useAuth();
   const navigate = useNavigate();
+  const {suspects} = useSuspects();
+  const [cases, setCases] = useState<CaseListItem[]>([]);
+  const [archived, setArchived] = useState<CaseListItem[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState<CaseWarrant[]>([]);
+  const [status, setStatus] = useState<StatusFilter>("open");
+  const [priority, setPriority] = useState<CasePriority | null>(null);
+  const [category, setCategory] = useState<CaseCategory | "">("");
+  const [mine, setMine] = useState(false);
+  const [sort, setSort] = useState<SortKey>("updated");
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<CaseSearchHit[]>([]);
+  const [view, setView] = useState<"cards" | "table">(() => (localStorage.getItem(VIEW_KEY) === "table" ? "table" : "cards"));
+  const [newOpen, setNewOpen] = useDialogParam("new");
+  const canApprove = canApproveWarrants(profile);
 
-  const [stats, setStats] = React.useState({myOpen: 0, totalOpen: 0, critical: 0});
-  const [cases, setCases] = React.useState<Case[]>([]);
-  const [pendingWarrants, setPendingWarrants] = React.useState<CaseWarrant[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [search, setSearch] = React.useState("");
-  const [isNewCaseOpen, setIsNewCaseOpen] = useDialogParam('new');
-  const [activeTab, setActiveTab] = React.useState("open");
-
-  const profileId = profile?.id;
-  const canApprove = canApproveWarrant(profile);
-
-  // Overview figures and pending warrants: loaded once, not on every tab switch.
-  const fetchOverview = React.useCallback(async () => {
-    if (!profileId) return;
-    const [myOpen, totalOpen, crit, warrants] = await Promise.all([
-      supabase.from('cases').select('id', {count: 'exact', head: true}).eq('status', 'open').eq('owner_id', profileId),
-      supabase.from('cases').select('id', {count: 'exact', head: true}).eq('status', 'open'),
-      supabase.from('cases').select('id', {count: 'exact', head: true}).eq('status', 'open').eq('priority', 'critical'),
-      canApprove
-        ? supabase.from('case_warrants').select(PENDING_WARRANT_COLUMNS).eq('status', 'pending').order('created_at', {ascending: true})
-        : Promise.resolve({data: [] as unknown[]}),
-    ]);
-    setStats({
-      myOpen: myOpen.count || 0,
-      totalOpen: totalOpen.count || 0,
-      critical: crit.count || 0
-    });
-    setPendingWarrants((warrants.data ?? []) as unknown as CaseWarrant[]);
-  }, [supabase, profileId, canApprove]);
-
-  const fetchCases = React.useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (force = false) => {
     try {
-      let query = supabase.from('cases').select(CASE_LIST_COLUMNS).order('updated_at', {ascending: false});
-      if (activeTab !== 'all') query = query.eq('status', activeTab);
-      const {data, error} = await query.limit(50);
-      if (error) throw error;
-      setCases((data ?? []) as unknown as Case[]);
-    } catch (err) {
-      console.error(err);
-      toast.error("Hiba az akták betöltésekor.");
+      setCases(await mcbApi.list(force));
+    } catch (error) {
+      toast.error("Az akták betöltése nem sikerült.", {description: errorMessage(error)});
     } finally {
       setLoading(false);
     }
-  }, [supabase, activeTab]);
+  }, []);
 
-  React.useEffect(() => {
-    void fetchOverview();
-  }, [fetchOverview]);
+  useEffect(() => {
+    void load(true);
+  }, [load]);
 
-  React.useEffect(() => {
-    void fetchCases();
-  }, [fetchCases]);
+  // The approval queue (approvers only; one query with the names the cards show).
+  const loadPending = useCallback(async () => {
+    if (!canApprove) return;
+    const {data} = await supabase.from("case_warrants").select(WARRANT_SELECT).eq("status", "pending")
+      .order("created_at", {ascending: true}).limit(30);
+    setPending((data ?? []) as unknown as CaseWarrant[]);
+  }, [canApprove, supabase]);
 
-  const handleWarrantAction = async (id: string, status: 'approved' | 'rejected') => {
-    const {error} = await supabase.from('case_warrants').update({
-      status, approved_by: user?.id, updated_at: new Date().toISOString()
-    }).eq('id', id);
+  useEffect(() => {
+    void loadPending();
+  }, [loadPending]);
 
-    if (!error) {
-      toast.success(status === 'approved' ? 'Parancs jóváhagyva.' : 'Parancs elutasítva.');
-      setPendingWarrants(prev => prev.filter(w => w.id !== id));
-    } else toast.error("Hiba történt.");
-  }
+  // Archived cases only when asked for.
+  useEffect(() => {
+    if ((status !== "archived" && status !== "all") || archived) return;
+    mcbApi.listArchived().then((list) => setArchived(list.filter((item) => item.status === "archived")))
+      .catch((error) => toast.error("Az archívum betöltése nem sikerült.", {description: errorMessage(error)}));
+  }, [status, archived]);
 
-  const term = search.toLowerCase();
-  const filteredCases = cases.filter(c =>
-    c.title.toLowerCase().includes(term) ||
-    c.case_number.toString().includes(search) ||
-    (c.owner?.full_name || "").toLowerCase().includes(term)
-  );
+  // Search in the documents (3+ characters, debounced).
+  const term = query.trim();
+  useEffect(() => {
+    if (term.length < 3) {
+      setHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      mcbApi.search(term).then((result) => setHits(result.filter((hit) => hit.match === "body"))).catch(() => setHits([]));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [term]);
+
+  const all = useMemo(() => [...cases, ...(archived ?? [])], [cases, archived]);
+  const counts = useMemo(() => ({
+    open: cases.filter((item) => item.status === "open").length,
+    closed: cases.filter((item) => item.status === "closed").length,
+    archived: archived?.length ?? null,
+  }), [cases, archived]);
+
+  const visible = useMemo(() => {
+    const needle = fold(term);
+    const rows = all.filter((item) => (status === "all" || item.status === status)
+      && (!priority || item.priority === priority)
+      && (!category || item.category === category)
+      && (!mine || item.my_role !== null)
+      && (!needle || [item.title, item.case_number, item.owner_name ?? "", item.description ?? ""].some((value) => fold(value).includes(needle))));
+    const byPriority = (item: CaseListItem) => PRIORITY[item.priority]?.order ?? 9;
+    return rows.sort((a, b) => sort === "priority" ? byPriority(a) - byPriority(b) || b.updated_at.localeCompare(a.updated_at)
+      : sort === "created" ? b.created_at.localeCompare(a.created_at)
+        : sort === "number" ? b.case_number.localeCompare(a.case_number, "hu", {numeric: true})
+          : b.updated_at.localeCompare(a.updated_at));
+  }, [all, status, priority, category, mine, term, sort]);
+
+  const myOpen = useMemo(() => cases.filter((item) => item.status === "open" && item.my_role !== null)
+    .sort((a, b) => (PRIORITY[a.priority].order - PRIORITY[b.priority].order) || b.updated_at.localeCompare(a.updated_at)), [cases]);
+  const urgent = cases.filter((item) => item.status === "open" && (item.priority === "critical" || item.priority === "high")).length;
+  const activeWarrants = cases.reduce((sum, item) => sum + item.warrants_active, 0);
+  const wanted = suspects.filter((suspect) => suspect.status === "wanted").length;
+
+  const open = (item: Pick<CaseListItem, "id" | "can_open">) => {
+    if (!item.can_open) {
+      toast.info("Ezt az aktát csak a tulajdonosa, a közreműködői és az MCB vezetése nyithatja meg.");
+      return;
+    }
+    navigate(`/mcb/case/${item.id}`);
+  };
+
+  const decide = async (warrant: CaseWarrant, decision: "approved" | "rejected") => {
+    try {
+      await mcbApi.decideWarrant(warrant.id, decision);
+      toast.success(decision === "approved" ? "Parancs jóváhagyva." : "Kérelem elutasítva.");
+      setPending((list) => list.filter((item) => item.id !== warrant.id));
+      mcbApi.invalidateList();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  };
+
+  const resetFilters = () => {
+    setPriority(null);
+    setCategory("");
+    setMine(false);
+    setQuery("");
+  };
+  const filtered = !!priority || !!category || mine || !!term;
 
   return (
-    <div className="space-y-6">
-      <NewCaseDialog open={isNewCaseOpen} onOpenChange={setIsNewCaseOpen} onCaseCreated={fetchOverview}/>
+    <div className="flex flex-col gap-6">
+      <NewCaseDialog open={newOpen} onOpenChange={setNewOpen} onCreated={() => mcbApi.invalidateList()}/>
 
-      {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard
-          title="SAJÁT NYITOTT ÜGYEK"
-          value={stats.myOpen}
-          icon={FolderSearch}
-          colorClass="text-sky-400"
-          gradient="bg-gradient-to-br from-slate-900 via-slate-900 to-sky-900/20"
-        />
-        <StatCard
-          title="TELJES ÜGYSZÁM"
-          value={stats.totalOpen}
-          icon={Clock}
-          colorClass="text-blue-400"
-          gradient="bg-gradient-to-br from-slate-900 via-slate-900 to-blue-900/20"
-        />
-        <StatCard
-          title="KRITIKUS RIASZTÁS"
-          value={stats.critical}
-          icon={Siren}
-          colorClass="text-red-500"
-          gradient="bg-gradient-to-br from-slate-900 via-slate-900 to-red-900/20"
-        />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <StatCard index={0} label="Saját nyitott aktáim" value={myOpen.length} icon={FolderOpen} tone="blue"
+                  onClick={() => {
+                    setStatus("open");
+                    setMine(true);
+                  }}/>
+        <StatCard index={1} label="Nyitott akták" value={counts.open} icon={FileText} tone="emerald" onClick={() => {
+          resetFilters();
+          setStatus("open");
+        }}/>
+        <StatCard index={2} label="Kritikus / magas prioritás" value={urgent} icon={Siren} tone="red"
+                  onClick={() => {
+                    setStatus("open");
+                    setSort("priority");
+                  }}/>
+        {canApprove ? (
+          <StatCard index={3} label="Jóváhagyásra váró parancs" value={pending.length} icon={Gavel} tone="orange"
+                    onClick={() => navigate("/mcb/warrants")}/>
+        ) : (
+          <StatCard index={3} label="Érvényes parancsok" value={activeWarrants} icon={Gavel} tone="orange"
+                    onClick={() => navigate("/mcb/warrants")}/>
+        )}
+        <StatCard index={4} label="Körözött személyek" value={wanted} icon={Fingerprint} tone="violet" className="col-span-2 lg:col-span-1"
+                  onClick={() => navigate("/mcb/suspects?status=wanted")}/>
       </div>
 
-      {/* WARRANTS ALERT */}
-      {pendingWarrants.length > 0 && canApprove && (
-        <div
-          className="border border-red-500/40 bg-red-950/20 rounded-xl overflow-hidden shadow-[0_0_30px_rgba(239,68,68,0.15)] relative group">
-          <div
-            className="bg-red-900/20 px-4 py-3 border-b border-red-500/30 flex items-center justify-between relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-3 h-3 rounded-full bg-red-500 animate-ping absolute"></div>
-                <div className="w-3 h-3 rounded-full bg-red-500 relative"></div>
+      {(myOpen.length > 0 || (canApprove && pending.length > 0)) && (
+        <div className={cn("grid grid-cols-1 gap-4", canApprove && pending.length > 0 && myOpen.length > 0 && "xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]")}>
+          {myOpen.length > 0 && (
+            <section className="panel animate-rise p-4" style={{"--i": 2} as CSSProperties} data-tour="mcb-desk">
+              <header className="mb-3 flex items-center gap-2">
+                <Sparkles className="size-4 text-sky-300"/>
+                <h2 className="text-sm font-semibold text-white">Az asztalomon</h2>
+                <span className="text-xs text-slate-500">· nyitott akták, ahol tulajdonos vagy közreműködő vagy</span>
+              </header>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                {myOpen.slice(0, 6).map((item, index) => (
+                  <button key={item.id} type="button" onClick={() => open(item)} style={{"--i": index} as CSSProperties} data-tour="mcb-case" data-case-id={item.id}
+                          className="lift animate-rise group flex min-w-0 items-start gap-3 rounded-xl bg-white/[0.03] p-3 text-left ring-1 ring-white/10">
+                    <span className={cn("mt-1 h-10 w-1 shrink-0 rounded-full", PRIORITY[item.priority].dot)}/>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-mono text-[11px] text-sky-300/80">{item.case_number}</span>
+                      <span className="block truncate text-sm font-semibold text-white group-hover:text-sky-200">{item.title}</span>
+                      <span className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
+                        <span>{item.my_role === "owner" ? "Vezető nyomozó" : item.my_role === "editor" ? "Szerkesztő" : "Megtekintő"}</span>
+                        <span>·</span>
+                        <span>{formatAgo(item.updated_at)}</span>
+                      </span>
+                    </span>
+                    <ChevronRight className="mt-3 size-4 shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-sky-300"/>
+                  </button>
+                ))}
               </div>
-              <span className="text-sm font-black uppercase tracking-widest text-red-400">Jóváhagyás Szükséges</span>
-            </div>
-            <Badge variant="destructive" className="font-mono">{pendingWarrants.length} DB</Badge>
-          </div>
-          <ScrollArea className="h-[280px]">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 p-3 relative z-10">
-              {pendingWarrants.map(w => (
-                <div key={w.id}
-                     className="bg-slate-950/80 border border-slate-800 hover:border-red-500/50 rounded-lg p-3 flex gap-4 transition-all group/item">
-                  <div
-                    className={`shrink-0 w-12 h-12 rounded-lg flex items-center justify-center border ${w.type === 'arrest' ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-orange-500/10 border-orange-500/20 text-orange-500'}`}>
-                    {w.type === 'arrest' ? <FileWarning className="w-6 h-6"/> : <AlertCircle className="w-6 h-6"/>}
-                  </div>
-                  <div className="flex-1 min-w-0 flex flex-col justify-center">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold text-slate-200 truncate">{w.suspect?.full_name || w.target_name}</span>
-                      <span
-                        className="text-[10px] font-mono text-slate-500 bg-slate-900 px-1.5 rounded">#{w.case?.case_number}</span>
-                    </div>
-                    <p className="text-xs text-slate-400 truncate">{w.reason}</p>
-                  </div>
-                  <div className="flex items-center gap-2 opacity-80 group-hover/item:opacity-100">
-                    <Button size="sm" variant="outline" onClick={() => handleWarrantAction(w.id, 'rejected')}
-                            className="h-8 w-8 p-0 border-red-900/50 text-red-500 hover:bg-red-950 hover:text-red-400"><span
-                      className="sr-only">X</span>X</Button>
-                    <Button size="sm" onClick={() => handleWarrantAction(w.id, 'approved')}
-                            className="h-8 bg-green-600 hover:bg-green-500 text-white font-bold px-3">JÓVÁHAGYÁS</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
+            </section>
+          )}
+
+          {canApprove && pending.length > 0 && (
+            <section className="panel animate-rise overflow-hidden p-0 ring-1 ring-amber-500/20" style={{"--i": 3} as CSSProperties}>
+              <header className="flex items-center gap-2 border-b border-amber-500/15 bg-amber-500/[0.06] px-4 py-3">
+                <span className="relative flex size-2.5">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-60"/>
+                  <span className="relative inline-flex size-2.5 rounded-full bg-amber-400"/>
+                </span>
+                <h2 className="text-sm font-semibold text-amber-100">Jóváhagyásra vár</h2>
+                <span className="rounded-full bg-amber-500/15 px-2 text-xs text-amber-200">{pending.length}</span>
+                <Link to="/mcb/warrants" className="ml-auto text-xs text-amber-200/80 hover:text-amber-100">Mind <ChevronRight className="inline size-3"/></Link>
+              </header>
+              <ul className="max-h-[260px] divide-y divide-white/5 overflow-y-auto">
+                {pending.slice(0, 8).map((warrant) => {
+                  const type = WARRANT_TYPE[warrant.type];
+                  const own = warrant.requested_by === profile?.id;
+                  return (
+                    <li key={warrant.id} className="flex items-center gap-3 px-4 py-2.5">
+                      <type.icon className={cn("size-4 shrink-0", type.accent)}/>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-100">{warrantTarget(warrant)}</p>
+                        <p className="truncate text-[11px] text-slate-500">{type.short} · {warrant.case?.case_number} · {warrant.reason}</p>
+                      </div>
+                      <Button size="icon" variant="ghost" disabled={own} title={own ? "Saját kérelmet nem bírálhatsz el." : "Elutasítás"}
+                              className="size-8 text-red-300 hover:bg-red-500/15" onClick={() => void decide(warrant, "rejected")}>
+                        <X className="size-4"/>
+                      </Button>
+                      <Button size="sm" disabled={own} title={own ? "Saját kérelmet nem bírálhatsz el." : undefined}
+                              className="h-8 bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void decide(warrant, "approved")}>
+                        <Check className="size-4"/> Jóváhagyás
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
         </div>
       )}
 
-      {/* CASE LIST TABS */}
-      <Tabs defaultValue="open" value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-          <TabsList className="bg-slate-900/80 border border-slate-800 h-11 p-1 backdrop-blur-md">
-            <TabsTrigger value="open"
-                         className="data-[state=active]:bg-sky-600 data-[state=active]:text-white text-xs uppercase font-bold px-4 h-full">
-              <FolderOpen className="w-3.5 h-3.5 mr-2"/> Nyitott
-            </TabsTrigger>
-            <TabsTrigger value="closed"
-                         className="data-[state=active]:bg-slate-700 data-[state=active]:text-white text-xs uppercase font-bold px-4 h-full">
-              <Lock className="w-3.5 h-3.5 mr-2"/> Lezárt
-            </TabsTrigger>
-            <TabsTrigger value="archived"
-                         className="data-[state=active]:bg-red-900/50 data-[state=active]:text-red-200 text-xs uppercase font-bold px-4 h-full">
-              <Archive className="w-3.5 h-3.5 mr-2"/> Archivált
-            </TabsTrigger>
-            <TabsTrigger value="all"
-                         className="data-[state=active]:bg-slate-700 data-[state=active]:text-white text-xs uppercase font-bold px-4 h-full">
-              <LayoutList className="w-3.5 h-3.5 mr-2"/> Összes
-            </TabsTrigger>
-          </TabsList>
+      <section className="flex flex-col gap-3" data-tour="mcb-cases">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+          <div className="flex w-full items-center gap-1 overflow-x-auto rounded-xl bg-white/[0.04] p-1 ring-1 ring-white/10 xl:w-auto">
+            {([
+              ["open", "Folyamatban", counts.open],
+              ["closed", "Lezárva", counts.closed],
+              ["archived", "Archívum", counts.archived],
+              ["all", "Összes", null],
+            ] as const).map(([value, label, count]) => (
+              <button key={value} type="button" onClick={() => setStatus(value)}
+                      className={cn("flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
+                        status === value ? "bg-white/10 text-white" : "text-slate-400 hover:text-white")}>
+                {label}
+                {count !== null && <span className="rounded-md bg-white/10 px-1.5 text-[11px] tabular-nums text-slate-300">{count}</span>}
+              </button>
+            ))}
+          </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64 group">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 group-focus-within:text-sky-500 transition-colors"/>
-              <Input
-                placeholder="Keresés..."
-                className="pl-9 h-11 bg-slate-950/50 border-slate-700 text-sm focus-visible:ring-sky-500/50 transition-all focus:bg-slate-900"
-                value={search} onChange={e => setSearch(e.target.value)}
-              />
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 pl-9"
+                   placeholder="Keresés: cím, ügyszám, nyomozó, az akták szövege"/>
+            {query && (
+              <button type="button" onClick={() => setQuery("")} aria-label="Keresés törlése"
+                      className="absolute top-1/2 right-2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-slate-400 hover:bg-white/10">
+                <X className="size-3.5"/>
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label="Rendezés"
+                    className="h-10 rounded-lg border bg-white/[0.03] px-3 text-sm text-slate-200">
+              <option value="updated">Legutóbb módosított</option>
+              <option value="created">Legújabb</option>
+              <option value="priority">Prioritás szerint</option>
+              <option value="number">Ügyszám szerint</option>
+            </select>
+            <div className="flex rounded-lg bg-white/[0.04] p-1 ring-1 ring-white/10">
+              <button type="button" aria-label="Kártyák" onClick={() => {
+                setView("cards");
+                localStorage.setItem(VIEW_KEY, "cards");
+              }} className={cn("grid size-8 place-items-center rounded-md", view === "cards" ? "bg-white/10 text-white" : "text-slate-500")}>
+                <LayoutGrid className="size-4"/>
+              </button>
+              <button type="button" aria-label="Táblázat" onClick={() => {
+                setView("table");
+                localStorage.setItem(VIEW_KEY, "table");
+              }} className={cn("grid size-8 place-items-center rounded-md", view === "table" ? "bg-white/10 text-white" : "text-slate-500")}>
+                <Rows3 className="size-4"/>
+              </button>
             </div>
-            <Button size="sm" onClick={() => setIsNewCaseOpen(true)}
-                    className="bg-sky-600 hover:bg-sky-500 text-white font-bold h-11 px-6 shadow-[0_0_15px_rgba(2,132,199,0.3)] hover:shadow-[0_0_25px_rgba(2,132,199,0.5)] transition-all">
-              <FilePlus className="w-4 h-4 mr-2"/> ÚJ AKTA
+            <Button onClick={() => setNewOpen(true)} data-tour="mcb-new-case" className="h-10 bg-sky-600 text-white shadow-[0_0_24px_-6px_rgb(14_165_233/0.8)] hover:bg-sky-500">
+              <FilePlus2 className="size-4"/> Új akta
             </Button>
           </div>
         </div>
 
-        <Card className="bg-slate-900/40 border-slate-800 backdrop-blur-sm shadow-xl overflow-hidden min-h-[400px]">
-          <Table>
-            <TableHeader className="bg-slate-950/80">
-              <TableRow className="border-slate-800 hover:bg-transparent">
-                <TableHead className="w-[80px] text-slate-500 font-mono text-[10px] uppercase font-bold">ID</TableHead>
-                <TableHead className="text-slate-500 font-mono text-[10px] uppercase font-bold">Megnevezés</TableHead>
-                <TableHead className="text-slate-500 font-mono text-[10px] uppercase font-bold">Státusz</TableHead>
-                <TableHead className="text-slate-500 font-mono text-[10px] uppercase font-bold">Prioritás</TableHead>
-                <TableHead className="text-slate-500 font-mono text-[10px] uppercase font-bold">Nyomozó</TableHead>
-                <TableHead className="text-right text-slate-500 font-mono text-[10px] uppercase font-bold">Utolsó
-                  Aktivitás</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                [1, 2, 3, 4, 5].map(i => (
-                  <TableRow key={i} className="border-slate-800/50">
-                    <TableCell>
-                      <div className="h-4 w-10 bg-slate-800 rounded animate-pulse"></div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="h-4 w-32 bg-slate-800 rounded animate-pulse"></div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="h-4 w-16 bg-slate-800 rounded animate-pulse"></div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="h-4 w-16 bg-slate-800 rounded animate-pulse"></div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="h-4 w-24 bg-slate-800 rounded animate-pulse"></div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="h-4 w-16 bg-slate-800 rounded animate-pulse ml-auto"></div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : filteredCases.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-20">
-                    <div className="flex flex-col items-center justify-center opacity-50">
-                      <FolderOpen className="w-12 h-12 text-slate-600 mb-2"/>
-                      <p className="text-sm font-medium text-slate-400">Nincs megjeleníthető akta ebben a nézetben.</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredCases.map(c => (
-                  <TableRow key={c.id}
-                            className={`border-slate-800/50 cursor-pointer transition-all group ${
-                              c.status === 'closed' ? 'opacity-60 hover:opacity-100 hover:bg-slate-800/30' :
-                                c.status === 'archived' ? 'opacity-40 hover:opacity-100 hover:bg-red-950/10' :
-                                  'hover:bg-sky-900/10'
-                            }`}
-                            onClick={() => navigate(`/mcb/case/${c.id}`)}>
-                    <TableCell className="font-mono text-sky-500 font-bold group-hover:text-sky-400">
-                      #{c.case_number.toString().padStart(4, '0')}
-                    </TableCell>
-                    <TableCell className="font-medium text-slate-200 group-hover:text-white">
-                      {c.title}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={c.status}/>
-                    </TableCell>
-                    <TableCell>
-                      <PriorityBadge prio={c.priority}/>
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-400 font-medium">
-                      {c.owner?.full_name || "N/A"}
-                    </TableCell>
-                    <TableCell className="text-right text-xs font-mono text-slate-500">
-                      {formatDistanceToNow(new Date(c.updated_at), {addSuffix: true, locale: hu})}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </Card>
-      </Tabs>
+        <div className="flex flex-wrap items-center gap-2">
+          {PRIORITIES.map((value) => (
+            <button key={value} type="button" onClick={() => setPriority(priority === value ? null : value)}
+                    className={cn("inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs ring-1 transition",
+                      priority === value ? PRIORITY[value].chip : "text-slate-400 ring-white/10 hover:text-white")}>
+              <span className={cn("size-1.5 rounded-full", PRIORITY[value].dot)}/>{PRIORITY[value].label}
+            </button>
+          ))}
+          <select value={category} onChange={(event) => setCategory(event.target.value as CaseCategory | "")} aria-label="Ügytípus"
+                  className="h-7 rounded-full border bg-white/[0.03] px-3 text-xs text-slate-300">
+            <option value="">Minden ügytípus</option>
+            {CATEGORIES.map((value) => <option key={value} value={value}>{CATEGORY[value].label}</option>)}
+          </select>
+          <button type="button" onClick={() => setMine(!mine)}
+                  className={cn("inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs ring-1 transition",
+                    mine ? "bg-sky-500/15 text-sky-200 ring-sky-500/30" : "text-slate-400 ring-white/10 hover:text-white")}>
+            <Users className="size-3.5"/> Csak az enyémek
+          </button>
+          {filtered && (
+            <button type="button" onClick={resetFilters} className="text-xs text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline">
+              Szűrők törlése
+            </button>
+          )}
+          <span className="ml-auto text-xs text-slate-500">{visible.length} akta</span>
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {Array.from({length: 8}, (_, index) => <div key={index} className="skeleton h-44 rounded-2xl"/>)}
+          </div>
+        ) : visible.length === 0 && hits.length > 0 ? (
+          <p className="panel px-4 py-3 text-sm text-slate-400">A címek és összefoglalók között nincs találat, a dokumentumok szövegében viszont igen (lent).</p>
+        ) : visible.length === 0 ? (
+          <div className="panel">
+            <EmptyState icon={FolderOpen} title={filtered ? "Nincs a szűrésnek megfelelő akta" : "Ebben a nézetben nincs akta"}
+                        description={filtered ? "Próbálj más szűrőt vagy keresést." : "Új nyomozást az „Új akta” gombbal indíthatsz."}
+                        action={filtered ? <Button variant="outline" size="sm" onClick={resetFilters}>Szűrők törlése</Button> : undefined}/>
+          </div>
+        ) : view === "cards" ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {visible.map((item, index) => <CaseCard key={item.id} item={item} index={index} onOpen={() => open(item)}/>)}
+          </div>
+        ) : (
+          <CaseTable rows={visible} onOpen={open}/>
+        )}
+
+        {hits.length > 0 && (
+          <section className="panel animate-rise p-4">
+            <header className="mb-3 flex items-center gap-2">
+              <FileText className="size-4 text-amber-300"/>
+              <h2 className="text-sm font-semibold text-white">Találatok az akták szövegében</h2>
+              <span className="text-xs text-slate-500">· „{term}”</span>
+            </header>
+            <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+              {hits.map((hit) => (
+                <li key={hit.id}>
+                  <button type="button" onClick={() => open(hit)}
+                          className="lift flex w-full min-w-0 flex-col gap-1 rounded-xl bg-white/[0.03] p-3 text-left ring-1 ring-white/10">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="font-mono text-[11px] text-sky-300/80">{hit.case_number}</span>
+                      <span className="truncate text-sm font-medium text-white">{hit.title}</span>
+                    </span>
+                    {hit.snippet && <Snippet text={hit.snippet} term={term}/>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function Snippet({text, term}: {text: string; term: string}) {
+  const index = text.toLowerCase().indexOf(term.toLowerCase());
+  if (index < 0) return <p className="line-clamp-2 text-xs text-slate-400 wrap-anywhere">…{text}…</p>;
+  return (
+    <p className="line-clamp-2 text-xs text-slate-400 wrap-anywhere">
+      …{text.slice(0, index)}
+      <mark className="rounded bg-amber-400/25 px-0.5 text-amber-100">{text.slice(index, index + term.length)}</mark>
+      {text.slice(index + term.length)}…
+    </p>
+  );
+}
+
+function CaseCard({item, index, onOpen}: {item: CaseListItem; index: number; onOpen: () => void}) {
+  const priority = PRIORITY[item.priority] ?? PRIORITY.medium;
+  return (
+    <button type="button" onClick={onOpen} style={{"--i": Math.min(index, 12)} as CSSProperties} data-tour="mcb-case" data-case-id={item.id}
+            className={cn("panel lift animate-rise group relative flex min-w-0 flex-col overflow-hidden p-0 text-left",
+              item.status !== "open" && "opacity-80 hover:opacity-100", !item.can_open && "cursor-not-allowed")}>
+      <span className={cn("absolute inset-x-0 top-0 h-0.5", priority.dot, item.priority === "critical" && "shadow-[0_0_12px_rgb(239_68_68)]")}/>
+      <div className="flex items-center gap-2 px-4 pt-4">
+        <span className="case-tab bg-sky-500/10 py-0.5 pr-5 pl-2 font-mono text-[11px] font-semibold text-sky-300">{item.case_number}</span>
+        <span className="ml-auto flex items-center gap-1.5">
+          {!item.can_open && <Lock className="size-3.5 text-slate-500"/>}
+          <CaseStatusChip status={item.status}/>
+        </span>
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-3">
+        <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-white wrap-anywhere group-hover:text-sky-100">{item.title}</h3>
+        {item.description && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-400 wrap-anywhere">{item.description}</p>}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <PriorityChip priority={item.priority}/>
+          <CategoryChip category={item.category}/>
+          {item.warrants_pending > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300 ring-1 ring-amber-500/30">
+              <Gavel className="size-3"/> {item.warrants_pending} kérelem
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="mt-auto flex items-center gap-3 border-t border-white/5 bg-white/[0.02] px-4 py-2.5 text-[11px] text-slate-500">
+        <MemberAvatar url={item.owner_avatar} name={item.owner_name} size={22}/>
+        <span className="min-w-0 flex-1 truncate text-slate-300">{item.owner_name ?? "Nincs tulajdonos"}</span>
+        <span className="flex items-center gap-1" title="Bizonyítékok"><Paperclip className="size-3"/>{item.evidence}</span>
+        <span className="flex items-center gap-1" title="Érintett személyek"><Fingerprint className="size-3"/>{item.people}</span>
+        <span title={formatDate(item.updated_at)}>{formatAgo(item.updated_at)}</span>
+      </div>
+    </button>
+  );
+}
+
+function CaseTable({rows, onOpen}: {rows: CaseListItem[]; onOpen: (item: CaseListItem) => void}) {
+  return (
+    <div className="panel overflow-x-auto p-0">
+      <table className="w-full min-w-[920px] text-sm">
+        <thead>
+          <tr className="border-b border-white/10 text-left text-[11px] tracking-wider text-slate-500 uppercase">
+            <th className="px-4 py-3 font-medium">Ügyszám</th>
+            <th className="px-4 py-3 font-medium">Megnevezés</th>
+            <th className="px-4 py-3 font-medium">Státusz</th>
+            <th className="px-4 py-3 font-medium">Prioritás</th>
+            <th className="px-4 py-3 font-medium">Vezető nyomozó</th>
+            <th className="px-4 py-3 font-medium"><span className="sr-only">Számok</span></th>
+            <th className="px-4 py-3 text-right font-medium"><ArrowDownWideNarrow className="ml-auto size-3.5"/></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-white/5">
+          {rows.map((item) => (
+            <tr key={item.id} onClick={() => onOpen(item)} data-tour="mcb-case" data-case-id={item.id}
+                className={cn("cursor-pointer transition-colors hover:bg-sky-500/[0.05]", item.status !== "open" && "opacity-75")}>
+              <td className="px-4 py-3 font-mono text-xs whitespace-nowrap text-sky-300">{item.case_number}</td>
+              <td className="max-w-[420px] px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  {!item.can_open && <FolderLock className="size-3.5 shrink-0 text-slate-500"/>}
+                  <span className="truncate font-medium text-white">{item.title}</span>
+                </div>
+                {item.category && <span className="text-[11px] text-slate-500">{CATEGORY[item.category]?.label}</span>}
+              </td>
+              <td className="px-4 py-3"><CaseStatusChip status={item.status}/></td>
+              <td className="px-4 py-3"><PriorityChip priority={item.priority}/></td>
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <MemberAvatar url={item.owner_avatar} name={item.owner_name} size={22}/>
+                  <span className="truncate text-xs text-slate-300">{item.owner_name ?? "–"}</span>
+                </div>
+              </td>
+              <td className="px-4 py-3 text-xs whitespace-nowrap text-slate-500">
+                <span className="mr-3 inline-flex items-center gap-1"><Paperclip className="size-3"/>{item.evidence}</span>
+                <span className="inline-flex items-center gap-1"><Fingerprint className="size-3"/>{item.people}</span>
+              </td>
+              <td className="px-4 py-3 text-right text-xs whitespace-nowrap text-slate-500">{formatAgo(item.updated_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

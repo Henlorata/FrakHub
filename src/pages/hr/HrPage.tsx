@@ -174,9 +174,9 @@ export function HrPage() {
                   onClick={() => setParam("tab", "duty")}/>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b">
+      <div className="flex gap-1 overflow-x-auto overflow-y-hidden border-b" data-tour="hr-tabs">
         {tabs.filter((item) => item.visible).map((item) => (
-          <button key={item.id} type="button" onClick={() => setParam("tab", item.id === "roster" ? null : item.id)}
+          <button key={item.id} type="button" onClick={() => setParam("tab", item.id === "roster" ? null : item.id)} data-tour={`hr-tab-${item.id}`}
                   className={cn(
                     "relative inline-flex h-10 items-center gap-2 px-3 text-sm font-medium whitespace-nowrap transition-colors",
                     tab === item.id ? "text-white" : "text-slate-400 hover:text-slate-200",
@@ -186,12 +186,12 @@ export function HrPage() {
             {!!item.count && (
               <span className="rounded-full bg-primary/15 px-1.5 text-[11px] font-semibold text-primary tabular-nums">{item.count}</span>
             )}
-            {tab === item.id && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary shadow-[0_0_10px_rgb(234_179_8/0.8)]"/>}
+            {tab === item.id && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary shadow-[0_0_10px_rgb(234_179_8/0.8)]"/>}
           </button>
         ))}
       </div>
 
-      <div key={tab} className="animate-fade">
+      <div key={tab} className="animate-fade" data-tour="hr-content">
         {loading ? (
           <div className="space-y-3">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-14"/>)}</div>
         ) : tab === "requests" && isStaff(profile) ? (

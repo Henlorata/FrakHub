@@ -17,6 +17,7 @@ export const financeApi = {
   closePayroll: (month: string, withdrawn: number | null, note: string) =>
     rpc<PayrollMonth>("close_payroll", {_month: month, _withdrawn: withdrawn, _note: note}),
   reopenPayroll: (month: string) => rpc<PayrollMonth>("reopen_payroll", {_month: month}),
+  setBalance: (month: string, balance: number | null) => rpc<PayrollMonth>("set_payroll_balance", {_month: month, _balance: balance}),
   setPaid: (month: string, userIds: string[], paid: boolean) =>
     rpc<PayrollMonth>("set_payroll_paid", {_month: month, _user_ids: userIds, _paid: paid}),
   saveSettings: (settings: Partial<PayrollSettings>) => rpc<PayrollSettings>("save_payroll_settings", {_settings: settings}),

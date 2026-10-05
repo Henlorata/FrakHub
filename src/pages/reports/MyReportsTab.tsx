@@ -1,18 +1,20 @@
 import {useCallback, useEffect, useState, type CSSProperties} from "react";
 import {toast} from "sonner";
+import {useConfirm} from "@/components/ConfirmDialog";
 import {ChevronLeft, ChevronRight, ExternalLink, FilePlus2, FileText, Link2, Pencil, Trash2, Wand2} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {useAuth} from "@/context/AuthContext";
 import {addMonths, formatDate, monthKey} from "@/lib/datetime";
 import {monthLabel} from "@/lib/registry";
-import {reportLog, reportLogError, type ReportLog} from "@/lib/report-log";
+import {rememberFolder, reportLog, reportLogError, type ReportLog} from "@/lib/report-log";
 import {cn} from "@/lib/utils";
 import {LogReportDialog} from "./LogReportDialog";
 
 /** The member's recorded reports month by month (what the payroll counts). */
 export function MyReportsTab({reloadKey}: {reloadKey: number}) {
   const {user} = useAuth();
+  const confirm = useConfirm();
   const [month, setMonth] = useState(monthKey());
   const [entries, setEntries] = useState<ReportLog[] | null>(null);
   const [editing, setEditing] = useState<ReportLog | "new" | null>(null);
@@ -34,7 +36,7 @@ export function MyReportsTab({reloadKey}: {reloadKey: number}) {
   if (!user) return null;
 
   const remove = async (entry: ReportLog) => {
-    if (!window.confirm(`Törlöd a bejegyzést? (${entry.title})`)) return;
+    if (!(await confirm({title: "Bejegyzés törlése", description: `Törlöd a(z) „${entry.title}” bejegyzést?`, confirmLabel: "Törlés", destructive: true, kind: "delete"}))) return;
     try {
       await reportLog.remove(entry.id);
       setEntries((current) => current?.filter((item) => item.id !== entry.id) ?? current);
@@ -64,10 +66,10 @@ export function MyReportsTab({reloadKey}: {reloadKey: number}) {
         </div>
         <div className="panel animate-rise p-4" style={{"--i": 1} as CSSProperties}>
           <p className="text-3xl font-semibold tabular-nums text-white">{entries ? withLink : "–"}</p>
-          <p className="text-xs text-slate-400">fórum-linkkel ellenőrizhető</p>
+          <p className="text-xs text-slate-400">mappa-linkkel</p>
         </div>
         <div className="panel animate-rise p-4 text-xs text-slate-400" style={{"--i": 2} as CSSProperties}>
-          A havi fizetés ezt a számot használja. Kézzel írt jelentést is rögzíts ide; a linket később is hozzáadhatod.
+          A havi fizetés ezt a számot használja. A kézzel írt jelentéseidet is rögzítsd (több egyszerre is), a mappád linkjével.
         </div>
       </div>
 
@@ -90,8 +92,8 @@ export function MyReportsTab({reloadKey}: {reloadKey: number}) {
                       {entry.source === "generator" ? <><Wand2 className="size-3"/> Generátorból</> : "Kézzel rögzítve"}
                     </span>
                     {entry.forum_url
-                      ? <a href={entry.forum_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-300 hover:underline"><ExternalLink className="size-3"/> Fórum</a>
-                      : <button type="button" onClick={() => setEditing(entry)} className="inline-flex items-center gap-1 text-amber-300 hover:underline"><Link2 className="size-3"/> Link hozzáadása</button>}
+                      ? <a href={entry.forum_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-300 hover:underline"><ExternalLink className="size-3"/> Mappa</a>
+                      : <button type="button" onClick={() => setEditing(entry)} className="inline-flex items-center gap-1 text-amber-300 hover:underline"><Link2 className="size-3"/> Mappa link megadása</button>}
                   </p>
                 </div>
                 <div className="flex gap-1 opacity-70 transition-opacity group-hover:opacity-100">
@@ -107,8 +109,10 @@ export function MyReportsTab({reloadKey}: {reloadKey: number}) {
       {editing && (
         <LogReportDialog userId={user.id} entry={editing === "new" ? null : editing}
                          defaultDate={month === monthKey() ? undefined : month}
+                         defaultLink={entries?.find((item) => item.forum_url)?.forum_url ?? null}
                          onClose={() => setEditing(null)}
-                         onSaved={() => {
+                         onSaved={(link) => {
+                           rememberFolder(user.id, link, month);
                            setEditing(null);
                            void load();
                          }}/>

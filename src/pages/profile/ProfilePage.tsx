@@ -2,8 +2,8 @@ import * as React from "react";
 import {Link, useNavigate, useSearchParams} from "react-router";
 import {toast} from "sonner";
 import {
-  AlertTriangle, BellRing, Briefcase, CalendarClock, CalendarOff, CalendarPlus, Camera, Car, CheckCircle2, Clock, History, Hourglass,
-  Key, Landmark, Loader2, Medal, NotebookPen, RefreshCw, Save, ShieldCheck, ThumbsUp, TrendingUp, UploadCloud, UserCog, X,
+  AlertTriangle, BellRing, Briefcase, CalendarClock, CalendarOff, CalendarPlus, Camera, Car, CheckCircle2, Clock, FlaskConical, History,
+  Hourglass, Key, Landmark, Loader2, Medal, NotebookPen, RefreshCw, Save, ShieldCheck, ThumbsUp, TrendingUp, UploadCloud, UserCog, X,
 } from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
@@ -30,6 +30,7 @@ import type {
   DutyTimeEntry, FleetVehicle, HrRecord, HrRegistry, MemberDetails, Profile, RegistryVehicle, Ribbon, VehicleWarning,
 } from "@/types/supabase";
 import {IdCard} from "./IdCard";
+import {TrainingCenter} from "./TrainingCenter";
 import {StrikeDots} from "@/components/hr/StrikeDots";
 import {RegistrationDialog} from "@/components/fleet/RegistrationDialog";
 import {LicensePlate} from "@/components/fleet/LicensePlate";
@@ -75,6 +76,13 @@ export function ProfilePage() {
   const [vehicleWarnings, setVehicleWarnings] = React.useState<VehicleWarning[]>([]);
   const [bankAccount, setBankAccount] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState(searchParams.get("leave") ? "records" : searchParams.get("tab") ?? "overview");
+  // A link (or a training step) to another tab of the open page switches to it.
+  const tabParam = searchParams.get("tab");
+  const [shownParam, setShownParam] = React.useState(tabParam);
+  if (tabParam !== shownParam) {
+    setShownParam(tabParam);
+    if (tabParam) setTab(tabParam);
+  }
   const [leaveOpen, setLeaveOpen] = React.useState(!!searchParams.get("leave"));
   const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
 
@@ -252,6 +260,7 @@ export function ProfilePage() {
             <NotebookPen className="size-4"/> Feljegyzéseim
             {activeWarnings.length > 0 && <span className="rounded-full bg-red-500/20 px-1.5 text-[11px] text-red-300">{activeWarnings.length}</span>}
           </TabsTrigger>
+          <TabsTrigger value="trainings"><FlaskConical className="size-4"/> Képzések</TabsTrigger>
           <TabsTrigger value="settings"><UserCog className="size-4"/> Fiók</TabsTrigger>
         </TabsList>
 
@@ -290,7 +299,7 @@ export function ProfilePage() {
             </div>
 
             <div className="space-y-6">
-              <div className="animate-rise" style={{"--i": 1} as React.CSSProperties}>
+              <div className="animate-rise" style={{"--i": 1} as React.CSSProperties} data-tour="profile-card">
                 <IdCard profile={profile} joinedOn={joinedOn} onLeave={!!currentLeave}/>
               </div>
               <section className="panel animate-rise p-5" style={{"--i": 2} as React.CSSProperties}>
@@ -314,6 +323,10 @@ export function ProfilePage() {
               </section>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="trainings" className="mt-0">
+          <TrainingCenter/>
         </TabsContent>
 
         <TabsContent value="awards" className="mt-0">

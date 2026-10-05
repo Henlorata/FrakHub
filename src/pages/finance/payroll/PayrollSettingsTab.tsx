@@ -11,7 +11,7 @@ import {cn, errorMessage} from "@/lib/utils";
 import type {PayrollSettings} from "@/types/finance";
 import {MoneyField} from "../components/MoneyField";
 
-const COLUMNS = "rank_pay, unit_pay, duty_tiers, min_duty_hours, top_duty_pay, top_report_pay, report_pay, picture_pay, training_pay, "
+const COLUMNS = "rank_pay, unit_pay, duty_tiers, min_duty_hours, min_reports, top_duty_pay, top_report_pay, report_pay, picture_pay, training_pay, "
   + "tax_percent, executive_unit, updated_at, updated_by";
 
 /**
@@ -50,7 +50,7 @@ export function PayrollSettingsTab({canEdit}: {canEdit: boolean}) {
     try {
       const next = await financeApi.saveSettings({
         rank_pay: draft.rank_pay, unit_pay: draft.unit_pay, duty_tiers: [...draft.duty_tiers].sort((a, b) => a.hours - b.hours),
-        min_duty_hours: draft.min_duty_hours, top_duty_pay: draft.top_duty_pay, top_report_pay: draft.top_report_pay,
+        min_duty_hours: draft.min_duty_hours, min_reports: draft.min_reports, top_duty_pay: draft.top_duty_pay, top_report_pay: draft.top_report_pay,
         report_pay: draft.report_pay, picture_pay: draft.picture_pay, training_pay: draft.training_pay, tax_percent: draft.tax_percent,
         executive_unit: draft.executive_unit,
       });
@@ -66,7 +66,7 @@ export function PayrollSettingsTab({canEdit}: {canEdit: boolean}) {
   };
 
   return (
-    <div className="space-y-4 pb-16">
+    <div data-tour="payroll-settings" className="space-y-4 pb-16">
       <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
         {canEdit ? (
           <p>A táblát a Commander állítja be. A változás a nyitott hónapokra azonnal érvényes, a lezárt hónapok összegei nem változnak.</p>
@@ -77,17 +77,35 @@ export function PayrollSettingsTab({canEdit}: {canEdit: boolean}) {
       </div>
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-        <Section icon={Shield} title="Rendfokozat" hint={`Csak ${draft.min_duty_hours} óra duty időtől jár.`}>
-          <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
-            {FACTION_RANKS.map((rank) => (
-              <Row key={rank} label={rank}>
-                <MoneyField label={`${rank} fizetése`} disabled={!canEdit} value={draft.rank_pay[rank] ?? 0}
-                            onChange={(value) => set({rank_pay: {...draft.rank_pay, [rank]: value}})}/>
-              </Row>
-            ))}
-          </div>
-        </Section>
-
+        <div className="space-y-4">
+          <Section icon={Shield} title="Rendfokozat" hint={`Csak ${draft.min_duty_hours} óra duty időtől jár.`}>
+            <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
+              {FACTION_RANKS.map((rank) => (
+                <Row key={rank} label={rank}>
+                  <MoneyField label={`${rank} fizetése`} disabled={!canEdit} value={draft.rank_pay[rank] ?? 0}
+                              onChange={(value) => set({rank_pay: {...draft.rank_pay, [rank]: value}})}/>
+                </Row>
+              ))}
+            </div>
+          </Section>
+          <Section icon={FileText} title="Teljesítmény" hint="Darabonként, duty időtől függetlenül.">
+            <Row label="Jelentésenként"><MoneyField label="Jelentésenként" disabled={!canEdit} value={draft.report_pay} onChange={(value) => set({report_pay: value})}/></Row>
+            <Row label="Élményképenként"><MoneyField label="Élményképenként" disabled={!canEdit} value={draft.picture_pay} onChange={(value) => set({picture_pay: value})}/></Row>
+            <Row label="Kiképzett személyenként"><MoneyField label="Kiképzett személyenként" disabled={!canEdit} value={draft.training_pay} onChange={(value) => set({training_pay: value})}/></Row>
+          </Section>
+          <Section icon={BadgePercent} title="Adó" hint="A havi összeg után, az „Adóval együtt” sorhoz.">
+            <Row label="Adó mértéke">
+              <div className="relative">
+                <Input disabled={!canEdit} inputMode="decimal" value={draft.tax_percent} className="h-9 pr-8 text-right font-mono"
+                       onChange={(event) => {
+                         const value = Number(event.target.value.replace(",", ".").replace(/[^\d.]/g, ""));
+                         if (Number.isFinite(value)) set({tax_percent: Math.min(value, 100)});
+                       }}/>
+                <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-xs text-slate-500">%</span>
+              </div>
+            </Row>
+          </Section>
+        </div>
         <div className="space-y-4">
           <Section icon={Users} title="Egység és képesítés" hint="Mindig jár (duty időtől függetlenül). Egy tag egy egység és egy képesítés után kap.">
             <Row label="A vezérkar egysége" hint="Commander és Deputy Commander ezzel fizet, nem az osztályával.">
@@ -125,13 +143,19 @@ export function PayrollSettingsTab({canEdit}: {canEdit: boolean}) {
               </div>
             )}
           </Section>
-
           <Section icon={Clock} title="Duty idő" hint="A legmagasabb elért sáv összege jár; a minimum alatt se rang-, se duty-fizetés.">
             <Row label="Minimum duty idő">
               <div className="relative">
                 <Input disabled={!canEdit} inputMode="numeric" value={draft.min_duty_hours} className="h-9 pr-10 text-right font-mono"
                        onChange={(event) => set({min_duty_hours: Math.min(Number(event.target.value.replace(/\D/g, "") || 0), 744)})}/>
                 <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-xs text-slate-500">óra</span>
+              </div>
+            </Row>
+            <Row label="Havi minimum jelentés" hint="A tagok irányítópultján; a fizetést nem érinti.">
+              <div className="relative">
+                <Input disabled={!canEdit} inputMode="numeric" value={draft.min_reports} className="h-9 pr-10 text-right font-mono" aria-label="Havi minimum jelentés"
+                       onChange={(event) => set({min_reports: Math.min(Number(event.target.value.replace(/\D/g, "") || 0), 100)})}/>
+                <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-xs text-slate-500">db</span>
               </div>
             </Row>
             <div className="mt-2 space-y-1.5">
@@ -158,15 +182,6 @@ export function PayrollSettingsTab({canEdit}: {canEdit: boolean}) {
               )}
             </div>
           </Section>
-        </div>
-
-        <Section icon={FileText} title="Teljesítmény" hint="Darabonként, duty időtől függetlenül.">
-          <Row label="Jelentésenként"><MoneyField label="Jelentésenként" disabled={!canEdit} value={draft.report_pay} onChange={(value) => set({report_pay: value})}/></Row>
-          <Row label="Élményképenként"><MoneyField label="Élményképenként" disabled={!canEdit} value={draft.picture_pay} onChange={(value) => set({picture_pay: value})}/></Row>
-          <Row label="Kiképzett személyenként"><MoneyField label="Kiképzett személyenként" disabled={!canEdit} value={draft.training_pay} onChange={(value) => set({training_pay: value})}/></Row>
-        </Section>
-
-        <div className="space-y-4">
           <Section icon={Medal} title="TOP helyezések" hint="Automatikusan a duty idő és a jelentésszám alapján; holtversenyben ugyanaz a hely jár.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {(["top_duty_pay", "top_report_pay"] as const).map((field) => (
@@ -184,18 +199,6 @@ export function PayrollSettingsTab({canEdit}: {canEdit: boolean}) {
                 </div>
               ))}
             </div>
-          </Section>
-          <Section icon={BadgePercent} title="Adó" hint="A havi összeg után, az „Adóval együtt” sorhoz.">
-            <Row label="Adó mértéke">
-              <div className="relative">
-                <Input disabled={!canEdit} inputMode="decimal" value={draft.tax_percent} className="h-9 pr-8 text-right font-mono"
-                       onChange={(event) => {
-                         const value = Number(event.target.value.replace(",", ".").replace(/[^\d.]/g, ""));
-                         if (Number.isFinite(value)) set({tax_percent: Math.min(value, 100)});
-                       }}/>
-                <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-xs text-slate-500">%</span>
-              </div>
-            </Row>
           </Section>
         </div>
       </div>

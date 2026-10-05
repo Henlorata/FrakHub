@@ -2,8 +2,8 @@ import {useCallback, useEffect, useMemo, useState, type CSSProperties, type Reac
 import {useLocation, useNavigate} from "react-router";
 import {toast} from "sonner";
 import {
-  CalendarDays, CarFront, Check, ClipboardCopy, Code2, Eye, Gavel, Hash, Link2, ListChecks, Loader2, Lock, RotateCcw, Scale, Shield,
-  Timer, User, UserRound, Users,
+  CalendarDays, CarFront, Check, ClipboardCopy, Code2, Eye, FolderOpen, Gavel, Hash, ListChecks, Loader2, Lock, RotateCcw, Scale, ScanLine,
+  Shield, Timer, User, UserRound, Users,
 } from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -13,8 +13,9 @@ import {BbcodePreview} from "@/components/BbcodePreview";
 import {useAuth} from "@/context/AuthContext";
 import {formatStandardDate, monthKey, todayKey} from "@/lib/datetime";
 import {normalizeForumUrl, reportCode, reportDateKey, type ReportForm} from "@/lib/report-templates";
-import {reportLog, reportLogError} from "@/lib/report-log";
+import {lastFolder, rememberFolder, reportLog, reportLogError} from "@/lib/report-log";
 import {cn} from "@/lib/utils";
+import {CitizenScanDialog, type ScannedFields} from "./CitizenScanDialog";
 
 /** What the penal code calculator hands over ("Jelentés készítése"). */
 export interface ReportPrefill {
@@ -65,9 +66,11 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
   const [view, setView] = useState<"preview" | "code">("preview");
   const [copied, setCopied] = useState(false);
   const [link, setLink] = useState("");
+  const [linkMonth, setLinkMonth] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
   const [loggedFor, setLoggedFor] = useState<string | null>(null);
   const [monthCount, setMonthCount] = useState<number | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   const code = useMemo(() => reportCode(form), [form]);
   const dateKey = reportDateKey(form.date);
@@ -80,6 +83,20 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
   useEffect(() => {
     refreshCount();
   }, [refreshCount]);
+
+  // The folder link: the same for every report of the month.
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    lastFolder(user.id).then((folder) => {
+      if (!active || !folder) return;
+      setLink((current) => current || folder.url);
+      setLinkMonth(folder.month);
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   // Keep the draft (a long description is not lost when the page is left).
   useEffect(() => {
@@ -105,6 +122,12 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
     if (/^$|^-?$|^\d+$/.test(value)) set(field, value);
   };
 
+  // Data read from a screenshot of the in-game tablet (only what was found or typed in the dialog).
+  const applyScanned = (values: Partial<ScannedFields>) => {
+    setForm((current) => ({...current, ...values}));
+    setCopied(false);
+  };
+
   const copy = async () => {
     await navigator.clipboard.writeText(code);
     setCopied(true);
@@ -113,7 +136,6 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
 
   const reset = () => {
     setForm(emptyForm(profile));
-    setLink("");
     setCopied(false);
     setLoggedFor(null);
     if (user) localStorage.removeItem(draftKey(user.id));
@@ -129,6 +151,8 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
     setLogging(true);
     try {
       await reportLog.add([{user_id: user.id, occurred_on: occurredOn, title, forum_url: url, source: "generator"}]);
+      rememberFolder(user.id, url, monthKey());
+      setLinkMonth(monthKey());
       setLoggedFor(code);
       toast.success("Jelentés rögzítve a havi számodba.");
       refreshCount();
@@ -144,7 +168,8 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
 
   return (
     <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
-      <div className="space-y-4">
+      <CitizenScanDialog open={scanning} onOpenChange={setScanning} onApply={applyScanned}/>
+      <div data-tour="report-form" className="space-y-4">
         <Section index={0} number="I." title="Rendvédelmi személyek" icon={Shield}
                  action={<Button variant="ghost" size="sm" onClick={reset} className="text-slate-400 hover:text-red-300"><RotateCcw/> Űrlap ürítése</Button>}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.6fr)]">
@@ -162,7 +187,8 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
           </div>
         </Section>
 
-        <Section index={1} number="II." title="Előállított személy" icon={UserRound}>
+        <Section index={1} number="II." title="Előállított személy" icon={UserRound}
+                 action={<Button variant="outline" size="sm" onClick={() => setScanning(true)} data-tour="report-scan"><ScanLine/> Kitöltés képről</Button>}>
           <Field label="Teljes név" icon={UserRound}><Input value={form.suspectName} onChange={(event) => set("suspectName", event.target.value)}/></Field>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Személyi igazolvány"><Input value={form.suspectIdCard} onChange={(event) => set("suspectIdCard", event.target.value)} className="font-mono"/></Field>
@@ -200,7 +226,7 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
         </Section>
       </div>
 
-      <div className="space-y-4 xl:sticky xl:top-20">
+      <div data-tour="report-output" className="space-y-4 xl:sticky xl:top-20">
         <section className="panel animate-rise overflow-hidden" style={{"--i": 1} as CSSProperties}>
           <header className="flex flex-wrap items-center gap-2 border-b border-white/5 px-4 py-3">
             <div className="inline-flex rounded-lg bg-white/[0.04] p-1 ring-1 ring-white/10">
@@ -239,21 +265,27 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
               <h3 className="font-semibold text-white">{alreadyLogged ? "Rögzítve a havi számodba" : "Feltöltötted a fórumra?"}</h3>
               <p className="text-xs text-slate-400">
                 {alreadyLogged
-                  ? "A linket később is megadhatod a Jelentéseim fülön."
+                  ? "A Jelentéseim fülön javíthatod vagy törölheted."
                   : "Rögzítsd, és beleszámít a havi jelentésszámodba (ebből számol a havi fizetés)."}
                 {monthCount !== null && <> Ebben a hónapban: <span className="font-semibold text-white">{monthCount}</span> jelentés.</>}
               </p>
             </div>
           </div>
           {!alreadyLogged && (
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <div className="relative flex-1">
-                <Link2 className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
-                <Input value={link} onChange={(event) => setLink(event.target.value)} placeholder="Fórum-link (nem kötelező)" className="pl-9 font-mono text-xs"/>
+            <div className="mt-3 space-y-1.5">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative flex-1">
+                  <FolderOpen className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
+                  <Input value={link} onChange={(event) => setLink(event.target.value)} aria-label="A mappád linkje"
+                         placeholder="A jelentési mappád linkje (fórum téma)" className="pl-9 font-mono text-xs"/>
+                </div>
+                <Button variant="outline" onClick={() => void record()} disabled={logging || !form.suspectName.trim() && !form.charges.trim()}>
+                  {logging ? <Loader2 className="animate-spin"/> : <ListChecks/>} Rögzítés
+                </Button>
               </div>
-              <Button variant="outline" onClick={() => void record()} disabled={logging || !form.suspectName.trim() && !form.charges.trim()}>
-                {logging ? <Loader2 className="animate-spin"/> : <ListChecks/>} Rögzítés
-              </Button>
+              {link && linkMonth && linkMonth !== monthKey() && (
+                <p className="text-[11px] text-amber-300">Ez a múlt havi mappád linkje: ha új hónapra új mappát nyitottál, cseréld le.</p>
+              )}
             </div>
           )}
         </section>

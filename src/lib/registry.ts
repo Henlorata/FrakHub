@@ -45,14 +45,24 @@ export function formatDuty(minutes: number | null | undefined, compact = false):
 const MAX_MONTH_MINUTES = 31 * 24 * 60;
 
 /**
- * Reads what staff type from the game's counter: "95:48", "95 óra 48 perc", "95ó 48p",
+ * While typing: four or five digits become hours and minutes ("1235" -> "12:35",
+ * "11457" -> "114:57"); shorter numbers are ambiguous and stay as typed.
+ */
+export function autoFormatDuty(input: string): string {
+  if (!/^\d{1,3}:?\d{0,3}$/.test(input)) return input;
+  const digits = input.replace(":", "");
+  return digits.length === 4 || digits.length === 5 ? `${digits.slice(0, -2)}:${digits.slice(-2)}` : input;
+}
+
+/**
+ * Reads what staff type from the game's counter: "95:48", "9548", "95 óra 48 perc", "95ó 48p",
  * "95h 48m", "48 perc", "95" (hours) or "95,5" (decimal hours). Returns null if invalid.
  */
 export function parseDuty(input: string): number | null {
   const value = input.trim().toLowerCase().replace(/\s+/g, " ");
   if (!value) return null;
   let minutes: number | null = null;
-  let match = value.match(/^(\d{1,3}):([0-5]?\d)$/);
+  let match = value.match(/^(\d{1,3}):([0-5]?\d)$/) ?? value.match(/^(\d{2,3})([0-5]\d)$/);
   if (match) minutes = Number(match[1]) * 60 + Number(match[2]);
   if (minutes === null) {
     match = value.match(/^(\d{1,3}) ?(?:ó|óra|h|hr)\.?(?: ?(\d{1,2}) ?(?:p|perc|m|min)\.?)?$/);

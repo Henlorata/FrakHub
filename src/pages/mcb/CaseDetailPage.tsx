@@ -1,789 +1,943 @@
-import * as React from "react";
-import {useParams, useNavigate} from "react-router";
-import {useAuth} from "@/context/AuthContext";
+import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
+import {Link, useNavigate, useParams} from "react-router";
+import {
+  AlertTriangle, ArchiveRestore, ArrowLeft, Check, ChevronRight, FileText, FolderArchive, Gavel, History, Info, Loader2, Lock,
+  LogOut, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Paperclip, Pencil,
+  Printer, ShieldAlert, Trash2, Unlock, ArrowRightLeft, X,
+} from "lucide-react";
+import {toast} from "sonner";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {
-  Loader2, ArrowLeft, Lock, Unlock, Archive, Laptop2, Terminal,
-  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Palette, Trash2, AlertTriangle, ShieldAlert,
-  Pencil, Check, X, FileText, ExternalLink
-} from "lucide-react";
-import {toast} from "sonner";
-import {CaseEditor} from "./components/CaseEditor";
-import {AddSuspectDialog} from "./components/AddSuspectDialog";
-import {CaseInfoCard, CollaboratorsCard, EvidenceCard, SuspectsCard} from "./components/CaseSidebar";
-import {UploadEvidenceDialog} from "./components/UploadEvidenceDialog";
-import {CaseChat} from "./components/CaseChat";
-import {CaseWarrants} from "./components/CaseWarrants";
-import {Badge} from "@/components/ui/badge";
-import {AddCollaboratorDialog} from "./components/AddCollaboratorDialog";
-import {canViewCaseDetails, canEditCase, cn, errorMessage} from "@/lib/utils";
-import type {Case, CaseCollaborator, CaseEvidence, CaseSuspect, Suspect} from "@/types/supabase";
-import {postApi} from "@/lib/api";
-import {deleteCloudinaryAssets} from "@/lib/cloudinary";
-import {SuspectDetailDialog} from "@/pages/mcb/components/SuspectDetailDialog";
-import {ImageViewerDialog} from "@/pages/mcb/components/ImageViewerDialog";
-import {OfficerProfileDialog} from "@/components/OfficerProfileDialog";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
-} from "@/components/ui/dialog";
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {OfficerProfileDialog} from "@/components/OfficerProfileDialog";
+import {useAuth} from "@/context/AuthContext";
+import {useSuspects} from "@/context/SuspectCacheContext";
+import {postApi} from "@/lib/api";
+import {deleteCloudinaryAssets} from "@/lib/cloudinary";
+import {formatAgo, formatDate} from "@/lib/datetime";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  CATEGORIES, CATEGORY, PRIORITIES, PRIORITY, WARRANT_SELECT, documentReferences, evidenceNumbers, mcbApi,
+  type CaseDetail, type CaseListItem,
+} from "@/lib/mcb";
+import {cn, errorMessage, isStaff} from "@/lib/utils";
+import type {CaseCategory, CaseCollaborator, CaseEvidence, CasePriority, CaseStatus, CaseSuspect, CaseWarrant} from "@/types/supabase";
+import {CaseEditor, type CaseEditorHandle} from "./components/CaseEditor";
+import {AddSuspectDialog} from "./components/AddSuspectDialog";
+import {AddCollaboratorDialog, TransferCaseDialog} from "./components/AddCollaboratorDialog";
+import {CaseChat} from "./components/CaseChat";
+import {CaseTimeline} from "./components/CaseTimeline";
+import {EvidencePanel} from "./components/EvidencePanel";
+import {EvidenceViewer} from "./components/EvidenceViewer";
+import {LinkedCaseDialog} from "./components/LinkedCaseDialog";
+import {CaseStatusChip, CategoryChip, MemberAvatar, PriorityChip} from "./components/McbBadges";
+import {PeopleCard, ReferencesCard, SummaryCard, TeamCard} from "./components/CaseSidebar";
+import {UploadEvidenceDialog} from "./components/UploadEvidenceDialog";
+import {WarrantActionDialog, WarrantCard, type WarrantAction, type WarrantPermissions} from "./components/WarrantCard";
+import {WarrantDialog} from "./components/WarrantDialog";
+import {WarrantDocument} from "./components/WarrantDocument";
+import {useCaseRoom, type CaseChange, type CaseNoteRow} from "./useCaseRoom";
 
-let globalLastEventTime = 0;
+type RightTab = "evidence" | "warrants" | "chat" | "log";
+type MobileTab = "document" | "info" | RightTab;
 
-const CASE_COLUMNS = '*, owner:owner_id(full_name, badge_number)';
+const RAILS_KEY = "frakhub.mcb.rails";
 
-interface LinkedCasePreview {
-  case: Case;
-  owner?: {full_name: string} | null;
+function useWideLayout() {
+  const query = "(min-width: 1280px)";
+  const [wide, setWide] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const onChange = () => setWide(media.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  return wide;
 }
 
-type ViewedEvidence = CaseEvidence & {url: string};
+interface ConfirmState {
+  title: string;
+  description: ReactNode;
+  action: string;
+  destructive?: boolean;
+  run: () => Promise<void> | void;
+}
 
 export function CaseDetailPage() {
-  const {caseId} = useParams<{ caseId: string }>();
+  const {caseId = ""} = useParams<{caseId: string}>();
   const {supabase, profile} = useAuth();
   const navigate = useNavigate();
+  const {openSuspectId} = useSuspects();
+  const wide = useWideLayout();
 
-  // STATE
-  const [caseData, setCaseData] = React.useState<Case | null>(null);
-  const [collaborators, setCollaborators] = React.useState<CaseCollaborator[]>([]);
-  const [evidence, setEvidence] = React.useState<CaseEvidence[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [caseSuspects, setCaseSuspects] = React.useState<CaseSuspect[]>([]);
-  const [isDeleting, setIsDeleting] = React.useState(false);
-
-  // UI STATE
-  const [showLeftSidebar, setShowLeftSidebar] = React.useState(true);
-  const [showRightSidebar, setShowRightSidebar] = React.useState(true);
-  const [isEditingTitle, setIsEditingTitle] = React.useState(false);
-  const [tempTitle, setTempTitle] = React.useState("");
-
-  // ALERT STATE
-  const [alertConfig, setAlertConfig] = React.useState<{
-    open: boolean;
-    title: string;
-    description: string;
-    action: () => Promise<void> | void;
-    actionLabel: string;
-    variant?: "default" | "destructive";
-  }>({
-    open: false, title: "", description: "", action: () => {
-    }, actionLabel: "Végrehajtás", variant: "default"
+  const [detail, setDetail] = useState<CaseDetail | null>(null);
+  const [failure, setFailure] = useState<{denied: boolean; message: string} | null>(null);
+  const [editorKey, setEditorKey] = useState(0);
+  const [snapshot, setSnapshot] = useState<unknown>(null);
+  const [dirty, setDirty] = useState(false);
+  const [remote, setRemote] = useState<{version: number; by: string} | null>(null);
+  const [liveNote, setLiveNote] = useState<CaseNoteRow | null>(null);
+  const [unread, setUnread] = useState(0);
+  const [logKey, setLogKey] = useState(0);
+  const [rightTab, setRightTab] = useState<RightTab>("evidence");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("document");
+  const [rails, setRails] = useState(() => {
+    try {
+      return {left: true, right: true, ...(JSON.parse(localStorage.getItem(RAILS_KEY) ?? "{}") as object)} as {left: boolean; right: boolean};
+    } catch {
+      return {left: true, right: true};
+    }
   });
 
-  // DIALOGS STATE
-  const [isAddSuspectOpen, setIsAddSuspectOpen] = React.useState(false);
-  const [viewSuspect, setViewSuspect] = React.useState<Suspect | null>(null);
-  const [isUploadOpen, setIsUploadOpen] = React.useState(false);
-  const [isAddCollabOpen, setIsAddCollabOpen] = React.useState(false);
-  const [viewEvidence, setViewEvidence] = React.useState<ViewedEvidence | null>(null);
-  const [viewOfficerId, setViewOfficerId] = React.useState<string | null>(null);
+  // Dialogs.
+  const [uploadFiles, setUploadFiles] = useState<File[] | null>(null);
+  const [personDialog, setPersonDialog] = useState<{preselect: string | null} | null>(null);
+  const [collabOpen, setCollabOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [warrantOpen, setWarrantOpen] = useState(false);
+  const [warrantAction, setWarrantAction] = useState<{warrant: CaseWarrant; action: WarrantAction} | null>(null);
+  const [warrantDoc, setWarrantDoc] = useState<CaseWarrant | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const [officerId, setOfficerId] = useState<string | null>(null);
+  const [linkedCase, setLinkedCase] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [listInfo, setListInfo] = useState<CaseListItem | null>(null);
 
-  // Case Link Preview State
-  const [previewCaseId, setPreviewCaseId] = React.useState<string | null>(null);
-  const [previewCaseData, setPreviewCaseData] = React.useState<LinkedCasePreview | null>(null);
-  const [previewError, setPreviewError] = React.useState<string | null>(null);
+  const editorRef = useRef<CaseEditorHandle>(null);
+  const chatVisible = wide ? rails.right && rightTab === "chat" : mobileTab === "chat";
+  const chatVisibleRef = useRef(chatVisible);
+  useEffect(() => {
+    chatVisibleRef.current = chatVisible;
+    if (chatVisible) setUnread(0);
+  }, [chatVisible]);
 
-  // Global Drag & Drop File
-  const [draggedFile, setDraggedFile] = React.useState<File | null>(null);
+  // --- Data ------------------------------------------------------------------------
 
-  // --- ESEMÉNYFIGYELŐK ---
-  React.useEffect(() => {
-    // 1. OFFICER
-    const handleOpenOfficer = (e: Event) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      const now = Date.now();
-      if (now - globalLastEventTime < 1000) return;
-      const customEvent = e as CustomEvent;
-      if (customEvent.detail?.id) {
-        globalLastEventTime = now;
-        setTimeout(() => setViewOfficerId(customEvent.detail.id), 0);
-      }
-    };
-
-    // 2. SUSPECT
-    const handleOpenSuspect = (e: Event) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      const now = Date.now();
-      if (now - globalLastEventTime < 1000) return;
-      const customEvent = e as CustomEvent;
-      if (customEvent.detail?.id) {
-        globalLastEventTime = now;
-        const found = caseSuspects.find(s => s.suspect_id === customEvent.detail.id);
-        if (found?.suspect) {
-          setViewSuspect(found.suspect);
-        } else {
-          supabase.from('suspects').select('*').eq('id', customEvent.detail.id).maybeSingle().then(({data}) => {
-            if (data) setViewSuspect(data as Suspect);
-          });
-        }
-      }
-    };
-
-    // 3. CASE
-    const handleOpenCase = async (e: Event) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      const customEvent = e as CustomEvent;
-      const id = customEvent.detail?.id;
-
-      if (id) {
-        setPreviewCaseId(id);
-        setPreviewCaseData(null);
-        setPreviewError(null);
-        try {
-          // RLS alapú lekérdezés a kompatibilitás miatt
-          const {data, error} = await supabase
-            .from('cases')
-            .select('id, case_number, title, description, status, owner:owner_id(full_name)')
-            .eq('id', id)
-            .single();
-
-          if (error) throw error;
-
-          const linked = data as unknown as Case;
-          setPreviewCaseData({case: linked, owner: linked.owner});
-        } catch (err) {
-          console.error("Linkelt akta hiba:", err);
-          setPreviewError("Hozzáférés megtagadva. Nincs jogosultságod megtekinteni ezt az aktát.");
-        }
-      }
-    }
-
-    // 4. DRAG & DROP
-    const handleWindowDragOver = (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const handleWindowDrop = (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
-        setDraggedFile(e.dataTransfer.files[0]);
-        setIsUploadOpen(true);
-      }
-    };
-
-    window.addEventListener('FRAKHUB_V2_OPEN_OFFICER', handleOpenOfficer);
-    window.addEventListener('FRAKHUB_V2_OPEN_SUSPECT', handleOpenSuspect);
-    window.addEventListener('FRAKHUB_V2_OPEN_CASE', handleOpenCase);
-    window.addEventListener('dragover', handleWindowDragOver);
-    window.addEventListener('drop', handleWindowDrop);
-
-    return () => {
-      window.removeEventListener('FRAKHUB_V2_OPEN_OFFICER', handleOpenOfficer);
-      window.removeEventListener('FRAKHUB_V2_OPEN_SUSPECT', handleOpenSuspect);
-      window.removeEventListener('FRAKHUB_V2_OPEN_CASE', handleOpenCase);
-      window.removeEventListener('dragover', handleWindowDragOver);
-      window.removeEventListener('drop', handleWindowDrop);
-    };
-  }, [caseSuspects, supabase]);
-
-  const canEdit = React.useMemo(() => {
-    const isCollabEditor = collaborators.some(c => c.user_id === profile?.id && c.role === 'editor');
-    return canEditCase(profile, caseData, isCollabEditor);
-  }, [profile, caseData, collaborators]);
-
-  // JOGOSULTSÁGOK
-  const isOwner = caseData?.owner_id === profile?.id;
-  const isBureauManager = profile?.is_bureau_manager;
-  const isMcbCommander = profile?.division === 'MCB' && profile?.is_bureau_commander;
-
-  const canManageStatus = isOwner || isBureauManager || isMcbCommander;
-  const canArchive = isBureauManager || isMcbCommander;
-  const canRename = canManageStatus;
-  const canManageCollaborators = isOwner || isBureauManager || isMcbCommander;
-
-  const isCaseClosed = caseData?.status !== 'open';
-  const isReadOnly = isCaseClosed || !canEdit;
-
-  const existingSuspectIds = React.useMemo(() => caseSuspects.map(s => s.suspect_id), [caseSuspects]);
-  const existingCollaboratorIds = React.useMemo(() => collaborators.map(c => c.user_id), [collaborators]);
-
-  const handleRenameSave = async () => {
-    if (!tempTitle.trim() || !caseId) return;
-    const {error} = await supabase.from('cases').update({title: tempTitle}).eq('id', caseId);
-    if (error) {
-      toast.error("Hiba az átnevezés során.");
-    } else {
-      toast.success("Akta átnevezve.");
-      setCaseData(prev => prev ? ({...prev, title: tempTitle} as Case) : null);
-      setIsEditingTitle(false);
-    }
-  };
-
-  const handleDeleteCase = async () => {
-    if (!caseId) return;
-    setIsDeleting(true);
-    const toastId = toast.loading("Akta és csatolt fájlok törlése...");
+  const load = useCallback(async () => {
     try {
-      await postApi('/api/case/delete', {caseId});
-      toast.success("Akta és minden adat véglegesen törölve.", {id: toastId});
-      navigate('/mcb');
-    } catch (e) {
-      console.error(e);
-      toast.error("Törlés sikertelen: " + errorMessage(e), {id: toastId});
-    } finally {
-      setIsDeleting(false);
+      const data = await mcbApi.detail(caseId);
+      setDetail(data);
+      setSnapshot(data.case.body);
+      setFailure(null);
+      return data;
+    } catch (error) {
+      const code = (error as {code?: string}).code;
+      setFailure({denied: code === "42501", message: errorMessage(error)});
+      if (code === "42501") mcbApi.list().then((list) => setListInfo(list.find((item) => item.id === caseId) ?? null)).catch(() => undefined);
+      return null;
     }
-  };
+  }, [caseId]);
 
-  const getHeaderStyles = (theme?: string) => {
-    switch (theme) {
-      case 'paper':
-        return 'bg-[#e6dac3] border-[#d4c5a8] text-[#5c4d3c]';
-      case 'terminal':
-        return 'bg-slate-900 border-slate-800 text-green-500';
-      case 'amber':
-        return 'bg-[#2e2000] border-[#4d3600] text-[#ffb000]';
-      case 'blue':
-        return 'bg-[#1e293b] border-[#334155] text-blue-300';
-      case 'classic':
-        return 'bg-slate-100 border-slate-200 text-slate-700';
-      default:
-        return 'bg-slate-900 border-slate-800 text-slate-500';
+  useEffect(() => {
+    setDetail(null);
+    setFailure(null);
+    setEditorKey((key) => key + 1);
+    void load();
+  }, [load]);
+
+  const patch = useCallback((update: (current: CaseDetail) => CaseDetail) => setDetail((current) => (current ? update(current) : current)), []);
+
+  const refreshEvidence = useCallback(async () => {
+    const {data} = await supabase.from("case_evidence")
+      .select("id, case_id, file_path, file_name, file_type, uploaded_by, created_at, uploader:uploaded_by(full_name)")
+      .eq("case_id", caseId).order("created_at");
+    const rows = ((data ?? []) as unknown as (CaseEvidence & {uploader?: {full_name: string} | null})[])
+      .map(({uploader, ...row}) => ({...row, uploader_name: uploader?.full_name ?? null}));
+    patch((current) => ({...current, evidence: rows}));
+  }, [caseId, patch, supabase]);
+
+  const refreshPeople = useCallback(async () => {
+    const {data} = await supabase.from("case_suspects").select("id, case_id, suspect_id, involvement_type, notes, added_at, suspect:suspect_id(*)")
+      .eq("case_id", caseId).order("added_at");
+    patch((current) => ({...current, people: (data ?? []) as unknown as CaseSuspect[]}));
+  }, [caseId, patch, supabase]);
+
+  const refreshWarrants = useCallback(async () => {
+    const {data} = await supabase.from("case_warrants").select(WARRANT_SELECT).eq("case_id", caseId).order("created_at", {ascending: false});
+    patch((current) => ({...current, warrants: (data ?? []) as unknown as CaseWarrant[]}));
+  }, [caseId, patch, supabase]);
+
+  /** Case fields, team and permissions again (the document stays as it is in the editor). */
+  const refreshMeta = useCallback(async () => {
+    try {
+      const data = await mcbApi.detail(caseId);
+      setDetail((current) => (current ? {...data, case: {...data.case, body: current.case.body}} : data));
+    } catch (error) {
+      setFailure({denied: (error as {code?: string}).code === "42501", message: errorMessage(error)});
     }
-  };
+  }, [caseId]);
 
-  const getBackgroundStyle = (theme?: string) => {
-    switch (theme) {
-      case 'paper':
-        return '#f5f0e6';
-      case 'terminal':
-        return '#0c0c0c';
-      case 'amber':
-        return '#1a1200';
-      case 'blue':
-        return '#0f172a';
-      case 'classic':
-        return '#f1f5f9';
-      default:
-        return undefined;
+  // --- Realtime room -------------------------------------------------------------
+
+  const me = useMemo(() => (profile ? {id: profile.id, name: profile.full_name, avatar: profile.avatar_url ?? null} : null),
+    [profile]);
+  const warrantTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const room = useCaseRoom(caseId, detail ? me : null, {
+    onSaved: (payload) => {
+      setRemote(payload);
+      setLogKey((key) => key + 1);
+    },
+    onChanged: (what: CaseChange) => {
+      setLogKey((key) => key + 1);
+      if (what === "evidence") void refreshEvidence();
+      else if (what === "people") void refreshPeople();
+      else void refreshMeta();
+    },
+    onNote: (note) => {
+      setLiveNote(note);
+      if (!chatVisibleRef.current && note.user_id !== profile?.id) setUnread((count) => count + 1);
+    },
+    onWarrants: () => {
+      clearTimeout(warrantTimer.current);
+      warrantTimer.current = setTimeout(() => {
+        void refreshWarrants();
+        setLogKey((key) => key + 1);
+      }, 300);
+    },
+  });
+
+  useEffect(() => () => clearTimeout(warrantTimer.current), []);
+  useEffect(() => room.setEditing(dirty), [dirty, room]);
+
+  const announce = useCallback((what: CaseChange) => {
+    room.broadcastChange(what);
+    setLogKey((key) => key + 1);
+    mcbApi.invalidateList();
+  }, [room]);
+
+  const reloadDocument = useCallback(async () => {
+    const data = await load();
+    if (data) {
+      setRemote(null);
+      setEditorKey((key) => key + 1);
+      toast.info("Az akta frissült egy másik szerkesztő mentése után.");
     }
-  };
+  }, [load]);
 
-  // Targeted loaders: after a change only the affected list is re-read, instead of the
-  // whole case (including its potentially large document body) behind a full-page spinner.
-  const fetchCollaborators = React.useCallback(async () => {
-    if (!caseId) return;
-    const {data} = await supabase.from('case_collaborators')
-      .select('*, profile:user_id(full_name, badge_number, faction_rank, avatar_url)').eq('case_id', caseId);
-    setCollaborators((data ?? []) as unknown as CaseCollaborator[]);
-  }, [caseId, supabase]);
+  // --- Derived -------------------------------------------------------------------
 
-  const fetchEvidence = React.useCallback(async () => {
-    if (!caseId) return;
-    const {data} = await supabase.from('case_evidence').select('*').eq('case_id', caseId).order('created_at');
-    setEvidence((data ?? []) as CaseEvidence[]);
-  }, [caseId, supabase]);
+  const numbers = useMemo(() => evidenceNumbers(detail?.evidence ?? []), [detail?.evidence]);
+  const refs = useMemo(() => documentReferences(snapshot), [snapshot]);
+  const viewer = detail?.viewer;
+  const canEdit = !!viewer?.can_edit;
+  const status = detail?.case.status ?? "open";
+  const canChat = status === "open";
+  const linkedSuspectIds = useMemo(() => (detail?.people ?? []).map((item) => item.suspect_id), [detail?.people]);
+  const sortedEvidence = useMemo(() => [...(detail?.evidence ?? [])].sort((a, b) => (numbers.get(a.id) ?? 0) - (numbers.get(b.id) ?? 0)),
+    [detail?.evidence, numbers]);
+  const pendingWarrants = (detail?.warrants ?? []).filter((item) => item.status === "pending").length;
 
-  const fetchSuspects = React.useCallback(async () => {
-    if (!caseId) return;
-    const {data} = await supabase.from('case_suspects').select('*, suspect:suspect_id(*)').eq('case_id', caseId);
-    setCaseSuspects((data ?? []) as unknown as CaseSuspect[]);
-  }, [caseId, supabase]);
+  const perms: WarrantPermissions = useMemo(() => ({
+    myId: profile?.id,
+    canApprove: !!viewer?.can_approve,
+    canEditCase: () => canEdit,
+    canManageCase: () => !!viewer?.can_manage,
+  }), [canEdit, profile?.id, viewer?.can_approve, viewer?.can_manage]);
 
-  React.useEffect(() => {
-    if (!caseId) return;
-    let active = true;
-    setLoading(true);
-    setError(null);
-    (async () => {
-      try {
-        const {data, error: caseError} = await supabase.from('cases').select(CASE_COLUMNS).eq('id', caseId).single();
-        if (caseError) throw caseError;
-        if (!active) return;
-        const loadedCase = data as unknown as Case;
-        setCaseData(loadedCase);
-        setTempTitle(loadedCase.title);
-        await Promise.all([fetchCollaborators(), fetchEvidence(), fetchSuspects()]);
-      } catch (err) {
-        if (active) setError(errorMessage(err));
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
+  // Files dropped or pasted anywhere on the page become evidence (editors of an open case).
+  useEffect(() => {
+    if (!canEdit) return;
+    const onDragOver = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
     };
-  }, [caseId, supabase, fetchCollaborators, fetchEvidence, fetchSuspects]);
-
-  React.useEffect(() => {
-    if (!loading && profile && caseData) {
-      if (!canViewCaseDetails(profile, caseData, collaborators.some(c => c.user_id === profile.id))) {
-        setError("Nincs jogosultságod megtekinteni az akta részleteit.");
+    const onDrop = (event: DragEvent) => {
+      const files = [...(event.dataTransfer?.files ?? [])];
+      if (files.length === 0) return;
+      // The document handles its own drops (images go into the text).
+      if ((event.target as HTMLElement | null)?.closest?.(".bn-editor")) return;
+      event.preventDefault();
+      setUploadFiles(files);
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.(".bn-editor, input, textarea, [role='dialog']")) return;
+      const files = [...(event.clipboardData?.files ?? [])];
+      if (files.length > 0) {
+        event.preventDefault();
+        setUploadFiles(files);
       }
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    window.addEventListener("paste", onPaste);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+      window.removeEventListener("paste", onPaste);
+    };
+  }, [canEdit]);
+
+  // --- Actions -------------------------------------------------------------------
+
+  const updateCase = async (changes: Parameters<typeof mcbApi.update>[1], success?: string) => {
+    try {
+      const result = await mcbApi.update(caseId, changes);
+      patch((current) => ({...current, case: {...current.case, ...result}}));
+      announce("meta");
+      if (success) toast.success(success);
+      return true;
+    } catch (error) {
+      toast.error(errorMessage(error));
+      return false;
     }
-  }, [loading, profile, caseData, collaborators]);
-
-  const showAlert = (title: string, description: string, action: () => Promise<void> | void, actionLabel = "Igen", variant: "default" | "destructive" = "default") => {
-    setAlertConfig({open: true, title, description, action, actionLabel, variant});
   };
 
-  const handleAlertConfirm = async () => {
-    await alertConfig.action();
-    setAlertConfig(prev => ({...prev, open: false}));
-  };
-
-  const handleDeleteSuspect = (id: string) => {
-    showAlert("Gyanúsított eltávolítása", "Biztosan eltávolítod ezt a személyt az aktából?", async () => {
-      const {error: deleteError} = await supabase.from('case_suspects').delete().eq('id', id);
-      if (deleteError) return void toast.error("Hiba az eltávolításkor.");
-      setCaseSuspects(prev => prev.filter(item => item.id !== id));
-      toast.success("Eltávolítva.");
-    }, "Eltávolítás", "destructive");
-  };
-
-  const handleDeleteCollaborator = (id: string) => {
-    showAlert("Közreműködő eltávolítása", "Biztosan visszavonod a hozzáférést ettől a személytől?", async () => {
-      const {error: deleteError} = await supabase.from('case_collaborators').delete().eq('id', id);
-      if (deleteError) return void toast.error("Hiba a hozzáférés visszavonásakor.");
-      setCollaborators(prev => prev.filter(item => item.id !== id));
-      toast.success("Hozzáférés visszavonva.");
-    }, "Visszavonás", "destructive");
-  };
-
-  const handleDeleteEvidence = (id: string) => {
-    const targetEv = evidence.find(e => e.id === id);
-
-    showAlert("Bizonyíték törlése", "Ez a művelet nem vonható vissza. Biztosan törlöd a fájlt?", async () => {
-      // 1. Database row first (RLS decides whether this user may delete it).
-      const {error: deleteError} = await supabase.from('case_evidence').delete().eq('id', id);
-      if (deleteError) return void toast.error("Hiba a bizonyíték törlésekor.");
-      setEvidence(prev => prev.filter(item => item.id !== id));
-      toast.success("Bizonyíték törölve.");
-
-      // 2. Then the now-unreferenced file. Background clean-up: never blocks the UI.
-      const path = targetEv?.file_path;
-      if (path?.startsWith('http')) {
-        void deleteCloudinaryAssets([path]);
-      } else if (path) {
-        void supabase.storage.from('case_evidence').remove([path]);
-      }
-    }, "Törlés", "destructive");
-  };
-
-  const handleStatusChange = (newStatus: 'open' | 'closed' | 'archived') => {
-    const labels: Record<string, string> = {open: "Újranyitás", closed: "Lezárás", archived: "Archiválás"};
-    showAlert(
-      `${labels[newStatus]} megerősítése`,
-      `Biztosan módosítani szeretnéd az akta státuszát erre: ${labels[newStatus]}?`,
-      async () => {
-        const {error: updateError} = await supabase.from('cases').update({status: newStatus}).eq('id', caseId!);
-        if (updateError) {
-          toast.error("Nem sikerült módosítani az akta státuszát.");
-        } else {
-          toast.success("Státusz frissítve!");
-          setCaseData(prev => prev ? ({...prev, status: newStatus} as Case) : null);
+  const changeStatus = (next: CaseStatus) => {
+    const texts: Record<string, {title: string; description: string; action: string}> = {
+      closed: {title: "Akta lezárása", action: "Lezárás",
+        description: "Lezárás után az akta csak olvasható, az elbírálatlan parancskérelmek megszűnnek. Újranyitni a vezető nyomozó és az MCB vezetése tud."},
+      open: {title: status === "archived" ? "Visszaállítás és újranyitás" : "Akta újranyitása", action: "Újranyitás",
+        description: "Az akta újra szerkeszthető lesz, a csapat értesítést kap."},
+      archived: {title: "Akta archiválása", action: "Archiválás",
+        description: "Az archivált akta kikerül a listából (az Archívum szűrő alatt marad), csak olvasható. Visszaállítani az MCB vezetése tud."},
+    };
+    const restoring = status === "archived" && next === "closed";
+    const text = restoring
+      ? {title: "Visszaállítás az archívumból", action: "Visszaállítás", description: "Az akta visszakerül a lezárt akták közé."}
+      : texts[next];
+    setConfirm({
+      ...text,
+      run: async () => {
+        if (next !== "open" && editorRef.current?.isDirty()) {
+          const saved = await editorRef.current.save();
+          if (!saved) throw new Error("Előbb mentsd a dokumentumot (vagy oldd fel az ütközést).");
         }
+        const result = await mcbApi.setStatus(caseId, next);
+        toast.success(next === "closed" ? (restoring ? "Az akta visszakerült a lezártak közé." : "Akta lezárva.")
+          : next === "archived" ? "Akta archiválva." : "Akta újranyitva.",
+        {description: result.expired_warrants > 0 ? `${result.expired_warrants} elbírálatlan parancskérelem megszűnt.` : undefined});
+        await refreshMeta();
+        if (result.expired_warrants > 0) void refreshWarrants();
+        setEditorKey((key) => key + 1);
+        announce("meta");
       },
-      "Módosítás"
-    );
+    });
   };
 
-  const handleThemeChange = async (newTheme: string) => {
-    if (!caseData) return;
-    setCaseData({...caseData, theme: newTheme});
-    const previousTheme = caseData.theme;
-    const {error: updateError} = await supabase.from('cases').update({theme: newTheme}).eq('id', caseId!);
-    if (updateError) {
-      toast.error("Nem sikerült menteni a témát");
-      setCaseData(prev => prev ? {...prev, theme: previousTheme} : prev);
-    } else {
-      toast.success("Téma módosítva");
+  const deleteCase = async () => {
+    const toastId = toast.loading("Az akta és a csatolt fájlok törlése…");
+    try {
+      await postApi("/api/case/delete", {caseId});
+      toast.success("Az akta véglegesen törölve.", {id: toastId});
+      mcbApi.invalidateList();
+      navigate("/mcb");
+    } catch (error) {
+      toast.error("A törlés nem sikerült.", {id: toastId, description: errorMessage(error)});
     }
   };
 
-  const openEvidenceViewer = async (file: CaseEvidence) => {
-    if (file.file_type === 'image') {
-      if (file.file_path.startsWith('http')) {
-        setViewEvidence({...file, url: file.file_path});
-      } else {
-        const {data} = await supabase.storage.from('case_evidence').createSignedUrl(file.file_path, 3600);
-        if (data) setViewEvidence({...file, url: data.signedUrl});
-      }
-    } else if (file.file_path.startsWith('http')) {
-      // Documents (PDF, DOCX) open in a new tab instead of the image viewer.
-      window.open(file.file_path, '_blank', 'noopener,noreferrer');
-    } else toast.info("Ez a fájltípus nem támogatott.");
+  const renameEvidence = async (item: CaseEvidence, name: string) => {
+    const {error} = await supabase.from("case_evidence").update({file_name: name}).eq("id", item.id);
+    if (error) {
+      toast.error("Az átnevezés nem sikerült.", {description: errorMessage(error)});
+      return false;
+    }
+    patch((current) => ({...current, evidence: current.evidence.map((entry) => (entry.id === item.id ? {...entry, file_name: name} : entry))}));
+    announce("evidence");
+    return true;
   };
 
-  if (loading) return <div className="flex h-[80vh] items-center justify-center"><Loader2
-    className="w-12 h-12 animate-spin text-sky-500 opacity-50"/></div>;
-  if (error || !caseData) return <div className="flex flex-col items-center justify-center h-[80vh] text-slate-400">
-    <ShieldAlert className="w-20 h-20 mb-6 text-red-500/50"/><h2 className="text-2xl font-bold text-white mb-2">ACCESS
-    DENIED</h2><p className="mb-6">{error}</p><Button variant="outline" onClick={() => navigate('/mcb')}>Vissza</Button>
-  </div>;
+  const deleteEvidence = (item: CaseEvidence) => {
+    const used = refs.evidence.get(item.id) ?? 0;
+    setConfirm({
+      title: "Bizonyíték törlése",
+      description: <>A(z) <strong>#{numbers.get(item.id)} {item.file_name}</strong> véglegesen törlődik.
+        {used > 0 && ` A dokumentum ${used} helyen hivatkozik rá: ott „törölt bizonyíték” jelenik meg.`}</>,
+      action: "Törlés",
+      destructive: true,
+      run: async () => {
+        const {error} = await supabase.from("case_evidence").delete().eq("id", item.id);
+        if (error) throw error;
+        patch((current) => ({...current, evidence: current.evidence.filter((entry) => entry.id !== item.id)}));
+        // The file itself afterwards (the server refuses files that are still referenced).
+        if (item.file_path.startsWith("http")) void deleteCloudinaryAssets([item.file_path]);
+        else void supabase.storage.from("case_evidence").remove([item.file_path]);
+        announce("evidence");
+        toast.success("Bizonyíték törölve.");
+      },
+    });
+  };
+
+  const setInvolvement = async (link: CaseSuspect, role: string) => {
+    if (link.involvement_type === role) return;
+    const {error} = await supabase.from("case_suspects").update({involvement_type: role}).eq("id", link.id);
+    if (error) return void toast.error("A módosítás nem sikerült.", {description: errorMessage(error)});
+    patch((current) => ({...current, people: current.people.map((entry) => (entry.id === link.id ? {...entry, involvement_type: role} : entry))}));
+    announce("people");
+  };
+
+  const setLinkNotes = async (link: CaseSuspect, notes: string) => {
+    const {error} = await supabase.from("case_suspects").update({notes: notes.trim() || null}).eq("id", link.id);
+    if (error) {
+      toast.error("A megjegyzés mentése nem sikerült.", {description: errorMessage(error)});
+      return false;
+    }
+    patch((current) => ({...current, people: current.people.map((entry) => (entry.id === link.id ? {...entry, notes: notes.trim() || null} : entry))}));
+    announce("people");
+    return true;
+  };
+
+  const unlinkPerson = (link: CaseSuspect) => setConfirm({
+    title: "Személy eltávolítása",
+    description: <><strong>{link.suspect?.full_name}</strong> kikerül az aktából. A nyilvántartásban megmarad.</>,
+    action: "Eltávolítás",
+    destructive: true,
+    run: async () => {
+      const {error} = await supabase.from("case_suspects").delete().eq("id", link.id);
+      if (error) throw error;
+      patch((current) => ({...current, people: current.people.filter((entry) => entry.id !== link.id)}));
+      announce("people");
+    },
+  });
+
+  const setCollaboratorRole = async (collaborator: CaseCollaborator, role: "editor" | "viewer") => {
+    if (collaborator.role === role) return;
+    const {error} = await supabase.from("case_collaborators").update({role}).eq("id", collaborator.id);
+    if (error) return void toast.error("A módosítás nem sikerült.", {description: errorMessage(error)});
+    patch((current) => ({...current, collaborators: current.collaborators.map((entry) => (entry.id === collaborator.id ? {...entry, role} : entry))}));
+    announce("team");
+  };
+
+  const removeCollaborator = (collaborator: CaseCollaborator) => setConfirm({
+    title: "Közreműködő eltávolítása",
+    description: <><strong>{collaborator.profile?.full_name}</strong> elveszíti a hozzáférését az aktához.</>,
+    action: "Eltávolítás",
+    destructive: true,
+    run: async () => {
+      const {error} = await supabase.from("case_collaborators").delete().eq("id", collaborator.id);
+      if (error) throw error;
+      patch((current) => ({...current, collaborators: current.collaborators.filter((entry) => entry.id !== collaborator.id)}));
+      announce("team");
+    },
+  });
+
+  const leaveCase = () => setConfirm({
+    title: "Kilépés az aktából",
+    description: "Elveszíted a hozzáférésedet; újra a tulajdonos vagy az MCB vezetése vehet fel.",
+    action: "Kilépés",
+    destructive: true,
+    run: async () => {
+      const {error} = await supabase.from("case_collaborators").delete().eq("case_id", caseId).eq("user_id", profile?.id ?? "");
+      if (error) throw error;
+      announce("team");
+      mcbApi.invalidateList();
+      navigate("/mcb");
+    },
+  });
+
+  const onMention = useCallback((role: "officer" | "suspect" | "case", id: string) => {
+    if (role === "officer") setOfficerId(id);
+    else if (role === "suspect") openSuspectId(id);
+    else setLinkedCase(id);
+  }, [openSuspectId]);
+
+  const onEditorSaved = useCallback((version: number, updatedAt: string) => {
+    room.broadcastSaved(version, profile?.full_name ?? "Egy szerkesztő");
+    setLogKey((key) => key + 1);
+    setDetail((current) => (current ? {...current, case: {...current.case, body_version: version, updated_at: updatedAt,
+      body_updated_by_name: profile?.full_name ?? null}} : current));
+  }, [profile?.full_name, room]);
+
+  const toggleRail = (side: "left" | "right") => setRails((current) => {
+    const next = {...current, [side]: !current[side]};
+    localStorage.setItem(RAILS_KEY, JSON.stringify(next));
+    return next;
+  });
+
+  // --- Render --------------------------------------------------------------------
+
+  if (failure && !detail) {
+    return (
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center gap-4 py-16 text-center">
+        <span className="grid size-16 place-items-center rounded-2xl bg-red-500/10 text-red-300 ring-1 ring-red-500/30">
+          {failure.denied ? <Lock className="size-7"/> : <AlertTriangle className="size-7"/>}
+        </span>
+        <h1 className="text-xl font-semibold text-white">{failure.denied ? "Nincs hozzáférésed ehhez az aktához" : "Az akta nem nyitható meg"}</h1>
+        <p className="text-sm text-slate-400">{failure.message}</p>
+        {failure.denied && listInfo && (
+          <div className="panel flex w-full items-center gap-3 p-3 text-left">
+            <MemberAvatar url={listInfo.owner_avatar} name={listInfo.owner_name} size={36}/>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-white">{listInfo.case_number} · {listInfo.title}</p>
+              <p className="text-xs text-slate-400">Hozzáférést a vezető nyomozótól kérhetsz: {listInfo.owner_name ?? "–"}</p>
+            </div>
+          </div>
+        )}
+        <Button variant="outline" onClick={() => navigate("/mcb")}><ArrowLeft className="size-4"/> Vissza az aktákhoz</Button>
+      </div>
+    );
+  }
+
+  if (!detail || !viewer) {
+    return (
+      <div className="flex flex-1 flex-col gap-4">
+        <div className="skeleton h-32 rounded-2xl"/>
+        <div className="grid flex-1 grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)_380px]">
+          <div className="skeleton hidden h-96 rounded-2xl xl:block"/>
+          <div className="skeleton h-[60vh] rounded-2xl"/>
+          <div className="skeleton hidden h-96 rounded-2xl xl:block"/>
+        </div>
+      </div>
+    );
+  }
+
+  const item = detail.case;
+  const priority = PRIORITY[item.priority] ?? PRIORITY.medium;
+  const canDeleteEvidence = (entry: CaseEvidence) => status === "open"
+    && (entry.uploaded_by === profile?.id || canEdit || isStaff(profile));
+
+  const editor = (
+    <CaseEditor
+      key={editorKey}
+      ref={editorRef}
+      caseId={caseId}
+      content={item.body}
+      version={item.body_version}
+      updatedAt={item.updated_at}
+      updatedByName={item.body_updated_by_name ?? null}
+      readOnly={!canEdit}
+      theme={item.theme ?? "default"}
+      canChangeTheme={canEdit}
+      onThemeChange={(theme) => void updateCase({theme})}
+      evidence={detail.evidence}
+      numbers={numbers}
+      onOpenEvidence={setViewing}
+      onMention={onMention}
+      remote={remote}
+      onReload={() => void reloadDocument()}
+      onSaved={onEditorSaved}
+      onDirtyChange={setDirty}
+      onDocument={setSnapshot}
+    />
+  );
+
+  const leftRail = (
+    <div className="flex flex-col gap-4" data-tour="case-rail">
+      <SummaryCard detail={detail} canEdit={canEdit} onSaveDescription={(text) => updateCase({description: text}, "Összefoglaló mentve.")}/>
+      <PeopleCard people={detail.people} canEdit={canEdit} onAdd={() => setPersonDialog({preselect: null})} onOpen={openSuspectId}
+                  onRole={(link, role) => void setInvolvement(link, role)} onNotes={setLinkNotes} onRemove={unlinkPerson}/>
+      <TeamCard detail={detail} myId={profile?.id} onAdd={() => setCollabOpen(true)} onRole={(collaborator, role) => void setCollaboratorRole(collaborator, role)}
+                onRemove={removeCollaborator} onLeave={leaveCase} onTransfer={() => setTransferOpen(true)} onOpenMember={setOfficerId}/>
+      <ReferencesCard refs={refs} linkedSuspectIds={linkedSuspectIds} canEdit={canEdit} onOfficer={setOfficerId} onSuspect={openSuspectId}
+                      onLinkSuspect={(id) => setPersonDialog({preselect: id})} onCase={setLinkedCase}/>
+    </div>
+  );
+
+  const warrantList = (
+    <div className="flex h-full min-h-0 flex-col" data-tour="case-warrants">
+      <div className="flex shrink-0 items-center gap-2 px-3 pt-3 pb-2">
+        <p className="text-xs text-slate-500">{detail.warrants.length === 0 ? "Nincs parancs." : `${detail.warrants.length} parancs, ${pendingWarrants} elbírálatlan`}</p>
+        {canEdit && (
+          <Button size="sm" onClick={() => setWarrantOpen(true)} className="ml-auto h-8 bg-red-600 text-white hover:bg-red-500">
+            <Gavel className="size-4"/> Kérelem
+          </Button>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
+        {detail.warrants.length === 0 ? (
+          <p className="py-8 text-center text-xs text-slate-500">
+            Elfogató- és házkutatási parancsot az akta szerkesztői kérhetnek; a felügyelő állomány bírálja el.
+          </p>
+        ) : detail.warrants.map((warrant) => (
+          <WarrantCard key={warrant.id} warrant={warrant} perms={perms} onAction={(entry, action) => setWarrantAction({warrant: entry, action})}
+                       onOpenDocument={setWarrantDoc} onOpenPerson={openSuspectId}/>
+        ))}
+      </div>
+    </div>
+  );
+
+  const tabs: {value: RightTab; label: string; icon: typeof Paperclip; badge?: number; alert?: boolean}[] = [
+    {value: "evidence", label: "Bizonyítékok", icon: Paperclip, badge: detail.evidence.length},
+    {value: "warrants", label: "Parancsok", icon: Gavel, badge: detail.warrants.length, alert: pendingWarrants > 0},
+    {value: "chat", label: "Üzenetek", icon: MessageSquare, badge: unread || undefined, alert: unread > 0},
+    {value: "log", label: "Napló", icon: History},
+  ];
+
+  const tabBody = (tab: RightTab) => tab === "evidence" ? (
+    <EvidencePanel evidence={detail.evidence} numbers={numbers} usage={refs.evidence} canEdit={canEdit} canDelete={canDeleteEvidence}
+                   onUpload={() => setUploadFiles([])} onView={setViewing}
+                   onInsert={(id) => {
+                     editorRef.current?.insertEvidence(id);
+                     if (!wide) setMobileTab("document");
+                   }}
+                   onRename={renameEvidence} onDelete={deleteEvidence}/>
+  ) : tab === "warrants" ? warrantList : tab === "chat" ? (
+    <CaseChat caseId={caseId} canWrite={canChat} liveNote={liveNote}/>
+  ) : (
+    <div className="h-full overflow-y-auto"><CaseTimeline caseId={caseId} refreshKey={logKey}/></div>
+  );
 
   return (
-    <div className="flex flex-col h-shell-mcb overflow-hidden space-y-4">
-      <AlertDialog open={alertConfig.open} onOpenChange={(open) => setAlertConfig(prev => ({...prev, open}))}>
-        <AlertDialogContent className="bg-slate-950 border-slate-800 text-white">
+    <div className={cn("flex flex-col gap-4", wide && "h-shell")}>
+      {/* --- Header ------------------------------------------------------------- */}
+      <header className="panel animate-rise relative shrink-0 overflow-hidden p-0" data-tour="case-header">
+        <div aria-hidden className={cn("pointer-events-none absolute -top-24 -left-16 size-72 rounded-full opacity-25 blur-3xl", priority.dot)}/>
+        <div className="relative flex flex-col gap-3 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <Link to="/mcb" aria-label="Vissza az aktákhoz"
+                  className="mt-1 grid size-9 shrink-0 place-items-center rounded-xl bg-white/[0.04] text-slate-300 ring-1 ring-white/10 hover:bg-white/10 hover:text-white">
+              <ArrowLeft className="size-4"/>
+            </Link>
+            <div className="min-w-0 flex-1">
+              <nav className="flex items-center gap-1 text-[11px] text-slate-500">
+                <Link to="/mcb" className="hover:text-slate-300">Nyomozó Iroda</Link><ChevronRight className="size-3"/>
+                <span className="font-mono text-sky-300/90">{item.case_number}</span>
+              </nav>
+              <TitleEditor title={item.title} canEdit={canEdit} onSave={(title) => updateCase({title}, "Akta átnevezve.")}/>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <CaseStatusChip status={item.status}/>
+                {canEdit ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50" aria-label="Prioritás">
+                      <PriorityChip priority={item.priority} className="cursor-pointer hover:brightness-125"/>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuLabel>Prioritás</DropdownMenuLabel>
+                      {PRIORITIES.map((value) => (
+                        <DropdownMenuItem key={value} onSelect={() => void updateCase({priority: value as CasePriority}, "Prioritás módosítva.")}>
+                          <span className={cn("size-2 rounded-full", PRIORITY[value].dot)}/>{PRIORITY[value].label}
+                          {item.priority === value && <Check className="ml-auto size-3.5"/>}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : <PriorityChip priority={item.priority}/>}
+                {canEdit ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50" aria-label="Ügytípus">
+                      {item.category ? <CategoryChip category={item.category} className="cursor-pointer hover:bg-white/10"/> : (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] text-slate-500 ring-1 ring-dashed ring-white/15 hover:text-slate-300">
+                          + ügytípus
+                        </span>
+                      )}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
+                      <DropdownMenuLabel>Ügytípus</DropdownMenuLabel>
+                      {CATEGORIES.map((value) => {
+                        const look = CATEGORY[value];
+                        return (
+                          <DropdownMenuItem key={value} onSelect={() => void updateCase({category: value as CaseCategory}, "Ügytípus módosítva.")}>
+                            <look.icon className="size-4"/>{look.label}
+                            {item.category === value && <Check className="ml-auto size-3.5"/>}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                      {item.category && (
+                        <>
+                          <DropdownMenuSeparator/>
+                          <DropdownMenuItem onSelect={() => void updateCase({category: null})}><X className="size-4"/> Nincs megadva</DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : <CategoryChip category={item.category}/>}
+                <span className="ml-1 flex items-center gap-1.5 text-[11px] text-slate-500">
+                  <MemberAvatar url={detail.owner?.avatar_url} name={detail.owner?.full_name} size={18}/>
+                  {detail.owner?.full_name ?? "Nincs tulajdonos"} · megnyitva {formatDate(item.created_at)} · frissítve {formatAgo(item.updated_at)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {room.peers.length > 0 && (
+              <div className="flex items-center -space-x-2 pr-1" title={room.peers.map((peer) => `${peer.name}${peer.editing ? " (szerkeszt)" : ""}`).join(", ")}>
+                {room.peers.slice(0, 5).map((peer) => (
+                  <span key={peer.id} className="relative">
+                    <MemberAvatar url={peer.avatar} name={peer.name} size={28} className="ring-2 ring-[#0a1020]"/>
+                    <span className={cn("absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-[#0a1020]", peer.editing ? "bg-amber-400" : "bg-emerald-400")}/>
+                  </span>
+                ))}
+                <span className="pl-3 text-[11px] text-slate-400">{room.peers.length === 1 ? "is itt van" : `+${room.peers.length} itt`}</span>
+              </div>
+            )}
+            {wide && (
+              <div className="flex rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10">
+                <button type="button" onClick={() => toggleRail("left")} title="Bal panel" className="grid size-8 place-items-center rounded-md text-slate-400 hover:text-white">
+                  {rails.left ? <PanelLeftClose className="size-4"/> : <PanelLeftOpen className="size-4"/>}
+                </button>
+                <button type="button" onClick={() => toggleRail("right")} title="Jobb panel" className="grid size-8 place-items-center rounded-md text-slate-400 hover:text-white">
+                  {rails.right ? <PanelRightClose className="size-4"/> : <PanelRightOpen className="size-4"/>}
+                </button>
+              </div>
+            )}
+            <Button variant="outline" size="sm" className="h-9" asChild>
+              <Link to={`/mcb/case/${caseId}/print`} target="_blank" rel="noopener"><Printer className="size-4"/> Nyomtatás</Link>
+            </Button>
+            {status === "open" && viewer.can_manage && (
+              <Button size="sm" className="h-9 bg-slate-200 text-slate-900 hover:bg-white" onClick={() => changeStatus("closed")}>
+                <Lock className="size-4"/> Lezárás
+              </Button>
+            )}
+            {status === "closed" && viewer.can_manage && (
+              <Button size="sm" variant="outline" className="h-9 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10" onClick={() => changeStatus("open")}>
+                <Unlock className="size-4"/> Újranyitás
+              </Button>
+            )}
+            {status === "archived" && viewer.is_lead && (
+              <Button size="sm" variant="outline" className="h-9" onClick={() => changeStatus("closed")}><ArchiveRestore className="size-4"/> Visszaállítás</Button>
+            )}
+            {(viewer.can_manage || viewer.role === "editor" || viewer.role === "viewer") && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="ghost" className="size-9" aria-label="További műveletek"><MoreHorizontal className="size-4"/></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60">
+                  {viewer.can_manage && status !== "archived" && (
+                    <DropdownMenuItem onSelect={() => setTransferOpen(true)}><ArrowRightLeft className="size-4"/> Akta átadása</DropdownMenuItem>
+                  )}
+                  {status === "closed" && viewer.is_lead && (
+                    <DropdownMenuItem onSelect={() => changeStatus("archived")}><FolderArchive className="size-4"/> Archiválás</DropdownMenuItem>
+                  )}
+                  {(viewer.role === "editor" || viewer.role === "viewer") && (
+                    <DropdownMenuItem onSelect={leaveCase}><LogOut className="size-4"/> Kilépés az aktából</DropdownMenuItem>
+                  )}
+                  {viewer.can_manage && (
+                    <>
+                      <DropdownMenuSeparator/>
+                      <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}><Trash2 className="size-4"/> Végleges törlés</DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        </div>
+        {status !== "open" && (
+          <div className="relative flex items-center gap-2 border-t border-white/5 bg-white/[0.02] px-5 py-2 text-xs text-slate-400">
+            <Info className="size-3.5 text-slate-500"/>
+            {status === "closed" ? `Lezárva ${formatDate(item.closed_at)}: az akta csak olvasható.` : "Archivált akta: csak olvasható, a listában az Archívum szűrő alatt található."}
+          </div>
+        )}
+      </header>
+
+      {/* --- Body ---------------------------------------------------------------- */}
+      {wide ? (
+        <div className={cn("grid min-h-0 flex-1 gap-4", rails.left && rails.right ? "grid-cols-[300px_minmax(0,1fr)_380px]"
+          : rails.left ? "grid-cols-[300px_minmax(0,1fr)]" : rails.right ? "grid-cols-[minmax(0,1fr)_380px]" : "grid-cols-1")}>
+          {rails.left && <aside className="min-h-0 overflow-y-auto pr-1 animate-fade">{leftRail}</aside>}
+          <div className="min-h-0 min-w-0" data-tour="case-editor">{editor}</div>
+          {rails.right && (
+            <aside className="panel animate-fade flex min-h-0 flex-col overflow-hidden p-0" data-tour="case-panel">
+              <TabBar tabs={tabs} active={rightTab} onChange={setRightTab}/>
+              <div className="min-h-0 flex-1">{tabBody(rightTab)}</div>
+            </aside>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="sticky top-14 z-20 -mx-1 overflow-x-auto rounded-xl bg-[#070c18]/90 p-1 ring-1 ring-white/10 backdrop-blur">
+            <div className="flex min-w-max gap-1">
+              {([{value: "document", label: "Dokumentum", icon: FileText}, {value: "info", label: "Adatok", icon: ShieldAlert}, ...tabs] as
+                {value: MobileTab; label: string; icon: typeof FileText; badge?: number; alert?: boolean}[]).map((tab) => (
+                <button key={tab.value} type="button" onClick={() => setMobileTab(tab.value)}
+                        className={cn("relative flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition",
+                          mobileTab === tab.value ? "bg-white/10 text-white" : "text-slate-400")}>
+                  <tab.icon className="size-3.5"/>{tab.label}
+                  {!!tab.badge && <span className={cn("rounded-md px-1 text-[10px]", tab.alert ? "bg-amber-500/20 text-amber-200" : "bg-white/10")}>{tab.badge}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={cn("h-[calc(100dvh-14rem)] min-h-[420px]", mobileTab !== "document" && "hidden")} data-tour="case-editor">{editor}</div>
+          {mobileTab === "info" && leftRail}
+          {mobileTab !== "document" && mobileTab !== "info" && (
+            <div className="panel h-[calc(100dvh-14rem)] min-h-[420px] overflow-hidden p-0">{tabBody(mobileTab)}</div>
+          )}
+        </div>
+      )}
+
+      {/* --- Dialogs ------------------------------------------------------------- */}
+      <UploadEvidenceDialog open={uploadFiles !== null} onOpenChange={(open) => !open && setUploadFiles(null)} caseId={caseId}
+                            initialFiles={uploadFiles ?? []} onUploaded={() => {
+        void refreshEvidence();
+        announce("evidence");
+      }}/>
+      <EvidenceViewer items={sortedEvidence} numbers={numbers} activeId={viewing} onActiveChange={setViewing}/>
+      <AddSuspectDialog open={!!personDialog} onOpenChange={(open) => !open && setPersonDialog(null)} caseId={caseId}
+                        linkedIds={linkedSuspectIds} preselectId={personDialog?.preselect} onLinked={() => {
+        void refreshPeople();
+        announce("people");
+      }}/>
+      <AddCollaboratorDialog open={collabOpen} onOpenChange={setCollabOpen} caseId={caseId}
+                             existingUserIds={[...detail.collaborators.map((entry) => entry.user_id), ...(item.owner_id ? [item.owner_id] : [])]}
+                             onAdded={() => {
+                               void refreshMeta();
+                               announce("team");
+                             }}/>
+      <TransferCaseDialog open={transferOpen} onOpenChange={setTransferOpen} caseId={caseId} ownerId={item.owner_id}
+                          onTransferred={() => {
+                            void refreshMeta();
+                            announce("team");
+                          }}/>
+      <WarrantDialog open={warrantOpen} onOpenChange={setWarrantOpen} caseId={caseId} people={detail.people} warrants={detail.warrants}
+                     evidence={detail.evidence} numbers={numbers} onCreated={() => {
+        void refreshWarrants();
+        setLogKey((key) => key + 1);
+      }}/>
+      <WarrantActionDialog warrant={warrantAction?.warrant ?? null} action={warrantAction?.action ?? null} onClose={() => setWarrantAction(null)}
+                           onDone={(updated) => {
+                             setWarrantAction(null);
+                             patch((current) => ({...current, warrants: current.warrants.map((entry) => (entry.id === updated.id ? updated : entry))}));
+                             setLogKey((key) => key + 1);
+                           }}/>
+      <WarrantDocument warrant={warrantDoc} onClose={() => setWarrantDoc(null)}/>
+      <LinkedCaseDialog caseId={linkedCase} onClose={() => setLinkedCase(null)}/>
+      <OfficerProfileDialog open={!!officerId} onOpenChange={(open) => !open && setOfficerId(null)} userId={officerId ?? ""} caseId={caseId}/>
+
+      <AlertDialog open={!!confirm} onOpenChange={(open) => !open && !confirmBusy && setConfirm(null)}>
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">{alertConfig.title}</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
-              {alertConfig.description}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
+            <AlertDialogDescription asChild><div className="text-sm text-slate-400">{confirm?.description}</div></AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel
-              className="bg-transparent border-slate-700 hover:bg-slate-800 text-slate-300">Mégse</AlertDialogCancel>
-            <AlertDialogAction onClick={handleAlertConfirm}
-                               className={cn(alertConfig.variant === 'destructive' ? "bg-red-600 hover:bg-red-700 text-white" : "bg-sky-600 hover:bg-sky-500 text-white")}>
-              {alertConfig.actionLabel}
+            <AlertDialogCancel disabled={confirmBusy}>Mégse</AlertDialogCancel>
+            <AlertDialogAction disabled={confirmBusy}
+                               className={confirm?.destructive ? "bg-red-600 text-white hover:bg-red-500" : "bg-sky-600 text-white hover:bg-sky-500"}
+                               onClick={async (event) => {
+                                 event.preventDefault();
+                                 if (!confirm) return;
+                                 setConfirmBusy(true);
+                                 try {
+                                   await confirm.run();
+                                   setConfirm(null);
+                                 } catch (error) {
+                                   toast.error(errorMessage(error));
+                                 } finally {
+                                   setConfirmBusy(false);
+                                 }
+                               }}>
+              {confirmBusy && <Loader2 className="size-4 animate-spin"/>}{confirm?.action}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AddSuspectDialog open={isAddSuspectOpen} onOpenChange={setIsAddSuspectOpen} caseId={caseId!}
-                        onSuspectAdded={fetchSuspects} existingSuspectIds={existingSuspectIds}/>
-      <SuspectDetailDialog open={!!viewSuspect} onOpenChange={(o) => !o && setViewSuspect(null)} suspect={viewSuspect}
-                           onUpdate={() => {
-                             void fetchSuspects();
-                             setViewSuspect(null);
-                           }}/>
-
-      <OfficerProfileDialog
-        open={!!viewOfficerId}
-        onOpenChange={(open) => {
-          if (!open) setViewOfficerId(null);
-        }}
-        userId={viewOfficerId || ""}
-        caseId={caseId}
-      />
-
-      <UploadEvidenceDialog
-        open={isUploadOpen}
-        onOpenChange={(open) => {
-          setIsUploadOpen(open);
-          if (!open) {
-            setDraggedFile(null);
-          }
-        }}
-        caseId={caseId!}
-        onUploadComplete={fetchEvidence}
-        initialFile={draggedFile}
-      />
-
-      <AddCollaboratorDialog open={isAddCollabOpen} onOpenChange={setIsAddCollabOpen} caseId={caseId!}
-                             onCollaboratorAdded={fetchCollaborators} existingUserIds={existingCollaboratorIds}/>
-      <ImageViewerDialog open={!!viewEvidence} onOpenChange={(o) => !o && setViewEvidence(null)}
-                         imageUrl={viewEvidence?.url ?? null} fileName={viewEvidence?.file_name ?? ""}/>
-
-      <Dialog open={!!previewCaseId} onOpenChange={(open) => !open && setPreviewCaseId(null)}>
-        <DialogContent className="bg-slate-950 border-slate-800 text-white">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-sky-500"/>
-              Csatolt Akta Megtekintése
-            </DialogTitle>
-          </DialogHeader>
-
-          {previewError ? (
-            <div className="p-4 bg-red-950/20 border border-red-900/50 rounded-lg text-red-400 flex items-start gap-3">
-              <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5"/>
-              <div>
-                <p className="font-bold">Hozzáférés megtagadva</p>
-                <p className="text-sm opacity-80">{previewError}</p>
-              </div>
-            </div>
-          ) : previewCaseData ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-800">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-bold text-lg text-white">{previewCaseData.case.title}</h3>
-                  <Badge variant="outline" className="font-mono">{previewCaseData.case.case_number}</Badge>
-                </div>
-                <p
-                  className="text-sm text-slate-400 line-clamp-3 mb-3">{previewCaseData.case.description || "Nincs leírás."}</p>
-
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span className={cn("px-2 py-0.5 rounded font-bold uppercase",
-                              previewCaseData.case.status === 'open' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                            )}>
-                                {previewCaseData.case.status}
-                            </span>
-                  <span>•</span>
-                  <span>Tulajdonos: {previewCaseData.owner?.full_name ?? "Ismeretlen"}</span>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex justify-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin text-sky-500"/>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPreviewCaseId(null)}>Bezárás</Button>
-            {!previewError && previewCaseData && (
-              <Button className="bg-sky-600 hover:bg-sky-500" onClick={() => {
-                navigate(`/mcb/case/${previewCaseId}`);
-                setPreviewCaseId(null);
-              }}>
-                <ExternalLink className="w-4 h-4 mr-2"/>
-                Akta Megnyitása
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <div
-        className="shrink-0 bg-slate-950/80 border-y border-sky-900/30 backdrop-blur-md px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/mcb')}
-                  className="text-sky-500 hover:text-white hover:bg-sky-500/10"><ArrowLeft
-            className="w-5 h-5"/></Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <Terminal className="w-5 h-5 text-sky-500"/>
-
-              {isEditingTitle ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={tempTitle}
-                    onChange={(e) => setTempTitle(e.target.value)}
-                    className="h-8 w-64 bg-slate-900 border-slate-700 text-white font-mono font-bold"
-                    autoFocus
-                  />
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500 hover:bg-green-500/10"
-                          onClick={handleRenameSave}>
-                    <Check className="w-4 h-4"/>
-                  </Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-red-400 hover:bg-red-500/10"
-                          onClick={() => {
-                            setTempTitle(caseData.title);
-                            setIsEditingTitle(false);
-                          }}>
-                    <X className="w-4 h-4"/>
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <h1 className="text-xl font-bold text-white tracking-tight uppercase font-mono">{caseData.title}</h1>
-                  {canRename && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-white"
-                      onClick={() => setIsEditingTitle(true)}
-                    >
-                      <Pencil className="w-3 h-3"/>
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              <Badge className="font-mono bg-sky-900/50 text-sky-400 border-sky-500/30">{caseData.case_number}</Badge>
-              {isCaseClosed && <Badge variant="outline"
-                                      className="text-[10px] border-red-500 text-red-500 bg-red-500/10 uppercase">Lezárt</Badge>}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex bg-slate-900/50 rounded-md border border-slate-800 mr-2">
-            <Button variant="ghost" size="icon" onClick={() => setShowLeftSidebar(!showLeftSidebar)}
-                    className={cn("h-8 w-8", !showLeftSidebar && "text-slate-600")}>
-              {showLeftSidebar ? <PanelLeftClose className="w-4 h-4"/> : <PanelLeftOpen className="w-4 h-4"/>}
-            </Button>
-            <div className="w-px bg-slate-800 my-1"></div>
-            <Button variant="ghost" size="icon" onClick={() => setShowRightSidebar(!showRightSidebar)}
-                    className={cn("h-8 w-8", !showRightSidebar && "text-slate-600")}>
-              {showRightSidebar ? <PanelRightClose className="w-4 h-4"/> : <PanelRightOpen className="w-4 h-4"/>}
-            </Button>
-          </div>
-
-          {canEdit && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="border-slate-800 h-8 gap-2 bg-slate-900/50">
-                  <Palette className="w-3.5 h-3.5"/>
-                  <span className="hidden sm:inline">Kinézet</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="bg-slate-900 border-slate-800 text-white w-56">
-                <DropdownMenuItem onClick={() => handleThemeChange('default')}>Alapértelmezett
-                  (Modern)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleThemeChange('paper')}>Papír akta (Klasszikus)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleThemeChange('classic')}>Hivatalos Dokumentum</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleThemeChange('terminal')}>Terminál (Zöld)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleThemeChange('amber')}>Retro CRT (Borostyán)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleThemeChange('blue')}>Rendőrségi (Kék)</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {caseData.status === 'open' ? (
-            canManageStatus && (
-              <Button variant="outline" size="sm"
-                      className="border-sky-800 text-sky-400 hover:bg-sky-900/50 h-8 text-xs font-mono uppercase"
-                      onClick={() => handleStatusChange('closed')}>
-                <Lock className="w-3 h-3 mr-2"/> Lezárás
-              </Button>
-            )
-          ) : (
-            <>
-              {canManageStatus && (
-                <Button variant="outline" size="sm"
-                        className="border-yellow-700/50 text-yellow-500 hover:bg-yellow-900/20 h-8 text-xs uppercase"
-                        onClick={() => handleStatusChange('open')}>
-                  <Unlock className="w-3 h-3 mr-2"/> Újranyitás
-                </Button>
-              )}
-              {canArchive && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-block cursor-not-allowed ml-2">
-                        <Button variant="ghost" size="sm" disabled
-                                className="text-red-400/50 border border-red-900/20 bg-red-950/10 h-8 text-xs font-mono uppercase">
-                          <Archive className="w-3 h-3 mr-2"/> Archiválás
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent className="bg-red-950 border-red-800 text-red-200 max-w-xs">
-                      <p className="font-bold flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> FIGYELEM!
-                      </p>
-                      <p className="text-xs mt-1">Az archiválás végleges lezárást jelent.</p>
-                      <p className="text-xs mt-1 font-mono bg-black/30 p-1 rounded">Az akta 40 nap múlva automatikusan
-                        törlődik. Kérjük, előtte töltse le az anyagot!</p>
-                      <p className="text-[10px] mt-2 opacity-50 italic">Ez a funkció jelenleg fejlesztés alatt áll.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </>
-          )}
-
-          {canManageStatus && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm"
-                        className="ml-2 bg-red-950/50 border border-red-900 hover:bg-red-900 text-red-500 hover:text-white transition-all">
-                  <Trash2 className="w-4 h-4 mr-2"/> TÖRLÉS
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent className="bg-red-950 border border-red-500 text-white">
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2 text-2xl font-black uppercase"><AlertTriangle
-                    className="w-8 h-8 text-white"/> Végleges Törlés</AlertDialogTitle>
-                  <AlertDialogDescription asChild>
-                    <div className="text-red-100/80 font-bold text-sm">
-                      FIGYELEM! Ez a művelet visszavonhatatlan.
-                      <br/><br/>
-                      Törlődik az akta teljes tartalma:
-                      <ul className="list-disc list-inside mt-2 text-sm opacity-80">
-                        <li>Minden bizonyíték és kép</li>
-                        <li>Minden gyanúsított kapcsolat</li>
-                        <li>Az összes jegyzet és jelentés</li>
-                        <li>Minden kiadott elfogatóparancs</li>
-                      </ul>
-                    </div>
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel
-                    className="bg-black/20 border-white/10 text-white hover:bg-black/40">Mégse</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDeleteCase} disabled={isDeleting}
-                                     className="bg-white text-red-900 font-black hover:bg-red-100">
-                    {isDeleting ? "Törlés folyamatban..." : "IGEN, TÖRLÖM AZ AKTÁT"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-6 px-6 pb-6 relative">
-        {showLeftSidebar ? (
-          <div
-            className="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar shrink-0 animate-in slide-in-from-left-4 duration-300">
-            <CaseInfoCard caseData={caseData}/>
-            <SuspectsCard
-              suspects={caseSuspects}
-              onAdd={!isReadOnly ? () => setIsAddSuspectOpen(true) : undefined}
-              onView={(s) => setViewSuspect(s)}
-              onDelete={!isReadOnly ? handleDeleteSuspect : undefined}
-            />
-            <CollaboratorsCard
-              collaborators={collaborators}
-              onAdd={canManageCollaborators && !isCaseClosed ? () => setIsAddCollabOpen(true) : undefined}
-              onDelete={canManageCollaborators && !isCaseClosed ? handleDeleteCollaborator : undefined}
-            />
-          </div>
-        ) : <div/>}
-
-        <div
-          className={cn("flex flex-col border rounded-lg overflow-hidden relative shadow-2xl transition-all duration-300 w-full min-w-0",
-            caseData.theme === 'paper' ? 'border-[#d4c5a8]' :
-              caseData.theme === 'classic' ? 'border-slate-200' :
-                caseData.theme === 'amber' ? 'border-amber-900/30' :
-                  'border-slate-800'
-          )} style={{backgroundColor: getBackgroundStyle(caseData.theme)}}>
-
-          <div
-            className={cn("h-8 border-b flex items-center px-3 justify-between transition-colors shrink-0", getHeaderStyles(caseData.theme))}>
-            <span className="text-[10px] font-mono uppercase flex items-center gap-2">
-              <Laptop2 className="w-3 h-3"/> Investigation Log
-            </span>
-            <div className="flex gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-red-500/20"></div>
-              <div className="w-2 h-2 rounded-full bg-yellow-500/20"></div>
-              <div className="w-2 h-2 rounded-full bg-green-500/20"></div>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-hidden relative w-full h-full">
-            <CaseEditor
-              caseId={caseId!}
-              initialContent={caseData.body}
-              readOnly={isReadOnly}
-              evidenceList={evidence}
-              theme={caseData.theme}
-            />
-          </div>
-        </div>
-
-        {showRightSidebar ? (
-          <div
-            className="w-80 flex flex-col gap-4 overflow-y-auto custom-scrollbar shrink-0 animate-in slide-in-from-right-4 duration-300">
-            <div className="flex-1 min-h-[250px] max-h-[400px]">
-              <EvidenceCard
-                evidence={evidence}
-                onUpload={!isReadOnly ? () => setIsUploadOpen(true) : undefined}
-                onView={openEvidenceViewer}
-                onDelete={!isReadOnly ? handleDeleteEvidence : undefined}
-              />
-            </div>
-            <CaseWarrants caseId={caseId!} suspects={caseSuspects} readOnly={isReadOnly}/>
-            <div className="flex-1 min-h-[300px] flex flex-col">
-              <CaseChat caseId={caseId!} readOnly={isReadOnly}/>
-            </div>
-          </div>
-        ) : <div/>}
-      </div>
+      <DeleteCaseDialog open={deleteOpen} onOpenChange={setDeleteOpen} caseNumber={item.case_number as string}
+                        counts={{evidence: detail.evidence.length, people: detail.people.length, warrants: detail.warrants.length}}
+                        onConfirm={deleteCase}/>
     </div>
   );
 }
+
+function TabBar<T extends string>({tabs, active, onChange}: {
+  tabs: {value: T; label: string; icon: typeof Paperclip; badge?: number; alert?: boolean}[];
+  active: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="flex shrink-0 gap-0.5 border-b border-white/10 bg-black/10 p-1" role="tablist" data-tour="case-tabs">
+      {tabs.map((tab) => (
+        <button key={tab.value} type="button" role="tab" aria-selected={active === tab.value} aria-label={tab.label} title={tab.label}
+                data-tour={`case-tab-${tab.value}`}
+                onClick={() => onChange(tab.value)}
+                className={cn("relative flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium whitespace-nowrap transition",
+                  active === tab.value ? "flex-auto bg-white/10 text-white" : "flex-none text-slate-400 hover:bg-white/5 hover:text-slate-200")}>
+          <tab.icon className="size-3.5 shrink-0"/>
+          {active === tab.value && <span className="truncate">{tab.label}</span>}
+          {!!tab.badge && (
+            <span className={cn("rounded-md px-1 text-[10px] tabular-nums", tab.alert ? "bg-amber-500/25 text-amber-200" : "bg-white/10 text-slate-300")}>
+              {tab.badge}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TitleEditor({title, canEdit, onSave}: {title: string; canEdit: boolean; onSave: (title: string) => Promise<boolean>}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(title);
+  const [busy, setBusy] = useState(false);
+
+  if (editing) {
+    return (
+      <form className="mt-0.5 flex items-center gap-1.5" onSubmit={async (event) => {
+        event.preventDefault();
+        if (!value.trim() || value.trim() === title) return setEditing(false);
+        setBusy(true);
+        const ok = await onSave(value.trim());
+        setBusy(false);
+        if (ok) setEditing(false);
+      }}>
+        <Input value={value} autoFocus maxLength={160} onChange={(event) => setValue(event.target.value)} className="h-9 text-lg font-semibold"
+               onKeyDown={(event) => event.key === "Escape" && setEditing(false)}/>
+        <Button type="submit" size="icon" className="size-9 shrink-0 bg-emerald-600 text-white hover:bg-emerald-500" disabled={busy} aria-label="Mentés">
+          {busy ? <Loader2 className="size-4 animate-spin"/> : <Check className="size-4"/>}
+        </Button>
+        <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0" onClick={() => setEditing(false)} aria-label="Mégse">
+          <X className="size-4"/>
+        </Button>
+      </form>
+    );
+  }
+  return (
+    <div className="group flex min-w-0 items-center gap-2">
+      <h1 className="truncate text-xl font-semibold tracking-tight text-white md:text-2xl" title={title}>{title}</h1>
+      {canEdit && (
+        <button type="button" onClick={() => {
+          setValue(title);
+          setEditing(true);
+        }} aria-label="Átnevezés" className="rounded-md p-1 text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white focus:opacity-100">
+          <Pencil className="size-3.5"/>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DeleteCaseDialog({open, onOpenChange, caseNumber, counts, onConfirm}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  caseNumber: string;
+  counts: {evidence: number; people: number; warrants: number};
+  onConfirm: () => Promise<void>;
+}) {
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (open) setTyped("");
+  }, [open]);
+
+  return (
+    <AlertDialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+      <AlertDialogContent className="border-red-500/40">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2 text-red-200"><AlertTriangle className="size-5"/> Végleges törlés</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-2 text-sm text-slate-300">
+              <p>Az akta minden tartalma visszavonhatatlanul törlődik: a dokumentum, {counts.evidence} bizonyíték (a fájlokkal együtt),
+                {` ${counts.people}`} személy-kapcsolat, {counts.warrants} parancs, az üzenetek és a napló.</p>
+              <p>Lezárás vagy archiválás helyett csak akkor töröld, ha az akta tévedésből készült.</p>
+              <p>Megerősítésként írd be az ügyszámot: <span className="font-mono text-red-200">{caseNumber}</span></p>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <Input value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={caseNumber} className="font-mono"/>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Mégse</AlertDialogCancel>
+          <AlertDialogAction disabled={busy || typed.trim() !== caseNumber} className="bg-red-600 text-white hover:bg-red-500"
+                             onClick={async (event) => {
+                               event.preventDefault();
+                               setBusy(true);
+                               await onConfirm();
+                               setBusy(false);
+                               onOpenChange(false);
+                             }}>
+            {busy && <Loader2 className="size-4 animate-spin"/>} Végleges törlés
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+

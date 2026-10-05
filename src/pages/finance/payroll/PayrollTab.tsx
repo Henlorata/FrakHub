@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
 import {toast} from "sonner";
+import {DISCARD_CHANGES, useConfirm} from "@/components/ConfirmDialog";
 import {
   CalendarClock, Check, ChevronLeft, ChevronRight, CircleDollarSign, Download, Landmark, Loader2, Lock, LockOpen, RefreshCw, Save,
   Search, Undo2, Users, Wallet,
@@ -17,6 +18,7 @@ import {downloadCsv} from "@/lib/csv";
 import {cn, errorMessage} from "@/lib/utils";
 import type {PayrollInput, PayrollMonth, PayrollRow} from "@/types/finance";
 import {ClosePayrollDialog} from "./ClosePayrollDialog";
+import {TreasuryPanel} from "./TreasuryPanel";
 import {PayrollMemberDialog} from "./PayrollMemberDialog";
 import {cellKey, PayrollTable, type TextField} from "./PayrollTable";
 
@@ -53,6 +55,7 @@ function parseCell(field: TextField, text: string): Partial<PayrollInput> | unde
  * amounts and notifies the members.
  */
 export function PayrollTab() {
+  const confirm = useConfirm();
   const [month, setMonth] = useState<string | null>(null);
   const [data, setData] = useState<PayrollMonth | null>(null);
   const [failed, setFailed] = useState(false);
@@ -173,8 +176,8 @@ export function PayrollTab() {
     }
   };
 
-  const changeMonth = (target: string) => {
-    if (changes.length > 0 && !window.confirm("Mentetlen módosításaid vannak. Elveted őket?")) return;
+  const changeMonth = async (target: string) => {
+    if (changes.length > 0 && !(await confirm({...DISCARD_CHANGES, description: "A hónap mentetlen módosításai elvesznek."}))) return;
     void load(target);
   };
 
@@ -241,7 +244,7 @@ export function PayrollTab() {
         <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
           <Button variant="outline" onClick={exportCsv}><Download/> CSV</Button>
           {editable ? (
-            <Button className="bg-emerald-500 text-black hover:bg-emerald-400" disabled={changes.length > 0 || saving}
+            <Button className="bg-emerald-500 text-black hover:bg-emerald-400" disabled={changes.length > 0 || saving} data-tour="payroll-close"
                     title={changes.length > 0 ? "Előbb mentsd a módosításokat." : undefined} onClick={() => setClosing(true)}>
               <Lock/> Hónap lezárása
             </Button>
@@ -261,11 +264,13 @@ export function PayrollTab() {
                   hint={data.withdrawn !== null ? `Kivét: ${formatMoney(data.withdrawn)}` : undefined}/>
       </div>
 
+      <TreasuryPanel key={data.month} payroll={data} cost={live + tax} onSaved={(next) => setData(next)}/>
+
       {data.note && !editable && (
         <p className="panel px-4 py-3 text-sm text-slate-300 wrap-anywhere"><span className="mr-2 text-slate-500">Megjegyzés:</span>{data.note}</p>
       )}
 
-      <div className="panel relative overflow-hidden">
+      <div className="panel relative overflow-hidden" data-tour="payroll-table">
         <div className="flex flex-col gap-3 border-b border-white/5 p-4 lg:flex-row lg:items-center">
           <div className="relative lg:w-64">
             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>

@@ -146,7 +146,7 @@ export function FleetPanel() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" data-tour="fleet-views">
         {tabs.map(([id, label, Icon, count]) => (
           <button key={id} type="button" onClick={() => setView(id)}
                   className={cn("inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-sm font-medium ring-1 transition-all",
@@ -159,7 +159,7 @@ export function FleetPanel() {
             )}
           </button>
         ))}
-        <div className="ml-auto flex flex-wrap gap-2">
+        <div className="ml-auto flex flex-wrap gap-2" data-tour="fleet-manage">
           {staff && <Button size="sm" variant="outline" className="text-amber-200" onClick={() => setIssuing(true)}><ShieldAlert/> Hibapont</Button>}
           {canAssign && <Button size="sm" variant="outline" onClick={() => setAssigning(true)}><KeyRound/> Kiosztás</Button>}
           {staff && <Button size="sm" onClick={() => setEditing("new")}><Plus/> Új jármű</Button>}
@@ -178,7 +178,7 @@ export function FleetPanel() {
       ) : view === "tuning" ? (
         <div key="tuning" className="animate-fade"><TuningPanel canManage={staff}/></div>
       ) : (
-        <div key="vehicles" className="animate-fade space-y-5">
+        <div key="vehicles" data-tour="fleet-list" className="animate-fade space-y-5">
           <div className="panel flex flex-col gap-3 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <div className="relative lg:w-80">

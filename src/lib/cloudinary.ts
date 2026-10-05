@@ -1,10 +1,13 @@
 import {postApi} from "./api";
 import {env} from "./env";
 import {compressImage, type CompressOptions} from "./image-compression";
+import {sandbox} from "./sandbox/state";
 
-export type UploadKind = "evidence" | "avatar" | "academy";
+export type UploadKind = "evidence" | "avatar" | "academy" | "mugshot";
 
 interface UploadSettings extends CompressOptions {
+  /** Upload preset (env) to use; defaults to the kind itself. */
+  preset?: "evidence" | "avatar" | "academy";
   /** Cloudinary folder; `scope` is e.g. the Academy page id. Undefined = preset default. */
   folder?: (scope?: string) => string;
   /** `auto` also accepts documents (PDF, DOCX) as raw uploads. */
@@ -16,6 +19,8 @@ const UPLOAD_SETTINGS: Record<UploadKind, UploadSettings> = {
   evidence: {resourceType: "auto", maxDimension: 2560, quality: 0.9},
   avatar: {resourceType: "image", folder: () => "avatars", maxDimension: 512, quality: 0.9},
   academy: {resourceType: "image", folder: (pageId) => `academy/${pageId}`, maxDimension: 1920, quality: 0.88},
+  // Photos of registered persons: the avatar preset, in their own folder.
+  mugshot: {preset: "avatar", resourceType: "image", folder: () => "mugshots", maxDimension: 768, quality: 0.9},
 };
 
 /**
@@ -23,11 +28,13 @@ const UPLOAD_SETTINGS: Record<UploadKind, UploadSettings> = {
  * Images are resized and converted to WebP in the browser first.
  */
 export async function uploadToCloudinary(file: File, kind: UploadKind, scope?: string): Promise<string> {
+  // Practice mode: the picture stays in this tab only.
+  if (sandbox.isActive()) return URL.createObjectURL(file);
   const {cloudName, presets} = env.cloudinary;
-  const preset = presets[kind];
+  const settings = UPLOAD_SETTINGS[kind];
+  const preset = presets[settings.preset ?? (kind as keyof typeof presets)];
   if (!cloudName || !preset) throw new Error("Hiányzó Cloudinary konfiguráció (.env).");
 
-  const settings = UPLOAD_SETTINGS[kind];
   const formData = new FormData();
   formData.append("file", await compressImage(file, settings));
   formData.append("upload_preset", preset);

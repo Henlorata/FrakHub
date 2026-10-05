@@ -1,5 +1,6 @@
 import {useEffect, useState, type CSSProperties} from "react";
 import {toast} from "sonner";
+import {useConfirm} from "@/components/ConfirmDialog";
 import {Gauge, Loader2, Pencil, Plus, Save, Trash2, Wrench} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -94,6 +95,7 @@ function TuningEditor({preset, onOpenChange, onSaved}: {
   onSaved: (preset: FleetTuningPreset | null, removedId?: string) => void;
 }) {
   const {supabase} = useAuth();
+  const confirm = useConfirm();
   const existing = preset && preset !== "new" ? preset : null;
   const [model, setModel] = useState(existing?.model ?? "");
   const [settings, setSettings] = useState<Record<string, string>>(existing?.settings ?? {});
@@ -119,7 +121,7 @@ function TuningEditor({preset, onOpenChange, onSaved}: {
   };
 
   const remove = async () => {
-    if (!existing || !window.confirm(`${existing.model} tuning beállításának törlése?`)) return;
+    if (!existing || !(await confirm({title: "Tuning törlése", description: `${existing.model} tuning beállítása törlődik.`, confirmLabel: "Törlés", destructive: true, kind: "delete"}))) return;
     const {error} = await supabase.from("fleet_tuning_presets").delete().eq("id", existing.id);
     if (error) return toast.error(errorMessage(error));
     onSaved(null, existing.id);

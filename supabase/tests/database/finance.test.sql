@@ -2,7 +2,7 @@
 -- Uses the accounts from supabase/seed.sql. The expected amounts follow the leadership's old
 -- payroll sheet (rank pay and duty pay only from 30 hours, unit and qualification pay always).
 begin;
-select plan(56);
+select plan(58);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,        -- Commander, TSB, TB (paid as BM)
@@ -130,6 +130,12 @@ select is((select count(*)::int from public.payroll_entries where user_id = '000
 select pg_temp.act_as((select admin_id from ids));
 insert into t select 'paid', public.set_payroll_paid(month, array[sergeant_id, captain_id], true)::text from ids;
 select is((pg_temp.j('paid') ->> 'paid_total')::bigint, 50850000::bigint, 'paid members are summed');
+select is((public.set_payroll_balance((select month from ids), 250000000) ->> 'balance')::bigint, 250000000::bigint,
+  'the leadership records the treasury balance');
+select pg_temp.act_as((select deputy_id from ids));
+select throws_ok(format('select public.set_payroll_balance(%L, 1000)', (select month from ids)), '42501', null,
+  'members cannot set the treasury balance');
+select pg_temp.act_as((select admin_id from ids));
 
 insert into t select 'closed', public.close_payroll(month, 120000000, 'Megbeszélés után')::text from ids;
 select is(pg_temp.j('closed') ->> 'status', 'closed', 'the month is closed');

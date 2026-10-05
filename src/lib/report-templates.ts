@@ -107,17 +107,27 @@ function isoDate(year: number, month: number, day: number): string | null {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-/** A report's forum link, cleaned; null when it is not a forum.hl-rpg.eu link. */
+/**
+ * A forum link, cleaned; null when it is not a forum.hl-rpg.eu link. Members only see their
+ * folder's (thread's) link, so that is the usual input: page numbers, anchors and queries are
+ * dropped ("…/threads/john-smith-jelentesi-mappaja.123/page-2#post-5" → "…/threads/john-smith-jelentesi-mappaja.123/").
+ * A direct post link stays a post link (and then counts once).
+ */
 export function normalizeForumUrl(input: string): string | null {
   const value = input.trim();
   if (!value) return null;
   try {
     const url = new URL(value);
     if (url.protocol !== "https:" || url.hostname !== "forum.hl-rpg.eu") return null;
-    const post = url.pathname.match(/\/posts\/(\d+)/)?.[1] ?? url.hash.match(/post-(\d+)/)?.[1] ?? url.pathname.match(/\/post-(\d+)/)?.[1];
+    const post = url.pathname.match(/\/posts\/(\d+)/)?.[1];
     if (post) return `https://forum.hl-rpg.eu/posts/${post}/`;
+    const thread = url.pathname.match(/^\/threads\/([^/]+)/)?.[1];
+    if (thread) return `https://forum.hl-rpg.eu/threads/${thread}/`;
     return `https://forum.hl-rpg.eu${url.pathname}`;
   } catch {
     return null;
   }
 }
+
+/** The thread id of a folder link ("…/threads/john-smith-jelentesi-mappaja.123/" → "123"). */
+export const folderThreadId = (url: string | null | undefined) => url?.match(/\/threads\/(?:[^/]*\.)?(\d+)\/?/)?.[1] ?? null;

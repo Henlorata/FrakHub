@@ -25,6 +25,8 @@ interface FleetState {
 let state: FleetState = {vehicles: null, categories: [], error: false};
 let loadedAt = 0;
 let pending: Promise<void> | null = null;
+/** Bumped when the caches are cleared, so a load already running does not refill the store. */
+let generation = 0;
 const listeners = new Set<() => void>();
 
 const sortVehicles = (vehicles: FleetVehicle[]) => [...vehicles].sort((a, b) => a.plate.localeCompare(b.plate, "hu", {numeric: true}));
@@ -37,11 +39,14 @@ function update(next: Partial<FleetState>) {
 /** Loads the stock (cached; `force` reloads). */
 export function loadFleet(force = false): Promise<void> {
   if (!force && state.vehicles && Date.now() - loadedAt < TTL_MS) return Promise.resolve();
-  pending ??= (async () => {
+  if (pending) return pending;
+  const request: Promise<void> = (async () => {
+    const started = generation;
     const [vehicleResult, categoryResult] = await Promise.all([
       supabase.from("fleet_vehicles").select(VEHICLE_COLUMNS).eq("is_active", true).order("plate"),
       supabase.from("fleet_categories").select(CATEGORY_COLUMNS).order("sort_order"),
     ]);
+    if (started !== generation) return;
     if (vehicleResult.error || categoryResult.error) {
       update({error: true, vehicles: state.vehicles ?? []});
       return;
@@ -53,9 +58,10 @@ export function loadFleet(force = false): Promise<void> {
       categories: (categoryResult.data ?? []) as FleetCategory[],
     });
   })().finally(() => {
-    pending = null;
+    if (pending === request) pending = null;
   });
-  return pending;
+  pending = request;
+  return request;
 }
 
 const subscribe = (listener: () => void) => {
@@ -110,16 +116,20 @@ let presetsPending: Promise<FleetTuningPreset[]> | null = null;
 
 export function loadTuningPresets(force = false): Promise<FleetTuningPreset[]> {
   if (presets && !force) return Promise.resolve(presets);
-  presetsPending ??= (async () => {
+  if (presetsPending) return presetsPending;
+  const request: Promise<FleetTuningPreset[]> = (async () => {
+    const started = generation;
     const {data, error} = await supabase.from("fleet_tuning_presets").select("id, model, settings, note, sort_order, updated_at")
       .order("sort_order");
     if (error) throw error;
-    presets = (data ?? []) as FleetTuningPreset[];
-    return presets;
+    const loaded = (data ?? []) as FleetTuningPreset[];
+    if (started === generation) presets = loaded;
+    return loaded;
   })().finally(() => {
-    presetsPending = null;
+    if (presetsPending === request) presetsPending = null;
   });
-  return presetsPending;
+  presetsPending = request;
+  return request;
 }
 
 export function replaceTuningPresets(next: FleetTuningPreset[]) {
@@ -127,8 +137,11 @@ export function replaceTuningPresets(next: FleetTuningPreset[]) {
 }
 
 onClientCachesCleared(() => {
+  generation += 1;
   state = {vehicles: null, categories: [], error: false};
   loadedAt = 0;
+  pending = null;
   presets = null;
+  presetsPending = null;
   listeners.forEach((listener) => listener());
 });
