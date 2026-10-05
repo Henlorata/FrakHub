@@ -1,141 +1,165 @@
-import {useEffect, useState} from "react";
-import {useParams, useNavigate} from "react-router";
-import {useAuth} from "@/context/AuthContext";
-import {supabase} from "@/lib/supabaseClient";
-import {ExamRunner} from "./ExamRunner";
-import {Loader2, AlertTriangle, Clock, ArrowLeft, Lock} from "lucide-react";
-import type {Exam} from "@/types/exams";
-import {Card, CardContent} from "@/components/ui/card";
-import {formatDistanceToNow} from "date-fns";
-import {hu} from "date-fns/locale";
+import {useCallback, useEffect, useState} from "react";
+import {Link, useParams} from "react-router";
+import {toast} from "sonner";
+import {Loader2, Lock, SearchX} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {AppBackdrop} from "@/components/layout/AppBackdrop";
+import {useAuth} from "@/context/AuthContext";
+import {
+  clearActiveAttempt, examApi, forgetGuestAttempt, loadGuestAttempt, storeGuestAttempt, type GuestAttempt,
+} from "@/lib/exams";
+import {errorMessage} from "@/lib/utils";
+import type {AttemptPayload, AttemptStateReply, ExamIntro} from "@/types/exams";
+import {ExamDone} from "./runner/ExamDone";
+import {ExamLobby} from "./runner/ExamLobby";
+import {ExamRunner} from "./runner/ExamRunner";
 
-/** Public entrance exam (outside the app shell), on the same animated backdrop. */
+/** The exam page (outside the app shell, also for guests), on the animated backdrop. */
 export function PublicExamPage() {
   return (
     <>
       <AppBackdrop/>
-      <PublicExamContent/>
+      <ExamPageContent/>
     </>
   );
 }
 
-function PublicExamContent() {
-  const {examId} = useParams<{ examId: string }>();
-  const navigate = useNavigate();
-  const {user, loading: authLoading} = useAuth();
+type Phase = "loading" | "intro" | "running" | "done" | "missing" | "login" | "error";
 
-  const [exam, setExam] = useState<Exam | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function ExamPageContent() {
+  const {examId = ""} = useParams();
+  const {user, profile, session, loading: authLoading} = useAuth();
+  const userId = user?.id ?? null;
+  const [phase, setPhase] = useState<Phase>("loading");
+  const [intro, setIntro] = useState<ExamIntro | null>(null);
+  const [payload, setPayload] = useState<AttemptPayload | null>(null);
+  const [result, setResult] = useState<AttemptStateReply | null>(null);
+  const [guest, setGuest] = useState<GuestAttempt | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [clockOffset, setClockOffset] = useState(0);
 
-  const [isBlocked, setIsBlocked] = useState(false);
-  const [blockedUntil, setBlockedUntil] = useState<string | null>(null);
+  const begin = useCallback(async (applicantName: string | null, stored: GuestAttempt | null) => {
+    setStarting(true);
+    try {
+      const reply = await examApi.start(examId, applicantName, userId ? null : stored);
+      if (reply.finished) {
+        setResult(reply as AttemptStateReply);
+        setPhase("done");
+        clearActiveAttempt(examId);
+        return;
+      }
+      const attempt = reply as AttemptPayload;
+      setClockOffset(Date.parse(attempt.server_now) - Date.now());
+      if (!userId && attempt.secret) {
+        const created = {attemptId: attempt.attempt.id, secret: attempt.secret};
+        storeGuestAttempt(examId, created);
+        setGuest(created);
+      }
+      setPayload(attempt);
+      setPhase("running");
+    } catch (error) {
+      toast.error(errorMessage(error, "A vizsga indítása nem sikerült."));
+      setPhase("intro");
+    } finally {
+      setStarting(false);
+    }
+  }, [examId, userId]);
 
   useEffect(() => {
-    const fetchExam = async () => {
-      if (!examId) return;
-      try {
-        const {
-          data,
-          error
-        } = await supabase.from('exams').select(`*, exam_questions (*, exam_options (id, option_text, question_id))`).eq('id', examId).maybeSingle();
-        if (error) throw error;
-        if (!data) {
-          setError("A vizsga nem található, vagy privát.");
-          setLoading(false);
-          return;
+    if (authLoading) return;
+    let active = true;
+    const stored = userId ? null : loadGuestAttempt(examId);
+    setGuest(stored);
+    setPhase("loading");
+    examApi.intro(examId, stored)
+      .then((reply) => {
+        if (!active) return;
+        if (!reply) return setPhase("missing");
+        if ("login_required" in reply) return setPhase("login");
+        setIntro(reply);
+        // A reload (or "continue") goes straight back into the open attempt.
+        if (reply.attempt?.status === "in_progress") {
+          void begin(null, stored);
+        } else {
+          clearActiveAttempt(examId);
+          setPhase("intro");
         }
-
-        if (user) {
-          const {data: lastSub} = await supabase.from('exam_submissions').select('retry_allowed_at, status').eq('exam_id', examId).eq('user_id', user.id).is('deleted_at', null).order('start_time', {ascending: false}).limit(1).maybeSingle();
-          if (lastSub && lastSub.status === 'failed' && lastSub.retry_allowed_at) {
-            if (new Date(lastSub.retry_allowed_at) > new Date()) {
-              setIsBlocked(true);
-              setBlockedUntil(lastSub.retry_allowed_at);
-              setLoading(false);
-              setExam(data as any);
-              return;
-            }
-          }
-        }
-        if (data.exam_questions) data.exam_questions.sort((a: any, b: any) => a.order_index - b.order_index);
-        setExam(data as any);
-      } catch (err: any) {
-        console.error(err);
-        setError("Technikai hiba.");
-      } finally {
-        setLoading(false);
-      }
+      })
+      .catch((error) => {
+        console.error(error);
+        if (active) setPhase("error");
+      });
+    return () => {
+      active = false;
     };
-    if (!authLoading) fetchExam();
-  }, [examId, user, authLoading]);
+  }, [authLoading, userId, examId, begin]);
 
-  if (loading || authLoading) return <div
-    className="min-h-screen flex flex-col items-center justify-center"><Loader2
-    className="w-12 h-12 text-yellow-500 animate-spin mb-4"/><p
-    className="text-slate-400 font-mono tracking-widest text-sm">BETÖLTÉS...</p></div>;
+  if (phase === "loading" || authLoading || (phase === "intro" && !intro)) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 text-slate-400">
+        <Loader2 className="size-9 animate-spin text-primary"/>
+        <p className="text-sm">Vizsga betöltése…</p>
+      </div>
+    );
+  }
 
-  if (isBlocked && blockedUntil) return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="max-w-md w-full bg-slate-900/50 border-red-900/30 shadow-2xl">
-        <CardContent className="p-8 text-center space-y-6">
-          <div
-            className="w-24 h-24 bg-red-900/10 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
-            <Clock className="w-12 h-12 text-red-500"/></div>
-          <div><h1 className="text-3xl font-bold text-white mb-2">Pihenőidő</h1><p className="text-slate-400">A rendszer
-            várakozási időt írt elő.</p></div>
-          <div className="bg-slate-950/50 p-6 rounded-xl border border-slate-800/50"><p
-            className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Hátralévő idő</p>
-            <div
-              className="text-2xl font-mono font-bold text-yellow-500">{formatDistanceToNow(new Date(blockedUntil), {locale: hu})}</div>
+  if (phase === "missing" || phase === "login" || phase === "error") {
+    const login = phase === "login";
+    return (
+      <div className="flex min-h-dvh items-center justify-center p-4">
+        <div className="panel animate-pop w-full max-w-md space-y-5 p-8 text-center">
+          <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-white/[0.04] ring-1 ring-white/10">
+            {login ? <Lock className="size-7 text-slate-300"/> : <SearchX className="size-7 text-slate-300"/>}
+          </span>
+          <div>
+            <h1 className="text-xl font-semibold text-white">
+              {login ? "Bejelentkezés szükséges" : phase === "error" ? "Technikai hiba" : "A vizsga nem található"}
+            </h1>
+            <p className="mt-1 text-sm text-slate-400">
+              {login ? "Ezt a vizsgát csak a frakció tagjai tölthetik ki."
+                : phase === "error" ? "Nem sikerült betölteni a vizsgát. Próbáld újra kicsit később."
+                  : "A link hibás, vagy a vizsgát törölték."}
+            </p>
           </div>
-          <Button variant="ghost" onClick={() => navigate('/exams')}
-                  className="text-slate-400 hover:text-white"><ArrowLeft className="w-4 h-4 mr-2"/> Vissza</Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
+          <div className="flex justify-center gap-2">
+            <Button asChild><Link to={login ? "/login" : userId ? "/exams" : "/login"}>{login || !userId ? "Bejelentkezés" : "Vizsgaközpont"}</Link></Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  if (error || !exam) return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="max-w-md w-full bg-slate-900/50 border-slate-800 shadow-2xl">
-        <CardContent className="p-10 text-center space-y-6">
-          <div
-            className="relative mx-auto w-24 h-24 flex items-center justify-center bg-slate-950 border border-slate-800 rounded-full">
-            <Lock className="w-10 h-10 text-slate-500"/></div>
-          <div><h1 className="text-2xl font-bold text-white">Hiba</h1><p
-            className="text-slate-400 text-sm">{error || "Nincs hozzáférés."}</p></div>
-          <div className="flex flex-col gap-3 pt-4"><Button className="bg-yellow-600 text-black font-bold"
-                                                            onClick={() => navigate('/login')}>Bejelentkezés</Button><Button
-            variant="outline" onClick={() => window.history.back()}>Vissza</Button></div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  if (phase === "running" && payload) {
+    return (
+      <ExamRunner payload={payload} clockOffset={clockOffset} secret={userId ? null : guest?.secret ?? null}
+                  accessToken={session?.access_token ?? null}
+                  owner={userId ?? "guest"} candidateName={profile?.full_name ?? payload.attempt.applicant_name ?? ""}
+                  onFinished={(reply) => {
+                    setResult(reply);
+                    setPhase("done");
+                  }}/>
+    );
+  }
 
-  if (!exam.is_active) return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="max-w-md w-full bg-slate-900/50 border-orange-900/30 shadow-2xl">
-        <CardContent className="p-8 text-center">
-          <div
-            className="w-20 h-20 bg-orange-900/10 rounded-full flex items-center justify-center mx-auto border border-orange-500/20 mb-6">
-            <AlertTriangle className="w-10 h-10 text-orange-500"/></div>
-          <h1 className="text-2xl font-bold text-white mb-2">Lezárva</h1><p className="text-slate-400 mb-8">A vizsga
-          jelenleg nem fogad kitöltéseket.</p><Button variant="secondary"
-                                                      onClick={() => navigate('/exams')}>Vissza</Button></CardContent>
-      </Card>
-    </div>
-  );
+  if (phase === "done" && result) {
+    return (
+      <ExamDone reply={result} title={payload?.exam.title ?? intro?.exam.title ?? ""}
+                passingPercentage={payload?.exam.passing_percentage ?? intro?.exam.passing_percentage ?? 0}
+                signedIn={!!userId} member={!!intro?.viewer.member}/>
+    );
+  }
 
-  return (
-    <div className="min-h-screen py-10 px-4 md:px-8 relative overflow-hidden">
-      <div className="fixed inset-0 pointer-events-none opacity-20" style={{
-        backgroundImage: 'radial-gradient(circle at 2px 2px, #334155 1px, transparent 0)',
-        backgroundSize: '40px 40px'
-      }}></div>
-      <ExamRunner exam={exam}/>
-    </div>
-  );
+  return intro ? (
+    <ExamLobby
+      intro={intro}
+      guestFinished={!userId && intro.attempt && intro.attempt.status !== "in_progress" ? intro.attempt : null}
+      starting={starting}
+      onStart={(name) => void begin(name, null)}
+      onNewGuestAttempt={() => {
+        forgetGuestAttempt(examId);
+        setGuest(null);
+        setIntro({...intro, attempt: null});
+      }}
+    />
+  ) : null;
 }

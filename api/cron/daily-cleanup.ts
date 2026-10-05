@@ -44,7 +44,7 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
   const supabase = getSupabaseAdmin();
   const results = {
     financeDeleted: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0,
-    registrationReminders: 0, registrationFilesDeleted: 0, registrationReviewsExpired: 0, errors: [] as string[],
+    registrationReminders: 0, registrationFilesDeleted: 0, registrationReviewsExpired: 0, examAttemptsClosed: 0, errors: [] as string[],
   };
   const fail = (step: string, error: unknown) => {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
@@ -147,6 +147,16 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
     results.registrationReviewsExpired = cleanup.expired ?? 0;
   } catch (error) {
     fail("fleet_registrations", error);
+  }
+
+  // 7. Exam attempts whose time ran out while nobody had the page open: handed in as they are,
+  //    so they reach the graders (the exam centre also closes them when it is opened).
+  try {
+    const {data, error} = await supabase.rpc("exam_close_expired_attempts");
+    if (error) throw error;
+    results.examAttemptsClosed = typeof data === "number" ? data : 0;
+  } catch (error) {
+    fail("exam_attempts", error);
   }
 
   console.log("[api/cron/daily-cleanup] done", results);

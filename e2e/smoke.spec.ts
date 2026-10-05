@@ -18,9 +18,11 @@ const ROUTES: {path: string; text: RegExp}[] = [
   {path: "/mcb", text: /Major Crimes Bureau/i},
   {path: "/mcb/suspects", text: /Bűnügyi Nyilvántartás/i},
   {path: "/mcb/admin", text: /ACCESS CONTROL/i},
-  {path: "/exams", text: /Képzések, vizsgák/i},
+  {path: "/exams", text: /Vizsgák, eredmények és javítás/i},
+  {path: "/exams?tab=grading", text: /Javításra vár/i},
+  {path: "/exams?tab=all_history", text: /Minden állapot/i},
   {path: "/exams?tab=trash", text: /Törölt vizsgalapok/i},
-  {path: "/exams/editor", text: /ÚJ VIZSGA LÉTREHOZÁSA/i},
+  {path: "/exams/editor", text: /Új vizsga/i},
   {path: "/logistics", text: /Flotta és ellátás/i},
   {path: "/logistics?tab=fleet", text: /Marked Ford Explorer/i},
   {path: "/logistics?tab=fleet&view=reviews", text: /Nincs ellenőrzésre váró forgalmi/i},
@@ -57,6 +59,7 @@ test("every page renders without runtime errors", async ({page}) => {
         created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-01T00:00:00Z", holders: [],
       }],
     },
+    rpc: {get_exam_hub: {server_now: "2026-10-01T00:00:00Z", exams: [], mine: [], queue: [], live: []}},
   });
   await login(page);
   await expect(page).toHaveURL(/\/dashboard$/);

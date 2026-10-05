@@ -433,6 +433,24 @@
     opacity: 0.35;
 }
 
+/* The corner star turns slowly; its outer ring the other way. */
+.emblem-turn {
+    transform-box: view-box;
+    transform-origin: 50% 50%;
+    animation: emblem-turn 160s linear infinite;
+}
+
+.emblem-turn-reverse {
+    animation-duration: 240s;
+    animation-direction: reverse;
+}
+
+@keyframes emblem-turn {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .emblem-breathe {
     transform-origin: center;
     animation: backdrop-breathe 10s ease-in-out infinite;

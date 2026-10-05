@@ -77,6 +77,33 @@ insert into public.exam_options (id, question_id, option_text, is_correct) value
   ('22000000-0000-4000-8000-000000000003', '21000000-0000-4000-8000-000000000004', 'Ék', true),
   ('22000000-0000-4000-8000-000000000004', '21000000-0000-4000-8000-000000000004', 'Kör', false);
 
+-- Page titles and a grading guide for the recruitment exam.
+insert into public.exam_pages (exam_id, page_number, title, description) values
+  ('20000000-0000-4000-8000-000000000001', 1, 'Alapok', 'Néhány adat rólad, és egy kérdés a rádiózásról.'),
+  ('20000000-0000-4000-8000-000000000001', 2, 'Motiváció', null);
+insert into public.exam_question_guides (question_id, guide) values
+  ('21000000-0000-4000-8000-000000000003', 'Teljes pont: konkrét ok (közösség, szerepjáték), legalább két mondatban.');
+
+-- An auto-graded quiz: every attempt draws two of the three questions, in shuffled order.
+insert into public.exams (id, title, description, type, division, time_limit_minutes, passing_percentage, is_public, is_active,
+                          shuffle_questions, shuffle_options, auto_grade, retry_cooldown_hours, created_by)
+values ('20000000-0000-4000-8000-000000000003', 'Rádiókódok gyorsteszt', 'Két kérdés a háromból, azonnali eredménnyel.',
+        'other', null, 10, 50, false, true, true, true, true, 1, '00000000-0000-4000-8000-000000000001');
+insert into public.exam_questions (id, exam_id, question_text, question_type, points, order_index, is_required, page_number) values
+  ('21000000-0000-4000-8000-000000000005', '20000000-0000-4000-8000-000000000003', 'Mit jelent a 10-4?', 'single_choice', 1, 0, true, 1),
+  ('21000000-0000-4000-8000-000000000006', '20000000-0000-4000-8000-000000000003', 'Mit jelent a 10-20?', 'single_choice', 1, 1, true, 1),
+  ('21000000-0000-4000-8000-000000000007', '20000000-0000-4000-8000-000000000003', 'Melyik jelent biztonságos helyzetet?', 'multiple_choice', 2, 2, true, 1);
+insert into public.exam_options (id, question_id, option_text, is_correct, order_index) values
+  ('22000000-0000-4000-8000-000000000005', '21000000-0000-4000-8000-000000000005', 'Vétel, értettem', true, 0),
+  ('22000000-0000-4000-8000-000000000006', '21000000-0000-4000-8000-000000000005', 'Segítséget kérek', false, 1),
+  ('22000000-0000-4000-8000-000000000007', '21000000-0000-4000-8000-000000000006', 'Tartózkodási hely', true, 0),
+  ('22000000-0000-4000-8000-000000000008', '21000000-0000-4000-8000-000000000006', 'Ebédszünet', false, 1),
+  ('22000000-0000-4000-8000-000000000009', '21000000-0000-4000-8000-000000000007', 'Code 4', true, 0),
+  ('22000000-0000-4000-8000-000000000010', '21000000-0000-4000-8000-000000000007', 'Nincs további teendő', true, 1),
+  ('22000000-0000-4000-8000-000000000011', '21000000-0000-4000-8000-000000000007', 'Code 3', false, 2);
+insert into public.exam_pages (exam_id, page_number, title, draw_count)
+values ('20000000-0000-4000-8000-000000000003', 1, 'Kódok', 2);
+
 -- A guest sheet waiting for grading.
 insert into public.exam_submissions (id, exam_id, user_id, applicant_name, start_time, end_time, status, max_score, claim_token)
 values ('23000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', null, 'Vendég Viktor',

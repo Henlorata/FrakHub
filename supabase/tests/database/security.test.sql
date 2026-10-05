@@ -39,14 +39,10 @@ select throws_ok($$select public.delete_full_exam('20000000-0000-4000-8000-00000
 select throws_ok($$select public.admin_assign_exam('23000000-0000-4000-8000-000000000001', (select deputy_id from ids))$$,
   '42501', null, 'anon cannot call admin_assign_exam');
 select is((select count(*) from public.system_status), 1::bigint, 'anon still reads the system status');
-select isnt(
-  (public.submit_exam('20000000-0000-4000-8000-000000000001',
-    '{"21000000-0000-4000-8000-000000000001": {"text": "guest#1"},
-      "21000000-0000-4000-8000-000000000002": {"options": ["22000000-0000-4000-8000-000000000001"]},
-      "21000000-0000-4000-8000-000000000003": {"text": "Mert jó."}}', 'Vendég Valéria') ->> 'claim_token'),
-  null, 'guests submit a public exam and receive a claim code');
-select throws_ok($$select public.submit_exam('20000000-0000-4000-8000-000000000002', '{}', 'Valaki')$$,
-  '42501', null, 'guests cannot submit a members-only exam');
+select isnt((public.start_exam('20000000-0000-4000-8000-000000000001', 'Vendég Valéria') ->> 'secret'),
+  null, 'guests start a public exam and receive the secret of the attempt');
+select throws_ok($$select public.start_exam('20000000-0000-4000-8000-000000000002', 'Valaki')$$,
+  '42501', null, 'guests cannot start a members-only exam');
 
 -- --- Pending registration ---------------------------------------------------
 select pg_temp.act_as((select pending_id from ids));
@@ -70,8 +66,8 @@ select throws_ok($$insert into public.exam_submissions (exam_id, user_id, status
   '42501', null, 'a submission cannot be inserted as passed');
 select throws_ok($$select public.exam_submission_trash('23000000-0000-4000-8000-000000000001')$$,
   '42501', null, 'deputies cannot trash exam sheets');
-select throws_ok($$select * from public.get_exam_answer_key('20000000-0000-4000-8000-000000000001')$$,
-  '42501', null, 'deputies cannot download the answer key');
+select throws_ok($$select public.get_exam_editor('20000000-0000-4000-8000-000000000001')$$,
+  '42501', null, 'deputies cannot open the exam editor (answer key)');
 select throws_ok($$insert into public.hr_records (user_id, kind, title, created_by)
   values ((select operator_id from ids), 'warning', 'Hamis', (select deputy_id from ids))$$,
   '42501', null, 'deputies cannot issue warnings');

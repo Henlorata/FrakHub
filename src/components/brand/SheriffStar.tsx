@@ -53,7 +53,12 @@ export function SheriffStar({className, variant = "emblem", spin = false, label 
           </radialGradient>
         </defs>
         <circle cx={CENTER} cy={CENTER} r="96" fill={`url(#${shine})`} className="emblem-breathe"/>
-        <circle cx={CENTER} cy={CENTER} r="97" stroke={`url(#${gold})`} strokeOpacity="0.18" strokeWidth="0.4" strokeDasharray="1 3"/>
+        {/* The outer ring turns against the star. */}
+        <g className={spin ? "emblem-turn emblem-turn-reverse" : undefined}>
+          <circle cx={CENTER} cy={CENTER} r="97" stroke={`url(#${gold})`} strokeOpacity="0.2" strokeWidth="0.45" strokeDasharray="1 3"/>
+          <circle cx={CENTER} cy={CENTER} r="91" stroke={`url(#${gold})`} strokeOpacity="0.12" strokeWidth="0.8" strokeDasharray="22 14"/>
+        </g>
+        <g className={spin ? "emblem-turn" : undefined}>
         <path d={OUTER} stroke={`url(#${gold})`} strokeOpacity="0.32" strokeWidth="0.7" strokeLinejoin="round" fill="rgb(234 179 8 / 0.025)"/>
         <path d={INNER} stroke={`url(#${gold})`} strokeOpacity="0.18" strokeWidth="0.35" strokeDasharray="2 3"/>
         {TIPS.map(([x, y], index) => <circle key={index} cx={x} cy={y} r="4.5" stroke={`url(#${gold})`} strokeOpacity="0.3" strokeWidth="0.6"/>)}
@@ -62,6 +67,7 @@ export function SheriffStar({className, variant = "emblem", spin = false, label 
         {/* A short bright segment travelling around the outline and the seal. */}
         <path d={OUTER} pathLength={1000} stroke="#fde68a" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"
               strokeDasharray="70 930" className="emblem-glint"/>
+        </g>
         <circle cx={CENTER} cy={CENTER} r="27" pathLength={1000} stroke="#fde68a" strokeWidth="0.8" strokeLinecap="round"
                 strokeDasharray="90 910" className="emblem-glint emblem-glint-slow"/>
       </svg>

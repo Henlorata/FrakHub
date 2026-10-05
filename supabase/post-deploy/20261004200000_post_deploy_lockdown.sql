@@ -7,20 +7,42 @@
 -- The previous migrations kept the old client working; this one removes those
 -- compatibility paths.
 
--- 1. The answer key is no longer readable through the table: editors and graders use
---    get_exam_answer_key(), candidates never need it.
-revoke select on public.exam_options from anon, authenticated;
-grant select (id, question_id, option_text) on public.exam_options to anon, authenticated;
+-- 1. Questions and options are no longer readable before or during an exam: candidates get
+--    their questions from start_exam(), editors and graders through get_exam_editor() and
+--    get_exam_sheet(). Exams are written by save_exam() and delete_full_exam() only.
+drop policy if exists exam_questions_select on public.exam_questions;
+create policy exam_questions_select on public.exam_questions for select to authenticated
+  using (private.can_view_exam_key(exam_id));
+drop policy if exists exam_options_select on public.exam_options;
+create policy exam_options_select on public.exam_options for select to authenticated
+  using (exists (select 1 from public.exam_questions q where q.id = question_id and private.can_view_exam_key(q.exam_id)));
+drop policy if exists exam_questions_insert on public.exam_questions;
+drop policy if exists exam_questions_update on public.exam_questions;
+drop policy if exists exam_questions_delete on public.exam_questions;
+drop policy if exists exam_options_insert on public.exam_options;
+drop policy if exists exam_options_update on public.exam_options;
+drop policy if exists exam_options_delete on public.exam_options;
+drop policy if exists exams_insert on public.exams;
+drop policy if exists exams_update on public.exams;
+drop policy if exists exams_delete on public.exams;
+revoke all on public.exam_questions, public.exam_options from anon;
+revoke insert, update, delete on public.exams, public.exam_questions, public.exam_options from anon, authenticated;
+-- The answer key stays out of the table API even for editors (they use the RPCs).
+revoke select on public.exam_options from authenticated;
+grant select (id, question_id, option_text, order_index) on public.exam_options to authenticated;
+-- The old frontend's "insert at the end" for options.
+drop trigger if exists exam_option_default_order on public.exam_options;
+drop function if exists private.exam_option_default_order();
 
--- 2. Exam sheets are submitted through submit_exam() only (server-side validation,
---    maximum score, claim code). Guests no longer read recent guest sheets.
+-- 2. Exam sheets are written by the attempt RPCs (start_exam, save_exam_progress,
+--    finish_exam), grade_exam_submission() and the trash RPCs only. Guests no longer read
+--    recent guest sheets (they held claim codes).
 drop policy if exists exam_submissions_select_recent_guest on public.exam_submissions;
 drop policy if exists exam_submissions_insert on public.exam_submissions;
+drop policy if exists exam_submissions_update on public.exam_submissions;
 drop policy if exists exam_answers_insert on public.exam_answers;
--- Graders save points with an upsert, which needs an INSERT policy.
-create policy exam_answers_insert_graders on public.exam_answers for insert to authenticated
-  with check (private.can_grade_submission(submission_id));
-revoke insert on public.exam_submissions from anon, authenticated;
+drop policy if exists exam_answers_update on public.exam_answers;
+revoke insert, update, delete on public.exam_submissions, public.exam_answers from anon, authenticated;
 revoke all on public.exam_answers from anon;
 revoke all on public.exam_submissions from anon;
 

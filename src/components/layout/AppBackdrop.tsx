@@ -14,8 +14,8 @@ const PALETTES: Record<AlertLevelId, [string, string, string]> = {
 /**
  * The app-wide background. Colour lives at the edges (slowly breathing glows in the alert
  * level's colours, a twinkling star field) while the middle, where the data is, stays calm
- * and dark. The department star is a faint engraving in the bottom-right corner with a
- * light running along its outline, instead of a large moving shape behind the content.
+ * and dark. The department star turns slowly in the bottom-right corner, a faint engraving
+ * with a light running along its outline (never a large shape behind the content).
  * Pure CSS animations on opacity/transform; still for reduced motion.
  */
 export function AppBackdrop() {
@@ -33,7 +33,7 @@ export function AppBackdrop() {
       <div className="backdrop-stars stars-far"/>
       <div className="backdrop-grid absolute inset-0"/>
       <div className="backdrop-emblem">
-        <SheriffStar variant="watermark" className="size-full"/>
+        <SheriffStar variant="watermark" spin className="size-full"/>
       </div>
       <div className="backdrop-calm absolute inset-0"/>
       <div className="tex-noise absolute inset-0 opacity-[0.03] mix-blend-overlay"/>

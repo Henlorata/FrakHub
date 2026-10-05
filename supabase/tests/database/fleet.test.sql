@@ -22,7 +22,7 @@ create temporary table ids as select
   (select id from public.fleet_vehicles where plate = 'MEDIC-04') as free_ambulance,
   (select id from public.fleet_vehicles where plate = 'MEDIC-06') as reminder_ambulance,
   (select id from public.fleet_vehicles where plate = 'SFSD-301') as tow_truck,
-  (select id from public.fleet_vehicles where plate = 'CZT-170') as boat;
+  (select id from public.fleet_vehicles where plate = 'RZB-060') as boat;
 grant select on ids to anon, authenticated, service_role;
 
 create temporary table paths as select
@@ -158,7 +158,7 @@ select throws_ok($$select public.fleet_registration_apply((select free_ambulance
 select pg_temp.act_as((select sergeant_id from ids));
 insert into public.fleet_assignments (vehicle_id, user_id) select boat, deputy_id from ids;
 select pg_temp.act_as((select deputy_id from ids));
-select throws_ok($$select public.fleet_registration_apply((select boat from ids), current_date + 30, 'Predator', 'CZT-170')$$,
+select throws_ok($$select public.fleet_registration_apply((select boat from ids), current_date + 30, 'Predator', 'RZB-060')$$,
   '22023', null, 'vehicles without registration cannot be renewed');
 
 -- --- Registration: review with the screenshot ----------------------------------------

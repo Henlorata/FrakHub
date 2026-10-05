@@ -15,7 +15,7 @@ type Row = Record<string, unknown>;
 export interface MockOptions {
   /** Table rows served by the REST mock, keyed by table (or view) name. */
   tables?: Record<string, Row[]>;
-  /** RPC results keyed by function name. */
+  /** RPC results keyed by function name (a function receives the call's arguments). */
   rpc?: Record<string, unknown>;
   /** Credentials accepted by the password login. */
   credentials?: {email: string; password: string};
@@ -28,6 +28,8 @@ export interface RecordedRequest {
   /** Table, RPC or auth endpoint name. */
   name: string;
   url: string;
+  /** RPC arguments. */
+  body?: Record<string, unknown> | null;
 }
 
 export const TEST_USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -160,8 +162,15 @@ export class MockSupabase {
     if (path.startsWith("/auth/v1/")) return this.handleAuth(route, request, path.slice("/auth/v1/".length));
     if (path.startsWith("/rest/v1/rpc/")) {
       const name = path.slice("/rest/v1/rpc/".length);
-      this.record(request, "rpc", name);
-      return route.fulfill({json: this.rpc[name] ?? null});
+      let body: Record<string, unknown> | null;
+      try {
+        body = request.postDataJSON() as Record<string, unknown> | null;
+      } catch {
+        body = null;
+      }
+      this.requests.push({method: request.method(), kind: "rpc", name, url: request.url(), body});
+      const result = this.rpc[name];
+      return route.fulfill({json: typeof result === "function" ? (result as (args: unknown) => unknown)(body) : result ?? null});
     }
     if (path.startsWith("/rest/v1/")) return this.handleRest(route, request, path.slice("/rest/v1/".length), url);
     if (path.startsWith("/storage/v1/")) {

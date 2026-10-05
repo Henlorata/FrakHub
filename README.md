@@ -151,9 +151,14 @@ it. Before applying a migration, replay the deployed client's queries against it
 - Notifications are created by database triggers (cases, warrants, requests, exams, HR,
   ribbons, announcements), with categories, actor and de-duplication; clients cannot insert
   them. Users can mute categories (`notification_preferences`).
-- Exams are submitted through `submit_exam()` (server-side scoring, claim codes for guests);
-  editors save with `save_exam_questions()` and graders read `get_exam_answer_key()`.
-  Wrongly submitted sheets go to a trash (`exam_submission_trash/restore/purge`).
+- Exams run on the server: `start_exam()` creates the attempt with a server-side deadline
+  (question pools and shuffling per attempt, no answer key sent), `save_exam_progress()`
+  autosaves, `finish_exam()` hands in (claim codes for guests). Choice questions are scored
+  on hand-in; `grade_exam_submission()` stores points, per-question comments and the
+  decision in one call. Editors use `get_exam_editor()`/`save_exam()` (pages, pools, answer
+  guides for graders), graders `get_exam_sheet()` with an integrity timeline (time away,
+  pasted text) instead of a warning counter. The exam centre loads with one
+  `get_exam_hub()` call. Wrongly submitted sheets go to a trash (`exam_submission_trash/restore/purge`).
 - HR registry (the old sheet's columns): `member_details` (station, parking spot, joining,
   recruiter, activity), `member_bank_accounts` (the member and staff only),
   `duty_time_entries` (monthly, staff), `former_members` (filled by `/api/admin/delete-user`).
