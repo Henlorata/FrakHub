@@ -13,6 +13,7 @@ import {LEAVE_TYPE_META, REHIRE_META} from "@/lib/registry";
 import {cn, errorMessage} from "@/lib/utils";
 import {DIVISIONS, FACTION_RANKS, type FormerMember, type LeaveType, type Profile, type RehireStatus} from "@/types/supabase";
 import {daysSince, formatDate, formatSpan} from "../hr-utils";
+import {todayKey} from "@/lib/datetime";
 
 /** Former members (staff only), loaded once per visit of the tab that needs them. */
 export function useFormerMembers() {
@@ -174,7 +175,7 @@ interface FormerForm {
   rehire_note: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayKey();
 
 function FormerMemberDialog({row, viewer, onOpenChange, onSaved}: {
   row: FormerMember | "new" | null; viewer: Profile; onOpenChange: (open: boolean) => void; onSaved: (row: FormerMember) => void;

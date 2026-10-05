@@ -61,3 +61,33 @@ update public.profiles set email = null where email is not null;
 -- 6. The deployed API no longer sends duplicate approval / rank notifications.
 drop trigger if exists skip_legacy_duplicate_notification on public.notifications;
 drop function if exists private.skip_legacy_duplicate_notification();
+
+-- 7. Reimbursements are decided through decide_budget_request() only (status, comment and
+--    decider together; members keep inserting their own pending requests).
+drop policy if exists budget_requests_update_admin on public.budget_requests;
+revoke update on public.budget_requests from authenticated;
+
+-- 8. No more images embedded in rich text: the editors upload pasted images to Cloudinary
+--    before saving, so only a stale client could still store a `data:` image. Checked only when
+--    the content changes (renaming a page with old embedded images keeps working).
+create or replace function private.reject_inline_images()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  _content jsonb := to_jsonb(new) -> tg_argv[0];
+begin
+  if _content is not null and _content::text like '%"data:image/%' then
+    raise exception 'A beillesztett képeket előbb fel kell tölteni (frissítsd az oldalt, majd mentsd újra).' using errcode = '22023';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function private.reject_inline_images() from public, anon, authenticated;
+create trigger reject_inline_images before insert or update of content on public.academy_materials
+  for each row execute function private.reject_inline_images('content');
+create trigger reject_inline_images before insert or update of content on public.academy_division_materials
+  for each row execute function private.reject_inline_images('content');
+create trigger reject_inline_images before insert or update of body on public.cases
+  for each row execute function private.reject_inline_images('body');

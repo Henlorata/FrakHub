@@ -1,454 +1,142 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
-import {useAuth} from "@/context/AuthContext";
-import {Button} from "@/components/ui/button";
-import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
-import {Badge} from "@/components/ui/badge";
-import {
-  Loader2, Lock, ChevronLeft, ChevronRight, BookOpen, AlertCircle,
-  Palette, Trash2, Maximize2, Minimize2
-} from "lucide-react";
-import {AcademyEditor} from "../components/AcademyEditor";
-import {InstructorPanel} from "../components/InstructorPanel";
-import {cn, isHighCommand} from "@/lib/utils";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
-  AlertDialogTitle, AlertDialogTrigger
-} from "@/components/ui/alert-dialog";
+import {CalendarDays, ClipboardCheck, Lock, Sunrise} from "lucide-react";
 import {toast} from "sonner";
-import type {AcademyCycle, AcademyMaterial} from "@/types/academy";
-import {deleteCloudinaryAssets} from "@/lib/cloudinary";
-import {extractImageUrls} from "@/lib/blocknote-content";
-import {
-  fetchMaterialContent,
-  forgetMaterialContent,
-  MATERIAL_LIST_COLUMNS,
-  setMaterialContent,
-  useMaterialContent
-} from "../useMaterialContent";
-
-interface BasicAcademyViewProps {
-  isInstructor: boolean;
-}
+import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {useAuth} from "@/context/AuthContext";
+import {ACADEMY_DAYS, cycleDay, isDayOpen, type AcademyOverview} from "@/lib/academy";
+import {addDaysKey, formatDate} from "@/lib/datetime";
+import {cn} from "@/lib/utils";
+import {InstructorPanel} from "../components/InstructorPanel";
+import {MaterialWorkspace, type MaterialPage} from "../components/MaterialWorkspace";
+import {MATERIAL_LIST_COLUMNS} from "../useMaterialContent";
 
 const TABLE = "academy_materials";
 
-export function BasicAcademyView({isInstructor}: BasicAcademyViewProps) {
-  const {supabase, profile} = useAuth();
+/** "Az 1. nap", "A 2. nap" (the article follows the spoken number). */
+const theDay = (day: number) => `${day === 1 || day === 5 ? "Az" : "A"} ${day}. nap`;
 
-  const [activeCycle, setActiveCycle] = useState<AcademyCycle | null>(null);
-  const [materials, setMaterials] = useState<AcademyMaterial[]>([]);
-  const [loading, setLoading] = useState(true);
+interface BasicPage extends MaterialPage {
+  day_number: number;
+}
 
-  const [selectedDay, setSelectedDay] = useState(1);
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [editingMaterial, setEditingMaterial] = useState<AcademyMaterial | null>(null);
-  const [isWideMode, setIsWideMode] = useState(false);
+interface BasicAcademyViewProps {
+  overview: AcademyOverview;
+  canEdit: boolean;
+  day: number;
+  page: number;
+  onNavigate: (day: number, page: number) => void;
+  onChanged: () => void;
+}
 
-  // Új oldal ID-jának tárolása (ha épp újat hozunk létre)
-  const [newPageId, setNewPageId] = useState<string | null>(null);
+/**
+ * The five-day basic academy: each day's pages, opened day by day for trainees (Hungarian
+ * calendar, from the active cycle's start), the attendance log for instructors.
+ */
+export function BasicAcademyView({overview, canEdit, day, page, onNavigate, onChanged}: BasicAcademyViewProps) {
+  const {supabase} = useAuth();
+  const [pages, setPages] = useState<BasicPage[] | null>(null);
+  const [tab, setTab] = useState<"material" | "log">("material");
+  const trainee = overview.viewer.trainee;
+  const cycle = overview.cycle;
+  const today = cycleDay(cycle?.start_date, overview.today);
 
-  const canEditContent = useMemo(() => {
-    if (!profile) return false;
-    if (profile.faction_rank === 'Deputy Sheriff Trainee') return false;
-    if (profile.is_bureau_manager) return true;
-    return isHighCommand(profile);
-  }, [profile]);
-
-  const isTrainee = useMemo(() => {
-    if (!profile) return true;
-    return profile.faction_rank === 'Deputy Sheriff Trainee';
-  }, [profile]);
-
-  // Page list without content; each page's document is loaded when it is opened.
-  const fetchData = useCallback(async () => {
-    const [cycleResult, materialResult] = await Promise.all([
-      supabase.from('academy_cycles').select('*').eq('status', 'active').maybeSingle(),
-      supabase.from(TABLE).select(MATERIAL_LIST_COLUMNS[TABLE]).eq('category', 'basic').order('page_order', {ascending: true}),
-    ]);
-    setActiveCycle((cycleResult.data ?? null) as AcademyCycle | null);
-    if (materialResult.data) setMaterials(materialResult.data as unknown as AcademyMaterial[]);
-    setLoading(false);
+  const load = useCallback(async () => {
+    const {data, error} = await supabase.from(TABLE).select(MATERIAL_LIST_COLUMNS[TABLE]).eq("category", "basic")
+      .order("day_number").order("page_order");
+    if (error) {
+      toast.error("Az alapkiképzés betöltése nem sikerült.");
+      setPages([]);
+      return;
+    }
+    setPages((data ?? []) as unknown as BasicPage[]);
   }, [supabase]);
 
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+    void load();
+  }, [load]);
 
-  const dayMaterials = materials.filter(m => m.day_number === selectedDay);
-  const currentMaterial = dayMaterials[currentPageIndex];
-  const {content: currentContent, loading: contentLoading} = useMaterialContent(TABLE, currentMaterial?.id);
-  const {content: editingContent, loading: editingContentLoading} = useMaterialContent(TABLE, editingMaterial?.id);
-
-  // Editor megnyitása új oldalhoz
-  const handleOpenNewPageEditor = () => {
-    setEditingMaterial(null);
-    // Generálunk egy ID-t előre, hogy a képfeltöltés mappája már létezzen
-    setNewPageId(crypto.randomUUID());
-    setIsEditorOpen(true);
-  };
-
-  const isDayLocked = (day: number) => {
-    if (!isTrainee) return false;
-    if (!activeCycle) return true;
-
-    const start = new Date(activeCycle.start_date);
-    const today = new Date();
-
-    const unlockDate = new Date(start);
-    unlockDate.setDate(start.getDate() + (day - 1));
-    unlockDate.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-
-    return today < unlockDate;
-  };
-
-  const handleSaveMaterial = async (content: unknown) => {
-    if (editingMaterial) {
-      // Meglévő szerkesztése
-      const {error} = await supabase.from(TABLE).update({
-        content,
-        updated_at: new Date().toISOString()
-      }).eq('id', editingMaterial.id);
-      if (error) throw error;
-      setMaterialContent(TABLE, editingMaterial.id, content);
-    } else if (newPageId) {
-      // Új oldal létrehozása (a generált ID-t használjuk)
-      const nextPageOrder = materials.filter(m => m.day_number === selectedDay).length + 1;
-      const {error} = await supabase.from(TABLE).insert({
-        id: newPageId, // Itt használjuk fel az előre generált ID-t
-        title: `Nap ${selectedDay} - Oldal ${nextPageOrder}`,
-        day_number: selectedDay,
-        page_order: nextPageOrder,
-        category: 'basic',
-        content
-      });
-      if (error) throw error;
-      setMaterialContent(TABLE, newPageId, content);
-    }
-    await fetchData();
-    setIsEditorOpen(false);
-    setEditingMaterial(null);
-    setNewPageId(null);
-  };
-
-  const handleDeletePage = async () => {
-    if (!currentMaterial) return;
-
-    const toastId = toast.loading("Oldal törlése...");
-
-    try {
-      // 1. The page's images (content may not be loaded yet when deleting).
-      const imagesToDelete = extractImageUrls(await fetchMaterialContent(TABLE, currentMaterial.id));
-
-      // 2. Adatbázis törlés
-      const {error: deleteError} = await supabase.from(TABLE).delete().eq('id', currentMaterial.id);
-      if (deleteError) throw deleteError;
-      forgetMaterialContent(TABLE, currentMaterial.id);
-      void deleteCloudinaryAssets(imagesToDelete);
-
-      // 3. Újraszámozás és címfrissítés (párhuzamosan)
-      const remaining = dayMaterials.filter(m => m.id !== currentMaterial.id);
-      await Promise.all(remaining.map((material, i) => supabase.from(TABLE)
-        .update({
-          page_order: i + 1,
-          title: `Nap ${selectedDay} - Oldal ${i + 1}`
-        })
-        .eq('id', material.id)));
-
-      toast.success("Oldal törölve.", {id: toastId});
-      await fetchData();
-      setCurrentPageIndex(p => Math.max(0, p - 1));
-
-    } catch (error) {
-      console.error(error);
-      toast.error("Hiba történt.", {id: toastId});
-    }
-  };
-
-  const handleThemeChange = async (newTheme: string) => {
-    if (!currentMaterial) return;
-    const previous = materials;
-    setMaterials(materials.map(m => m.id === currentMaterial.id ? {...m, theme: newTheme} : m));
-    const {error} = await supabase.from(TABLE).update({theme: newTheme}).eq('id', currentMaterial.id);
-    if (error) {
-      setMaterials(previous);
-      toast.error("Nem sikerült menteni a témát.");
-    } else {
-      toast.success("Téma módosítva");
-    }
-  };
-
-  if (loading) return <div className="flex h-full items-center justify-center"><Loader2
-    className="animate-spin text-sky-500 w-8 h-8"/></div>;
+  const open = (target: number) => !trainee || isDayOpen(target, cycle?.start_date, overview.today);
+  const dayPages = useMemo(() => (pages ?? []).filter((item) => item.day_number === day), [pages, day]);
 
   return (
-    <div className="h-full flex flex-col">
-      {/* TOP BAR */}
-      <div className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center px-6 justify-between shrink-0">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          {[1, 2, 3, 4, 5].map(day => {
-            const locked = isDayLocked(day);
+    <Tabs value={tab} onValueChange={(value) => setTab(value as "material" | "log")} className="space-y-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Napok">
+          {ACADEMY_DAYS.map((item) => {
+            const available = open(item);
+            const count = (pages ?? []).filter((entry) => entry.day_number === item).length;
             return (
-              <button
-                key={day}
-                onClick={() => {
-                  if (!locked) {
-                    setSelectedDay(day);
-                    setCurrentPageIndex(0);
-                    setIsEditorOpen(false);
-                  }
-                }}
-                disabled={locked}
-                className={cn(
-                  "relative px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all border",
-                  selectedDay === day
-                    ? "bg-sky-600 border-sky-500 text-white shadow-lg shadow-sky-900/20"
-                    : locked
-                      ? "bg-transparent border-transparent text-slate-600 cursor-not-allowed"
-                      : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-600"
-                )}
-              >
-                            <span className="flex items-center gap-2">
-                                {day}. Nap
-                              {locked && <Lock className="w-3 h-3"/>}
-                            </span>
+              <button key={item} type="button" disabled={!available} onClick={() => onNavigate(item, 0)} aria-pressed={day === item}
+                      className={cn("relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium ring-1 transition-all",
+                        day === item ? "bg-cyan-500/15 text-white ring-cyan-400/50 shadow-[0_0_20px_-6px] shadow-cyan-400/60"
+                          : available ? "text-slate-300 ring-white/10 hover:bg-white/[0.04]" : "cursor-not-allowed text-slate-600 ring-white/5")}>
+                {!available && <Lock className="size-3.5"/>}
+                {item}. nap
+                <span className="text-[11px] text-slate-500 tabular-nums">{count}</span>
+                {today === item && <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0a1120]" title="Ma"/>}
               </button>
-            )
+            );
           })}
         </div>
-
-        {activeCycle ? (
-          <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 font-mono hidden sm:inline">
-                        CIKLUS: <span className="text-white">{activeCycle.start_date}</span>
-                    </span>
-            <Badge variant="outline"
-                   className="border-green-500 text-green-500 bg-green-500/10 text-[10px]">LIVE</Badge>
-          </div>
-        ) : (
-          <Badge variant="outline" className="border-slate-700 text-slate-500 bg-slate-800 text-[10px]">INAKTÍV</Badge>
+        {canEdit && (
+          <TabsList className="w-fit lg:ml-auto">
+            <TabsTrigger value="material" className="h-8 px-3"><CalendarDays/> Tananyag</TabsTrigger>
+            <TabsTrigger value="log" className="h-8 px-3"><ClipboardCheck/> Napló</TabsTrigger>
+          </TabsList>
         )}
       </div>
 
-      <div className="flex-1 overflow-hidden relative">
-        <Tabs defaultValue="content" className="h-full flex flex-col">
-          {isInstructor && (
-            <div className="absolute top-4 right-6 z-50">
-              <TabsList className="bg-slate-900 border border-slate-800 shadow-xl">
-                <TabsTrigger value="content" className="text-xs">Tananyag</TabsTrigger>
-                <TabsTrigger value="manage" className="text-xs">Napló & Kezelés</TabsTrigger>
-              </TabsList>
-            </div>
-          )}
-
-          <TabsContent value="content" className="h-full m-0 p-0">
-            <div className="h-full overflow-y-auto custom-scrollbar p-6 md:p-8 lg:p-12 scroll-smooth">
-              <div
-                className={cn("mx-auto min-h-full flex flex-col transition-all duration-300", isWideMode ? "max-w-full" : "max-w-4xl")}>
-
-                {isDayLocked(selectedDay) ? (
-                  <div
-                    className="flex-1 flex flex-col items-center justify-center text-center p-8 border border-dashed border-slate-800 rounded-2xl bg-slate-900/20">
-                    <div
-                      className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center mb-6 shadow-2xl border border-slate-800">
-                      <Lock className="w-8 h-8 text-slate-600"/>
-                    </div>
-                    <h2 className="text-2xl font-bold text-white mb-2">Tananyag Zárolva</h2>
-                    <p className="text-slate-400 max-w-md">
-                      Ez a nap még nem elérhető a jelenlegi akadémiai ciklusban.
+      <TabsContent value="material" className="mt-0">
+        {pages === null ? (
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_minmax(0,1fr)]"><div className="skeleton h-72"/><div className="skeleton h-96"/></div>
+        ) : !open(day) ? (
+          <div className="panel">
+            <EmptyState icon={Lock} title={`${theDay(day)} tananyaga még zárva van.`}
+                        description={cycle ? `Megnyílik: ${formatDate(addDaysKey(cycle.start_date, day - 1))}` : "Jelenleg nincs aktív akadémiai ciklus."}/>
+          </div>
+        ) : (
+          <MaterialWorkspace
+            table={TABLE}
+            pages={dayPages}
+            onPagesChange={(next) => setPages((current) => [...(current ?? []).filter((item) => item.day_number !== day),
+              ...next.map((item) => ({...item, day_number: day}))].sort((a, b) => a.day_number - b.day_number || a.page_order - b.page_order))}
+            index={page}
+            onIndexChange={(next) => onNavigate(day, next)}
+            canEdit={canEdit}
+            emptyTitle={`${theDay(day)}hoz még nincs tananyag.`}
+            aside={(
+              <div className="panel p-4">
+                <div className="flex items-center gap-3">
+                  <div className="grid size-10 place-items-center rounded-xl bg-cyan-500/10 text-cyan-300 ring-1 ring-cyan-500/25"><Sunrise className="size-5"/></div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-white">{day}. nap</p>
+                    <p className="text-xs text-slate-400">
+                      {cycle ? <>Ciklus: {formatDate(cycle.start_date)}{today >= 1 && today <= 5 ? ` · ma: ${today}. nap` : today > 5 ? " · véget ért" : " · még nem indult"}</>
+                        : "Nincs aktív ciklus"}
                     </p>
                   </div>
-                ) : isEditorOpen ? (
-                  <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <BookOpen className="w-5 h-5 text-sky-500"/>
-                        {editingMaterial ? "Tananyag Szerkesztése" : "Új Oldal Létrehozása"}
-                      </h2>
-                      <Button variant="ghost" onClick={() => setIsEditorOpen(false)}>Mégse</Button>
-                    </div>
-                    <div className="flex-1 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
-                      {editingMaterial && editingContentLoading ? (
-                        <div className="flex h-64 items-center justify-center"><Loader2
-                          className="animate-spin text-sky-500 w-8 h-8"/></div>
-                      ) : (
-                      <AcademyEditor
-                        initialContent={editingMaterial ? editingContent : undefined}
-                        onSave={handleSaveMaterial}
-                        theme={editingMaterial?.theme || 'default'}
-                        // HA szerkesztünk: a meglevő ID. HA új: a generált ID.
-                        pageId={editingMaterial?.id || newPageId || ""}
-                      />
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex-1 flex flex-col">
-                    {(!currentMaterial && dayMaterials.length === 0) ? (
-                      <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
-                        <AlertCircle className="w-12 h-12 mb-4 opacity-20"/>
-                        <p>Nincs feltöltött tananyag erre a napra.</p>
-                        {canEditContent && (
-                          <Button onClick={handleOpenNewPageEditor} className="mt-4 bg-sky-600 text-white">
-                            Tartalom létrehozása
-                          </Button>
-                        )}
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/50 pt-2">
-                          <div>
-                            <Badge className="mb-2 bg-sky-500/10 text-sky-400 border-sky-500/20 hover:bg-sky-500/20">
-                              {selectedDay}. NAP / {currentPageIndex + 1}. OLDAL
-                            </Badge>
-                            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight line-clamp-1">
-                              {currentMaterial?.title || "Cím nélküli fejezet"}
-                            </h1>
-                          </div>
-                          <div className="flex gap-2 items-center">
-
-                            <Button variant="ghost" size="icon" onClick={() => setIsWideMode(!isWideMode)}
-                                    className="text-slate-400 hover:text-white mr-2">
-                              {isWideMode ? <Minimize2 className="w-4 h-4"/> : <Maximize2 className="w-4 h-4"/>}
-                            </Button>
-
-                            {canEditContent && currentMaterial && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="outline" size="sm"
-                                          className="border-slate-800 h-9 gap-2 bg-slate-900/50 mr-2 hidden sm:flex">
-                                    <Palette className="w-4 h-4"/>
-                                    <span className="hidden lg:inline">Kinézet</span>
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent className="bg-slate-900 border-slate-800 text-white w-56">
-                                  <DropdownMenuItem
-                                    onClick={() => handleThemeChange('default')}>Alapértelmezett</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleThemeChange('paper')}>Papír</DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleThemeChange('classic')}>Hivatalos</DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleThemeChange('terminal')}>Terminál</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleThemeChange('blue')}>Rendőrségi
-                                    (Kék)</DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-
-                            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800">
-                              <Button variant="ghost" size="icon"
-                                      onClick={() => setCurrentPageIndex(p => Math.max(0, p - 1))}
-                                      disabled={currentPageIndex === 0} className="h-7 w-7">
-                                <ChevronLeft className="w-4 h-4"/>
-                              </Button>
-                              <Button variant="ghost" size="icon"
-                                      onClick={() => setCurrentPageIndex(p => Math.min(dayMaterials.length - 1, p + 1))}
-                                      disabled={currentPageIndex >= dayMaterials.length - 1} className="h-7 w-7">
-                                <ChevronRight className="w-4 h-4"/>
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div
-                          className="flex-1 rounded-2xl overflow-hidden shadow-2xl relative group min-h-[600px] border border-slate-800">
-                          {canEditContent && (
-                            <div className="absolute top-0 right-0 p-4 opacity-100 z-20 flex gap-2">
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="destructive" size="sm"
-                                          className="h-9 w-9 p-0 bg-red-500/10 text-red-500 hover:bg-red-600 hover:text-white border border-red-500/20 hover:border-red-500 transition-all opacity-0 group-hover:opacity-100">
-                                    <Trash2 className="w-4 h-4"/>
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-red-950 border-red-900 text-white">
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Biztosan törlöd ezt az oldalt?</AlertDialogTitle>
-                                    <AlertDialogDescription className="text-red-200">
-                                      Ez a művelet nem vonható vissza. Az oldal tartalma végleg elvész.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel
-                                      className="bg-transparent border-red-900 text-white hover:bg-red-900/50">Mégse</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleDeletePage}
-                                                       className="bg-red-600 hover:bg-red-700 text-white">Törlés</AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-
-                              <Button
-                                className="bg-sky-600 hover:bg-sky-500 text-white shadow-lg h-9 px-4 text-xs uppercase font-bold tracking-wider opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => {
-                                  setEditingMaterial(currentMaterial);
-                                  setIsEditorOpen(true);
-                                }}>
-                                Szerkesztés
-                              </Button>
-                            </div>
-                          )}
-
-                          {contentLoading ? (
-                            <div className="flex h-64 items-center justify-center"><Loader2
-                              className="animate-spin text-sky-500 w-8 h-8"/></div>
-                          ) : (
-                            <AcademyEditor
-                              initialContent={currentContent}
-                              onSave={async () => {
-                              }}
-                              readOnly={true}
-                              theme={currentMaterial?.theme || 'default'}
-                              pageId={currentMaterial?.id ?? ""}
-                            />
-                          )}
-                        </div>
-
-                        <div className="mt-8 flex flex-col items-center gap-4 pb-12">
-                          <div className="flex gap-4">
-                            <Button variant="outline" onClick={() => setCurrentPageIndex(p => Math.max(0, p - 1))}
-                                    disabled={currentPageIndex === 0}
-                                    className="w-32 justify-between border-slate-700 bg-slate-900 hover:bg-slate-800 hover:text-white h-10">
-                              <ChevronLeft className="w-4 h-4"/> Előző
-                            </Button>
-                            <div className="text-xs font-mono text-slate-500 flex items-center">
-                              {currentPageIndex + 1} / {dayMaterials.length}
-                            </div>
-                            <Button variant="outline"
-                                    onClick={() => setCurrentPageIndex(p => Math.min(dayMaterials.length - 1, p + 1))}
-                                    disabled={currentPageIndex >= dayMaterials.length - 1}
-                                    className="w-32 justify-between border-slate-700 bg-slate-900 hover:bg-slate-800 hover:text-white h-10">
-                              Következő <ChevronRight className="w-4 h-4"/>
-                            </Button>
-                          </div>
-
-                          {canEditContent && (
-                            <Button variant="ghost"
-                                    className="text-slate-500 hover:text-white text-xs border border-dashed border-slate-800 hover:border-slate-500 p-2 h-auto"
-                                    onClick={handleOpenNewPageEditor}>
-                              + Új oldal beszúrása a nap végére
-                            </Button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
+                </div>
               </div>
-            </div>
-          </TabsContent>
+            )}
+            onCreatePage={async () => {
+              const {data, error} = await supabase.from(TABLE).insert({
+                title: `${day}. nap – ${dayPages.length + 1}. oldal`, day_number: day, page_order: dayPages.length + 1, category: "basic", content: [],
+                theme: dayPages[dayPages.length - 1]?.theme ?? "paper",
+              }).select(MATERIAL_LIST_COLUMNS[TABLE]).single();
+              if (error) throw error;
+              onChanged();
+              return data as unknown as BasicPage;
+            }}
+          />
+        )}
+      </TabsContent>
 
-          <TabsContent value="manage" className="h-full m-0 p-6 overflow-y-auto">
-            <div className="max-w-5xl mx-auto">
-              <InstructorPanel activeCycle={activeCycle} onRefresh={fetchData}/>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+      {canEdit && (
+        <TabsContent value="log" className="mt-0">
+          {tab === "log" && <InstructorPanel activeCycle={cycle} today={overview.today} onRefresh={onChanged}/>}
+        </TabsContent>
+      )}
+    </Tabs>
   );
 }

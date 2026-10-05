@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
 import {useNavigate} from "react-router";
 import {toast} from "sonner";
-import {format, formatDistanceToNowStrict} from "date-fns";
+import {formatDistanceToNowStrict} from "date-fns";
 import {hu} from "date-fns/locale";
 import {
   AlertOctagon, AlertTriangle, ArrowRight, Banknote, CalendarOff, Car, CheckCircle2, ChevronDown, ClipboardCheck,
@@ -26,6 +26,7 @@ import {TONE_CLASSES, type Tone} from "@/components/layout/PageHeader";
 import {ALERT_LEVELS} from "@/lib/alert-levels";
 import {canViewCaseList, cn, errorMessage, isStaff, STAFF_CATEGORY_LABELS, type StaffCategory} from "@/lib/utils";
 import {daysSince, formatSpan, rankPillClass} from "@/pages/hr/hr-utils";
+import {formatLongDate, formatTime, hungarianHour, hungarianParts} from "@/lib/datetime";
 
 interface DashboardSummary {
   unread_notifications: number;
@@ -206,7 +207,7 @@ function Hero({summary, openTasks}: {summary: DashboardSummary | null; openTasks
   const navigate = useNavigate();
   const now = useClock();
   const greeting = useMemo(() => {
-    const hour = now.getHours();
+    const hour = hungarianHour(now);
     return hour < 6 ? "Jó éjszakát" : hour < 10 ? "Jó reggelt" : hour < 18 ? "Szép napot" : "Jó estét";
   }, [now]);
   if (!profile) return null;
@@ -234,10 +235,10 @@ function Hero({summary, openTasks}: {summary: DashboardSummary | null; openTasks
 
           <div className="mt-6 flex flex-wrap items-end gap-x-8 gap-y-4">
             <div>
-              <div className="font-mono text-3xl font-semibold tabular-nums tracking-tight text-white">{format(now, "HH:mm")}
-                <span className="text-lg text-slate-500">:{format(now, "ss")}</span>
+              <div className="font-mono text-3xl font-semibold tabular-nums tracking-tight text-white">{formatTime(now)}
+                <span className="text-lg text-slate-500">:{hungarianParts(now).second}</span>
               </div>
-              <div className="text-xs capitalize text-slate-400">{format(now, "yyyy. MMMM d., EEEE", {locale: hu})}</div>
+              <div className="text-xs capitalize text-slate-400">{formatLongDate(now)}</div>
             </div>
             <div className={cn("flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium ring-1", level.badge)}>
               <span className={cn("relative flex size-2.5", level.text)}>
@@ -342,11 +343,11 @@ function ModuleGrid() {
   const modules = [
     {label: "Nyomozó Iroda", hint: "Akták, körözések", icon: Fingerprint, to: "/mcb", tone: "blue" as Tone, show: canViewCaseList(profile)},
     {label: "Logisztika", hint: "Járművek, flotta", icon: Truck, to: "/logistics", tone: "orange" as Tone, show: true},
-    {label: "Pénzügy", hint: "Költségtérítés", icon: Banknote, to: "/finance", tone: "emerald" as Tone, show: true},
+    {label: "Pénzügy", hint: "Költségtérítés, fizetés", icon: Banknote, to: "/finance", tone: "emerald" as Tone, show: true},
     {label: "Vizsgaközpont", hint: "Vizsgák, javítás", icon: ScrollText, to: "/exams", tone: "violet" as Tone, show: true},
     {label: "Akadémia", hint: "Tananyagok", icon: GraduationCap, to: "/academy", tone: "cyan" as Tone, show: true},
     {label: "Kalkulátor", hint: "Büntető törvénykönyv", icon: Gavel, to: "/calculator", tone: "red" as Tone, show: true},
-    {label: "Jelentések", hint: "Jelentésgenerátor", icon: FileText, to: "/reports", tone: "slate" as Tone, show: true},
+    {label: "Jelentések", hint: "Fórum-jelentés, napló", icon: FileText, to: "/reports", tone: "slate" as Tone, show: true},
     {label: "Személyügy", hint: "Állomány, duty idő", icon: Users, to: "/hr", tone: "gold" as Tone, show: true},
   ].filter((module) => module.show);
 

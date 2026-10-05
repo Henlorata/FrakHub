@@ -19,6 +19,7 @@ import type {AttemptPayload, AttemptStateReply, SheetQuestion} from "@/types/exa
 import {ExamTimer} from "./ExamTimer";
 import {QuestionView} from "./QuestionView";
 import {useIntegrityMonitor} from "./useIntegrityMonitor";
+import {formatTime} from "@/lib/datetime";
 
 /** A save waits this long after the last change, and never longer than MAX_WAIT after the first. */
 const SAVE_DELAY = 4000;
@@ -424,7 +425,7 @@ export function ExamRunner({payload, clockOffset, secret, accessToken, owner, ca
 }
 
 function SaveIndicator({status, savedAt}: {status: SaveStatus; savedAt: number | null}) {
-  const time = savedAt ? new Date(savedAt).toLocaleTimeString("hu-HU", {hour: "2-digit", minute: "2-digit"}) : null;
+  const time = savedAt ? formatTime(savedAt) : null;
   const content = {
     idle: {icon: Cloud, text: "Változás…", tone: "text-slate-400"},
     saving: {icon: Loader2, text: "Mentés…", tone: "text-slate-300"},

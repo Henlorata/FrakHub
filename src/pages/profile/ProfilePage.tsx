@@ -26,7 +26,6 @@ import {
   ACTIVITY_META, formatAccountNumber, formatDuty, isValidAccountNumber, JOIN_TYPE_LABELS, monthStart, recentMonths,
 } from "@/lib/registry";
 import {cn, errorMessage} from "@/lib/utils";
-import {subMonths} from "date-fns";
 import type {
   DutyTimeEntry, FleetVehicle, HrRecord, HrRegistry, MemberDetails, Profile, RegistryVehicle, Ribbon, VehicleWarning,
 } from "@/types/supabase";
@@ -35,6 +34,7 @@ import {StrikeDots} from "@/components/hr/StrikeDots";
 import {RegistrationDialog} from "@/components/fleet/RegistrationDialog";
 import {LicensePlate} from "@/components/fleet/LicensePlate";
 import {fetchFleetVehicle} from "@/lib/fleet-store";
+import {addMonths, todayKey} from "@/lib/datetime";
 
 interface AwardedRibbon extends Ribbon {
   awarded_at: string;
@@ -59,7 +59,7 @@ const HERO_THEMES = {
   TSB: {glow: "rgb(16 185 129 / 0.3)", glow2: "rgb(234 179 8 / 0.22)", ring: "from-emerald-300 via-emerald-500 to-yellow-400"},
 } as const;
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayKey();
 
 export function ProfilePage() {
   const {profile, supabase} = useAuth();
@@ -83,7 +83,7 @@ export function ProfilePage() {
   // Keyed on the id, not the profile object: Realtime profile updates must not refetch.
   const loadData = React.useCallback(async () => {
     if (!profileId) return;
-    const since = monthStart(subMonths(new Date(), 11));
+    const since = addMonths(monthStart(), -11);
     // Four requests: the registry RPC bundles details, duty time, vehicles, warnings and bank account.
     const [closed, ribbonResult, recordResult, registryResult] = await Promise.all([
       supabase.from("cases").select("id", {count: "exact", head: true}).eq("owner_id", profileId).eq("status", "closed"),

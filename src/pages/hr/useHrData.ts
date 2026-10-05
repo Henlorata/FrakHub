@@ -9,6 +9,7 @@ import {
   PROFILE_COLUMNS, type ActiveLeave, type DutyTimeEntry, type HrRecord, type HrRegistry, type MemberDetails, type Profile,
   type RegistryVehicle,
 } from "@/types/supabase";
+import {todayKey} from "@/lib/datetime";
 
 export interface AwardSummary {
   id: string;
@@ -56,7 +57,7 @@ export interface MemberChanges {
   restore_promotion_date?: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayKey();
 
 /**
  * Everything the HR page needs, in parallel: the roster, awards, current leave, and for

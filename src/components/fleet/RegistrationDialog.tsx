@@ -20,6 +20,7 @@ import {patchFleetVehicle} from "@/lib/fleet-store";
 import {cn, errorMessage, isStaff} from "@/lib/utils";
 import {formatDate} from "@/pages/hr/hr-utils";
 import type {FleetVehicle, RegistrationRequest} from "@/types/supabase";
+import {todayKey} from "@/lib/datetime";
 
 type Step =
   | {kind: "pick"}
@@ -37,10 +38,7 @@ const STAGES: {stage: ScanStage; label: string}[] = [
 ];
 
 const MAX_FILE = 15 * 1024 * 1024;
-const today = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-};
+const today = () => todayKey();
 const dotted = (iso: string | null) => (iso ? `${iso.replaceAll("-", ".")}.` : "–");
 /** "2026.11.20-ig" (a suffix replaces the date's closing dot). */
 const until = (iso: string | null) => (iso ? `${iso.replaceAll("-", ".")}-ig` : "–");

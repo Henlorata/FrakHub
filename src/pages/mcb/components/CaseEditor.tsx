@@ -16,6 +16,8 @@ import {cn} from "@/lib/utils";
 import {useSuspects} from "@/context/SuspectCacheContext";
 import {useProfileDirectory} from "@/lib/profile-directory";
 import {toInitialContent} from "@/lib/blocknote-content";
+import {uploadToCloudinary} from "@/lib/cloudinary";
+import {uploadInlineImages} from "@/lib/inline-images";
 
 interface CaseEditorProps {
   caseId: string;
@@ -141,7 +143,12 @@ export function CaseEditor({
   // Officers already mentioned in the saved version: only new mentions are notified.
   const notifiedMentionsRef = useRef<Set<string> | null>(null);
 
-  const editor = useCreateBlockNote({initialContent: safeContent, schema: schema});
+  const editor = useCreateBlockNote({
+    initialContent: safeContent,
+    schema: schema,
+    // Pasted or dropped images go to Cloudinary instead of into the case JSON.
+    uploadFile: (file: File) => uploadToCloudinary(file, "evidence"),
+  });
 
   const getCustomSlashMenuItems = useCallback((editor: any) => [
     {
@@ -261,8 +268,10 @@ export function CaseEditor({
   const handleSave = async () => {
     if (!hasChanges) return;
     setIsSaving(true);
-    const content = editor.document;
     try {
+      // Images embedded by pasting (data: URLs) are uploaded first, so the case stays small.
+      const {content, uploaded} = await uploadInlineImages(editor.document, "evidence");
+      if (uploaded > 0) editor.replaceBlocks(editor.document, content);
       const {error} = await supabase.from('cases').update({
         body: content,
         updated_at: new Date().toISOString()

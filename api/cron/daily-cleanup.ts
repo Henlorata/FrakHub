@@ -4,7 +4,6 @@ import {getBearerToken, handle, HttpError, json} from "../_lib/http.js";
 import {getSupabaseAdmin} from "../_lib/supabase.js";
 
 const RETENTION_DAYS = {closedRequests: 40, actionLogs: 1, readNotifications: 30, notifications: 120};
-const BATCH_LIMIT = 500;
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
@@ -13,19 +12,6 @@ const sameSecret = (provided: string, expected: string) => {
   const digest = (value: string) => createHash("sha256").update(value).digest();
   return timingSafeEqual(digest(provided), digest(expected));
 };
-
-/** `proof_image_path` holds an array, a JSON-encoded array or (legacy) a single path. */
-function toStoragePaths(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.filter((path): path is string => typeof path === "string" && path.length > 0);
-  if (typeof raw !== "string" || raw.length === 0) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (Array.isArray(parsed)) return toStoragePaths(parsed);
-  } catch {
-    // Not JSON: a plain storage path.
-  }
-  return [raw];
-}
 
 /**
  * Daily maintenance, invoked by Vercel Cron (see vercel.json) with
@@ -43,7 +29,7 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
 
   const supabase = getSupabaseAdmin();
   const results = {
-    financeDeleted: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0,
+    financeProofsCleared: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0,
     registrationReminders: 0, registrationFilesDeleted: 0, registrationReviewsExpired: 0, examAttemptsClosed: 0, errors: [] as string[],
   };
   const fail = (step: string, error: unknown) => {
@@ -52,33 +38,20 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
     results.errors.push(`${step}: ${message}`);
   };
 
-  // 1. Closed budget requests older than the retention period, with their proof images.
+  // 1. Reimbursement proofs: images of requests decided more than 40 days ago (the request
+  //    stays in the finance history) and uploads no request refers to. The database marks the
+  //    requests first; a file that fails to delete today is found again tomorrow as unreferenced.
   try {
-    const {data: oldRequests, error} = await supabase
-      .from("budget_requests")
-      .select("id, proof_image_path")
-      .neq("status", "pending")
-      .lt("created_at", daysAgo(RETENTION_DAYS.closedRequests))
-      .limit(BATCH_LIMIT);
+    const {data, error} = await supabase.rpc("finance_proof_cleanup");
     if (error) throw error;
-
-    if (oldRequests && oldRequests.length > 0) {
-      const paths = oldRequests.flatMap((row) => toStoragePaths(row.proof_image_path));
-      for (let i = 0; i < paths.length; i += 100) {
-        const {error: removeError} = await supabase.storage.from("finance_proofs").remove(paths.slice(i, i + 100));
-        // Keep the rows when the files could not be removed, so they are retried tomorrow
-        // instead of leaving orphaned files behind.
-        if (removeError) throw removeError;
-      }
-      results.financeFilesDeleted = paths.length;
-
-      const {error: deleteError, count} = await supabase
-        .from("budget_requests")
-        .delete({count: "exact"})
-        .in("id", oldRequests.map((row) => row.id));
-      if (deleteError) throw deleteError;
-      results.financeDeleted = count ?? 0;
+    const cleanup = (data ?? {}) as {remove?: string[]; cleared?: number};
+    const paths = cleanup.remove ?? [];
+    for (let i = 0; i < paths.length; i += 100) {
+      const {error: removeError} = await supabase.storage.from("finance_proofs").remove(paths.slice(i, i + 100));
+      if (removeError) throw removeError;
     }
+    results.financeFilesDeleted = paths.length;
+    results.financeProofsCleared = cleanup.cleared ?? 0;
   } catch (error) {
     fail("finance", error);
   }

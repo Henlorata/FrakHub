@@ -1,10 +1,19 @@
 import {expect, test, type Page} from "@playwright/test";
-import {login, mockSupabase, TEST_USER_ID} from "./support/mock-supabase";
+import {login, mockSupabase, TEST_USER_ID, testProfile} from "./support/mock-supabase";
 
 const CASE_ID = "22222222-2222-4222-8222-222222222222";
 const EVIDENCE_ID = "33333333-3333-4333-8333-333333333333";
 const PAGE_ID = "44444444-4444-4444-8444-444444444444";
 const NOW = "2026-10-01T12:00:00Z";
+// A 2x2 PNG, as BlockNote stores an image pasted from another document.
+const PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9QzwAEjDAGNzIwAAAZ8QH/0VwBYwAAAABJRU5ErkJggg==";
+const ACADEMY_OVERVIEW = {
+  viewer: {instructor: false, trainee: false}, today: "2026-10-02",
+  cycle: {id: "cycle-1", start_date: "2026-10-01", status: "active"},
+  basic: [{day: 1, pages: 1}, {day: 2, pages: 0}, {day: 3, pages: 0}, {day: 4, pages: 0}, {day: 5, pages: 0}],
+  courses: [{id: "qual_AB", title: "AB képesítés", description: null, category: "qualification", is_open: true, required_rank: null,
+    linear_progression: false, pages: 1, completed: 0, readable: true, rank_ok: true}],
+};
 
 const paragraph = (id: string, content: unknown[]) => ({
   id,
@@ -101,7 +110,6 @@ test.describe("rich text editors (BlockNote)", () => {
     const errors = collectPageErrors(page);
     const mock = await mockSupabase(page, {
       tables: {
-        academy_cycles: [{id: "cycle-1", start_date: "2026-01-01", status: "active", created_at: NOW}],
         academy_materials: [{
           id: PAGE_ID,
           title: "Nap 1 - Oldal 1",
@@ -113,16 +121,57 @@ test.describe("rich text editors (BlockNote)", () => {
           content: [paragraph("a1", [{type: "text", text: "Üdv az akadémián!", styles: {}}])],
         }],
       },
+      rpc: {get_academy_overview: ACADEMY_OVERVIEW},
     });
     await login(page);
     await expect(page).toHaveURL(/\/dashboard$/);
     await page.goto("/academy");
+    await page.getByRole("button", {name: /1\. nap/}).first().click();
 
     await expect(page.getByText("Üdv az akadémián!")).toBeVisible();
     // The list query leaves out the document; the content comes from a per-page query.
-    const academyQueries = mock.requests.filter((r) => r.name === "academy_materials");
-    expect(academyQueries.some((r) => new URL(r.url).searchParams.get("select") === "content")).toBe(true);
-    expect(academyQueries.every((r) => new URL(r.url).searchParams.get("select") !== "*")).toBe(true);
+    const selects = mock.requests.filter((r) => r.name === "academy_materials").map((r) => new URL(r.url).searchParams.get("select") ?? "");
+    expect(selects).toContain("content");
+    expect(selects.filter((select) => select !== "content").every((select) => !select.includes("content") && select !== "*")).toBe(true);
+    expect(mock.count("rpc", "get_academy_overview")).toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+  test("pasted (embedded) images are uploaded to Cloudinary before an academy page is saved", async ({page}) => {
+    const errors = collectPageErrors(page);
+    await mockSupabase(page, {
+      tables: {
+        profiles: [testProfile({faction_rank: "Sergeant I.", qualifications: ["TB"]})],
+        academy_division_materials: [{
+          id: PAGE_ID, course_id: "qual_AB", title: "AB bevezető", page_order: 1, theme: "default",
+          content: [paragraph("p1", [{type: "text", text: "Helikopter alapok", styles: {}}]),
+            {id: "i1", type: "image", props: {url: PIXEL, caption: "", name: "", showPreview: true, previewWidth: 200, textAlignment: "left", backgroundColor: "default"}, children: []}],
+        }],
+      },
+      rpc: {get_academy_overview: {...ACADEMY_OVERVIEW, viewer: {instructor: true, trainee: false}}},
+    });
+    let uploads = 0;
+    await page.route("https://api.cloudinary.com/**", (route) => {
+      uploads += 1;
+      return route.fulfill({json: {secure_url: "https://res.cloudinary.com/e2e-cloud/image/upload/v1/academy/pixel.webp"}});
+    });
+    const saved: unknown[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/rest/v1/academy_division_materials") && request.method() === "PATCH") saved.push(request.postDataJSON());
+    });
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/academy?course=qual_AB");
+    await expect(page.getByText("Helikopter alapok")).toBeVisible();
+    await page.getByRole("button", {name: "Szerkesztés"}).click();
+    await expect(page.getByText(/1 kép az oldalba ágyazva/)).toBeVisible();
+    await page.getByRole("button", {name: "Feltöltés most"}).click();
+
+    await expect(page.getByText(/1 beágyazott kép feltöltve/)).toBeVisible();
+    expect(uploads).toBe(1);
+    const body = JSON.stringify(saved.at(-1));
+    expect(body).toContain("https://res.cloudinary.com/e2e-cloud/image/upload/v1/academy/pixel.webp");
+    expect(body).not.toContain("data:image/");
     expect(errors).toEqual([]);
   });
 });

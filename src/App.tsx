@@ -24,7 +24,7 @@ const OnboardingPage = lazyPage(() => import("@/pages/auth/OnboardingPage"), "On
 const PublicExamPage = lazyPage(() => import("@/pages/exams/PublicExamPage"), "PublicExamPage");
 const DashboardPage = lazyPage(() => import("@/pages/dashboard/DashboardPage"), "DashboardPage");
 const NotificationsPage = lazyPage(() => import("@/pages/notifications/NotificationsPage"), "NotificationsPage");
-const ReportGeneratorPage = lazyPage(() => import("@/pages/reports/ReportGeneratorPage"), "ReportGeneratorPage");
+const ReportsPage = lazyPage(() => import("@/pages/reports/ReportsPage"), "ReportsPage");
 const HrPage = lazyPage(() => import("@/pages/hr/HrPage"), "HrPage");
 const McbLayout = lazyPage(() => import("@/layouts/McbLayout"), "McbLayout");
 const McbDashboard = lazyPage(() => import("@/pages/mcb/McbDashboard"), "McbDashboard");
@@ -36,7 +36,7 @@ const ExamEditor = lazyPage(() => import("@/pages/exams/ExamEditor"), "ExamEdito
 const ExamGradingPage = lazyPage(() => import("@/pages/exams/grading/ExamGradingPage"), "ExamGradingPage");
 const LogisticsPage = lazyPage(() => import("@/pages/logistics/LogisticsPage"), "LogisticsPage");
 const VehiclePage = lazyPage(() => import("@/pages/logistics/VehiclePage"), "VehiclePage");
-const FinancePage = lazyPage(() => import("@/pages/logistics/FinancePage"), "FinancePage");
+const FinancePage = lazyPage(() => import("@/pages/finance/FinancePage"), "FinancePage");
 const ProfilePage = lazyPage(() => import("@/pages/profile/ProfilePage"), "ProfilePage");
 const CalculatorPage = lazyPage(() => import("@/pages/calculator/CalculatorPage"), "CalculatorPage");
 const AcademyPage = lazyPage(() => import("@/pages/academy/AcademyPage"), "default");
@@ -61,7 +61,7 @@ function App() {
                     <Route path="/dashboard" element={<DashboardPage/>}/>
                     <Route path="/onboarding" element={<OnboardingPage/>}/>
                     <Route path="/notifications" element={<NotificationsPage/>}/>
-                    <Route path="/reports" element={<ReportGeneratorPage/>}/>
+                    <Route path="/reports" element={<ReportsPage/>}/>
                     <Route path="/hr" element={<HrPage/>}/>
 
                     <Route path="/mcb" element={<McbLayout/>}>

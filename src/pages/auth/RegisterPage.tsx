@@ -15,6 +15,7 @@ import {useSystemStatus} from "@/context/SystemStatusContext";
 import {useMediaQuery} from "@/hooks/use-media-query";
 import {postApi} from "@/lib/api";
 import {errorMessage, getStaffCategory} from "@/lib/utils";
+import {hungarianParts} from "@/lib/datetime";
 
 // --- KONSTANSOK ---
 const TSB_LABELS = {
@@ -53,13 +54,8 @@ const DynamicSheriffBackground = ({
   }, []);
 
   const formattedTime = React.useMemo(() => {
-    const year = time.getFullYear();
-    const month = String(time.getMonth() + 1).padStart(2, '0');
-    const day = String(time.getDate()).padStart(2, '0');
-    const hours = String(time.getHours()).padStart(2, '0');
-    const minutes = String(time.getMinutes()).padStart(2, '0');
-    const seconds = String(time.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    const {year, month, day, hour, minute, second} = hungarianParts(time);
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
   }, [time]);
 
   const getBackgroundContent = () => {

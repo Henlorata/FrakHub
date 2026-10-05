@@ -32,7 +32,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       {label: "Nyomozó Iroda", path: "/mcb", icon: Fingerprint, keywords: "mcb akta gyanúsított körözés", visible: canViewCaseList},
       {label: "Logisztika", path: "/logistics", icon: Truck, keywords: "jármű igénylés"},
-      {label: "Pénzügy", path: "/finance", icon: Banknote, keywords: "költségtérítés pénz"},
+      {label: "Pénzügy", path: "/finance", icon: Banknote, keywords: "költségtérítés pénz fizetés havi fizetés bér"},
     ],
   },
   {
@@ -46,7 +46,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Eszközök",
     items: [
       {label: "Büntető kalkulátor", path: "/calculator", icon: Calculator, keywords: "btk bírság kalkulátor"},
-      {label: "Jelentések", path: "/reports", icon: FileText, keywords: "jelentés riport"},
+      {label: "Jelentések", path: "/reports", icon: FileText, keywords: "jelentés riport fórum napló bbcode"},
     ],
   },
   {

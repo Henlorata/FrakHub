@@ -1,328 +1,251 @@
-import {useCallback, useEffect, useState} from "react";
-import {useAuth} from "@/context/AuthContext";
+import {useCallback, useEffect, useMemo, useState} from "react";
+import {toast} from "sonner";
+import {CalendarPlus, Check, ClipboardCheck, Loader2, Save, Trash2, UserPlus, Users} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
-import {Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter} from "@/components/ui/dialog";
-import {Checkbox} from "@/components/ui/checkbox";
-import {Textarea} from "@/components/ui/textarea";
-import {CalendarDays, Plus, UserPlus, Save, History} from "lucide-react";
-import {toast} from "sonner";
+import {Dialog, DialogContent, DialogDescription, DialogTitle} from "@/components/ui/dialog";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {useAuth} from "@/context/AuthContext";
+import {ACADEMY_DAYS} from "@/lib/academy";
+import {formatDate, todayKey} from "@/lib/datetime";
+import {useProfileDirectory} from "@/lib/profile-directory";
+import {cn, errorMessage} from "@/lib/utils";
+import {MemberAvatar} from "@/pages/finance/components/MemberAvatar";
 import type {AcademyCycle, AcademyStudent} from "@/types/academy";
 
-interface InstructorPanelProps {
-  activeCycle: AcademyCycle | null;
-  onRefresh: () => void;
+const STUDENT_STATUS: Record<AcademyStudent["status"], {label: string; pill: string}> = {
+  enrolled: {label: "Tanuló", pill: "bg-sky-500/10 text-sky-200 ring-sky-500/30"},
+  passed: {label: "Sikeres", pill: "bg-emerald-500/10 text-emerald-200 ring-emerald-500/30"},
+  failed: {label: "Sikertelen", pill: "bg-red-500/10 text-red-200 ring-red-500/30"},
+  dropped: {label: "Kimaradt", pill: "bg-slate-500/10 text-slate-300 ring-slate-500/30"},
+};
+
+interface LogEntry {
+  present: boolean;
+  note: string;
 }
 
-export function InstructorPanel({activeCycle: initialActiveCycle, onRefresh}: InstructorPanelProps) {
-  const {supabase} = useAuth();
-
-  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(initialActiveCycle?.id || null);
-  const [allCycles, setAllCycles] = useState<AcademyCycle[]>([]);
-
+/** Academy cycles, the trainees of a cycle and the daily attendance log (instructors). */
+export function InstructorPanel({activeCycle, today = todayKey(), onRefresh}: {activeCycle: Pick<AcademyCycle, "id" | "start_date" | "status"> | null; today?: string; onRefresh: () => void}) {
+  const {supabase, user} = useAuth();
+  const {profiles} = useProfileDirectory();
+  const [cycles, setCycles] = useState<AcademyCycle[]>([]);
+  const [cycleId, setCycleId] = useState<string | null>(activeCycle?.id ?? null);
   const [students, setStudents] = useState<AcademyStudent[]>([]);
-  const [logUpdates, setLogUpdates] = useState<Record<string, { present: boolean, note: string }>>({});
+  const [day, setDay] = useState(1);
+  const [logs, setLogs] = useState<Record<string, LogEntry>>({});
+  const [savedLogs, setSavedLogs] = useState<Record<string, LogEntry>>({});
+  const [saving, setSaving] = useState(false);
+  const [newCycle, setNewCycle] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [term, setTerm] = useState("");
 
-  const [isNewCycleOpen, setIsNewCycleOpen] = useState(false);
-  const [newDate, setNewDate] = useState("");
-  const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
-  const [availableUsers, setAvailableUsers] = useState<{id: string, full_name: string, faction_rank: string}[]>([]);
-  const [selectedUser, setSelectedUser] = useState("");
+  const loadCycles = useCallback(async () => {
+    const {data} = await supabase.from("academy_cycles").select("id, start_date, status, created_at").order("start_date", {ascending: false});
+    const list = (data ?? []) as AcademyCycle[];
+    setCycles(list);
+    setCycleId((current) => current ?? list.find((cycle) => cycle.status === "active")?.id ?? list[0]?.id ?? null);
+  }, [supabase]);
 
-  const [selectedDay, setSelectedDay] = useState(1);
-
-  // Ciklusok betöltése
   useEffect(() => {
-    let active = true;
-    supabase.from('academy_cycles')
-      .select('*')
-      .order('start_date', {ascending: false})
-      .then(({data}) => {
-        if (!active || !data) return;
-        const cycles = data as AcademyCycle[];
-        setAllCycles(cycles);
-        setSelectedCycleId(current => current ?? initialActiveCycle?.id ?? cycles[0]?.id ?? null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [supabase, initialActiveCycle]);
+    void loadCycles();
+  }, [loadCycles]);
 
-  const fetchStudentsAndLogs = useCallback(async () => {
-    if (!selectedCycleId) return;
-
-    // Students and the day's log are independent: fetched in parallel.
-    const [{data: relData, error: relError}, {data: logData}] = await Promise.all([
-      supabase.from('academy_students').select('*').eq('cycle_id', selectedCycleId),
-      supabase.from('academy_logs').select('*').eq('cycle_id', selectedCycleId).eq('day_number', selectedDay),
+  const loadCycle = useCallback(async () => {
+    if (!cycleId) return;
+    const [studentResult, logResult] = await Promise.all([
+      supabase.from("academy_students").select("id, cycle_id, user_id, status").eq("cycle_id", cycleId),
+      supabase.from("academy_logs").select("student_id, is_present, note").eq("cycle_id", cycleId).eq("day_number", day),
     ]);
-    if (relError || !relData) return;
-
-    const relations = relData as AcademyStudent[];
-    const userIds = relations.map(r => r.user_id);
-    if (userIds.length > 0) {
-      const {data: profiles} = await supabase
-        .from('profiles')
-        .select('id, full_name, badge_number, faction_rank')
-        .in('id', userIds);
-
-      setStudents(relations.map(rel => ({
-        ...rel,
-        profile: (profiles as (AcademyStudent['profile'] & {id: string})[] | null)?.find(p => p.id === rel.user_id),
-      })));
-    } else {
-      setStudents([]);
-    }
-
-    const updates: Record<string, {present: boolean, note: string}> = {};
-    (logData ?? []).forEach((log: {student_id: string, is_present: boolean, note: string | null}) => {
-      updates[log.student_id] = {present: log.is_present, note: log.note || ""};
+    setStudents((studentResult.data ?? []) as AcademyStudent[]);
+    const entries: Record<string, LogEntry> = {};
+    (logResult.data ?? []).forEach((log: {student_id: string; is_present: boolean; note: string | null}) => {
+      entries[log.student_id] = {present: log.is_present, note: log.note ?? ""};
     });
-    setLogUpdates(updates);
-  }, [supabase, selectedCycleId, selectedDay]);
+    setLogs(entries);
+    setSavedLogs(entries);
+  }, [supabase, cycleId, day]);
 
-  // Adatok frissítése, ha a választott ciklus vagy nap változik
   useEffect(() => {
-    void fetchStudentsAndLogs();
-  }, [fetchStudentsAndLogs]);
+    void loadCycle();
+  }, [loadCycle]);
 
-  const currentViewCycle = allCycles.find(c => c.id === selectedCycleId) || initialActiveCycle;
-  const isViewingActive = currentViewCycle?.status === 'active';
+  const byId = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile])), [profiles]);
+  const cycle = cycles.find((item) => item.id === cycleId) ?? null;
+  const dirty = JSON.stringify(logs) !== JSON.stringify(savedLogs);
+  const candidates = useMemo(() => {
+    const enrolled = new Set(students.map((student) => student.user_id));
+    const needle = term.trim().toLowerCase();
+    return profiles.filter((profile) => profile.faction_rank === "Deputy Sheriff Trainee" && profile.system_role !== "pending" && !enrolled.has(profile.id)
+      && (!needle || profile.full_name.toLowerCase().includes(needle) || profile.badge_number.includes(needle)));
+  }, [profiles, students, term]);
 
-  const handleStartCycle = async () => {
-    if (!newDate) return;
-    const active = allCycles.find(c => c.status === 'active');
-    if (active) {
-      await supabase.from('academy_cycles').update({status: 'archived'}).eq('id', active.id);
-    }
-    const {error} = await supabase.from('academy_cycles').insert({
-      start_date: newDate,
-      status: 'active'
-    });
-    if (error) toast.error("Hiba az indításkor.");
-    else {
-      toast.success("Új akadémia elindítva!");
-      setIsNewCycleOpen(false);
-      onRefresh();
+  const startCycle = async () => {
+    if (!newCycle) return;
+    const active = cycles.find((item) => item.status === "active");
+    if (active) await supabase.from("academy_cycles").update({status: "archived"}).eq("id", active.id);
+    const {data, error} = await supabase.from("academy_cycles").insert({start_date: newCycle, status: "active", created_by: user?.id})
+      .select("id").single();
+    if (error) return toast.error("Az új ciklus indítása nem sikerült: " + errorMessage(error));
+    toast.success("Új akadémiai ciklus elindult.");
+    setNewCycle(null);
+    setCycleId((data as {id: string}).id);
+    await loadCycles();
+    onRefresh();
+  };
+
+  const addStudent = async (userId: string) => {
+    if (!cycleId) return;
+    const {error} = await supabase.from("academy_students").insert({cycle_id: cycleId, user_id: userId});
+    if (error) return toast.error("Hiba: " + errorMessage(error));
+    toast.success("Tanuló hozzáadva.");
+    void loadCycle();
+  };
+
+  const setStatus = async (student: AcademyStudent, status: AcademyStudent["status"]) => {
+    setStudents((current) => current.map((item) => item.id === student.id ? {...item, status} : item));
+    const {error} = await supabase.from("academy_students").update({status}).eq("id", student.id);
+    if (error) {
+      toast.error("Nem sikerült menteni.");
+      void loadCycle();
     }
   };
 
-  const loadAvailableUsers = async () => {
-    const {data} = await supabase.from('profiles').select('id, full_name, faction_rank')
-      .or('faction_rank.ilike.%Cadet%,faction_rank.ilike.%Trainee%')
-      .order('full_name');
-    if (data) setAvailableUsers(data);
+  const removeStudent = async (student: AcademyStudent) => {
+    if (!window.confirm(`Eltávolítod ${byId.get(student.user_id)?.full_name ?? "a tanulót"} a ciklusból?`)) return;
+    const {error} = await supabase.from("academy_students").delete().eq("id", student.id);
+    if (error) return toast.error("Hiba: " + errorMessage(error));
+    void loadCycle();
   };
 
-  const handleAddStudent = async () => {
-    if (!selectedUser || !selectedCycleId) return;
-    const {error} = await supabase.from('academy_students').insert({
-      cycle_id: selectedCycleId,
-      user_id: selectedUser
-    });
-    if (error) toast.error("Hiba: " + error.message);
-    else {
-      toast.success("Tanuló hozzáadva.");
-      fetchStudentsAndLogs();
-      setIsAddStudentOpen(false);
-    }
-  };
-
-  const handleSaveLogs = async () => {
-    if (!selectedCycleId) return;
-
-    const upserts = students.map(student => ({
-      cycle_id: selectedCycleId,
-      student_id: student.user_id,
-      day_number: selectedDay,
-      is_present: logUpdates[student.user_id]?.present || false,
-      note: logUpdates[student.user_id]?.note || ""
+  const saveLogs = async () => {
+    if (!cycleId || students.length === 0) return;
+    setSaving(true);
+    const rows = students.map((student) => ({
+      cycle_id: cycleId, student_id: student.user_id, day_number: day, instructor_id: user?.id,
+      is_present: logs[student.user_id]?.present ?? false, note: logs[student.user_id]?.note ?? "",
     }));
-
-    if (upserts.length === 0) return;
-
-    const {error} = await supabase.from('academy_logs')
-      .upsert(upserts, {onConflict: 'cycle_id, student_id, day_number'});
-
-    if (error) toast.error("Hiba a mentéskor: " + error.message);
-    else toast.success("Napló mentve erre a napra.");
+    const {error} = await supabase.from("academy_logs").upsert(rows, {onConflict: "cycle_id,student_id,day_number"});
+    setSaving(false);
+    if (error) return toast.error("A napló mentése nem sikerült: " + errorMessage(error));
+    setSavedLogs(logs);
+    toast.success(`${day}. nap naplója mentve.`);
   };
-
-  // Csak azok a tanulók látszódjanak, akik NEM Deputy Sheriff II+ rangúak
-  // Bár az SQL trigger törli őket, itt is szűrhetünk UI szinten a biztonság kedvéért,
-  // vagy ha az archivált ciklusban még meg akarjuk tartani a logot a megtekintés erejéig (az SQL trigger azonnal töröl!)
-  // Ha az SQL trigger töröl, akkor itt már nem kell szűrni, mert nem lesznek a DB-ben.
-  // Tehát itt hagyjuk a listát úgy, ahogy az adatbázis visszaadja.
 
   return (
-    <div className="space-y-6 animate-in fade-in pb-10">
-      <div
-        className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-900/50 p-4 rounded-lg border border-slate-800 gap-4">
-
-        <div className="flex flex-col gap-2 w-full md:w-auto">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-sky-500"/>
-            <h2 className="text-lg font-bold text-white">Akadémia Kezelő</h2>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <History className="w-4 h-4 text-slate-500"/>
-            <Select value={selectedCycleId || ""} onValueChange={setSelectedCycleId}>
-              <SelectTrigger className="w-[280px] bg-slate-950 border-slate-700 h-8 text-xs text-white">
-                <SelectValue placeholder="Válassz ciklust..."/>
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white max-h-[300px]">
-                {allCycles.map(cycle => (
-                  <SelectItem key={cycle.id} value={cycle.id}>
-                    {cycle.start_date} {cycle.status === 'active' && '(AKTÍV)'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <div className="space-y-4">
+      <div className="panel flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 place-items-center rounded-xl bg-cyan-500/10 text-cyan-300 ring-1 ring-cyan-500/25"><ClipboardCheck className="size-5"/></div>
+          <div>
+            <p className="font-semibold text-white">Akadémiai ciklus</p>
+            <p className="text-xs text-slate-400">{cycle ? `${formatDate(cycle.start_date)} – ${cycle.status === "active" ? "aktív" : cycle.status === "planned" ? "tervezett" : "archivált"}` : "Nincs ciklus"}</p>
           </div>
         </div>
-
-        <div className="flex gap-2 w-full md:w-auto justify-end">
-          <Button variant="outline" onClick={() => setIsNewCycleOpen(true)}>
-            <Plus className="w-4 h-4 mr-2"/> Új Ciklus
-          </Button>
-          {isViewingActive && (
-            <Button variant="secondary" onClick={() => {
-              loadAvailableUsers();
-              setIsAddStudentOpen(true);
-            }}>
-              <UserPlus className="w-4 h-4 mr-2"/> Tanuló Hozzáadása
-            </Button>
-          )}
+        <select value={cycleId ?? ""} onChange={(event) => setCycleId(event.target.value || null)} aria-label="Ciklus"
+                className="h-9 rounded-md bg-white/[0.03] px-2 text-sm text-slate-100 ring-1 ring-white/10 outline-none lg:ml-auto">
+          {cycles.map((item) => <option key={item.id} value={item.id}>{formatDate(item.start_date)}{item.status === "active" ? " (aktív)" : ""}</option>)}
+        </select>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setNewCycle(today)}><CalendarPlus/> Új ciklus</Button>
+          {cycle?.status === "active" && <Button onClick={() => setAdding(true)}><UserPlus/> Tanuló</Button>}
         </div>
       </div>
 
-      {currentViewCycle && (
-        <div className="bg-slate-950 border border-slate-800 rounded-lg p-6">
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-4 mb-6">
-            <Label className="text-white text-lg font-bold">Napló / Értékelés:</Label>
-            <div className="flex bg-slate-900 rounded-md p-1 border border-slate-800">
-              {[1, 2, 3, 4, 5].map(day => (
-                <button
-                  key={day}
-                  onClick={() => setSelectedDay(day)}
-                  className={`px-4 py-2 rounded text-sm font-bold transition-all ${selectedDay === day ? 'bg-sky-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                >
-                  {day}. Nap
-                </button>
-              ))}
-            </div>
-            <div className="ml-auto">
-              <Button onClick={handleSaveLogs} className="bg-green-600 hover:bg-green-500 text-white">
-                <Save className="w-4 h-4 mr-2"/> Mentés ({selectedDay}. Nap)
-              </Button>
-            </div>
+      {!cycle ? (
+        <div className="panel"><EmptyState icon={CalendarPlus} title="Még nincs akadémiai ciklus." description="Indíts egyet az első nap dátumával."/></div>
+      ) : (
+        <div className="panel overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 border-b border-white/5 p-4">
+            <p className="mr-2 text-sm font-medium text-white">Jelenléti napló</p>
+            {ACADEMY_DAYS.map((item) => (
+              <button key={item} type="button" onClick={() => {
+                if (dirty && !window.confirm("Mentetlen napló-bejegyzések vannak. Elveted őket?")) return;
+                setDay(item);
+              }} className={cn("rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition-colors",
+                day === item ? "bg-cyan-500/15 text-white ring-cyan-400/40" : "text-slate-400 ring-white/10 hover:bg-white/[0.04]")}>
+                {item}. nap
+              </button>
+            ))}
+            <Button className="ml-auto" size="sm" disabled={!dirty || saving} onClick={() => void saveLogs()}>
+              {saving ? <Loader2 className="animate-spin"/> : <Save/>} Napló mentése
+            </Button>
           </div>
-
-          <div className="rounded-md border border-slate-800 overflow-hidden">
-            <Table>
-              <TableHeader className="bg-slate-900">
-                <TableRow className="border-slate-800 hover:bg-transparent">
-                  <TableHead className="text-slate-300 font-bold w-[250px]">Tanuló</TableHead>
-                  <TableHead className="text-slate-300 font-bold text-center w-[100px]">Jelenlét</TableHead>
-                  <TableHead className="text-slate-300 font-bold">Megjegyzés (Oktatói)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {students.length === 0 ? (
-                  <TableRow><TableCell colSpan={3} className="text-center text-slate-500 py-8">Nincsenek rögzített
-                    tanulók ebben a ciklusban.</TableCell></TableRow>
-                ) : students.map(student => (
-                  <TableRow key={student.user_id} className="border-slate-800 bg-slate-950/50 hover:bg-slate-900/50">
-                    <TableCell className="font-medium text-white align-top pt-4">
-                      <div className="truncate max-w-[230px]" title={student.profile?.full_name}>
-                        {student.profile?.full_name || "Ismeretlen"}
-                      </div>
-                      <span
-                        className="text-xs text-slate-500 font-mono block">{student.profile?.badge_number || "N/A"}</span>
-                      <span
-                        className="text-[10px] text-slate-600 uppercase block mt-1">{student.profile?.faction_rank}</span>
-                    </TableCell>
-                    <TableCell className="text-center bg-slate-900/30 align-top pt-4">
-                      <div className="flex justify-center">
-                        <Checkbox
-                          checked={logUpdates[student.user_id]?.present || false}
-                          onCheckedChange={(checked) => {
-                            setLogUpdates(prev => ({
-                              ...prev,
-                              [student.user_id]: {...(prev[student.user_id] || {}), present: !!checked}
-                            }));
-                          }}
-                          className="border-slate-600 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500 w-6 h-6"
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Textarea
-                        placeholder="Írj megjegyzést..."
-                        className="bg-slate-900 border-slate-700 min-h-[80px] focus:min-h-[120px] transition-all resize-none text-xs w-full"
-                        value={logUpdates[student.user_id]?.note || ""}
-                        onChange={(e) => {
-                          setLogUpdates(prev => ({
-                            ...prev,
-                            [student.user_id]: {...(prev[student.user_id] || {}), note: e.target.value}
-                          }));
-                        }}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          {students.length === 0 ? (
+            <EmptyState icon={Users} title="Ebben a ciklusban még nincs tanuló." compact/>
+          ) : (
+            <ul className="divide-y divide-white/5">
+              {students.map((student) => {
+                const profile = byId.get(student.user_id);
+                const entry = logs[student.user_id] ?? {present: false, note: ""};
+                return (
+                  <li key={student.id} className="grid grid-cols-1 gap-3 p-4 md:grid-cols-[minmax(0,240px)_auto_minmax(0,1fr)_auto] md:items-center">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <MemberAvatar name={profile?.full_name} avatarUrl={profile?.avatar_url} size={32}/>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm text-white">{profile?.full_name ?? "Ismeretlen"}</span>
+                        <span className="block truncate text-[11px] text-slate-500">#{profile?.badge_number ?? "–"} · {profile?.faction_rank ?? ""}</span>
+                      </span>
+                    </div>
+                    <button type="button" aria-pressed={entry.present} onClick={() => setLogs((current) => ({...current, [student.user_id]: {...entry, present: !entry.present}}))}
+                            className={cn("inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 transition-colors",
+                              entry.present ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/40" : "text-slate-400 ring-white/10 hover:bg-white/[0.04]")}>
+                      {entry.present && <Check className="size-3.5"/>} {entry.present ? "Jelen volt" : "Hiányzott"}
+                    </button>
+                    <Input value={entry.note} placeholder="Oktatói megjegyzés…" maxLength={500}
+                           onChange={(event) => setLogs((current) => ({...current, [student.user_id]: {...entry, note: event.target.value}}))}/>
+                    <div className="flex items-center gap-1.5">
+                      <select value={student.status} onChange={(event) => void setStatus(student, event.target.value as AcademyStudent["status"])}
+                              aria-label="A tanuló állapota"
+                              className={cn("h-8 rounded-full px-2.5 text-xs ring-1 outline-none", STUDENT_STATUS[student.status].pill)}>
+                        {Object.entries(STUDENT_STATUS).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
+                      </select>
+                      <Button size="icon" variant="ghost" className="size-8 text-red-300 hover:bg-red-500/10" aria-label="Eltávolítás"
+                              onClick={() => void removeStudent(student)}><Trash2/></Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       )}
 
-      <Dialog open={isNewCycleOpen} onOpenChange={setIsNewCycleOpen}>
-        <DialogContent className="bg-slate-950 border-slate-800 text-white">
-          <DialogHeader><DialogTitle>Új Akadémia Indítása</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Kezdő Dátum (1. Nap)</Label>
-              <Input type="date" className="bg-slate-900 border-slate-700 text-white"
-                     onChange={(e) => setNewDate(e.target.value)}/>
-              <p className="text-xs text-slate-500">Az akadémia 5 napig tart ettől a naptól kezdve.</p>
-              <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded text-yellow-500 text-xs mt-2">
-                Figyelem: Ez archiválja a jelenlegi aktív ciklust!
-              </div>
-            </div>
+      <Dialog open={newCycle !== null} onOpenChange={(open) => !open && setNewCycle(null)}>
+        <DialogContent className="sm:max-w-md">
+          <div>
+            <DialogTitle className="flex items-center gap-2"><CalendarPlus className="size-4 text-cyan-300"/> Új akadémiai ciklus</DialogTitle>
+            <DialogDescription className="mt-1">Az 1. nap dátuma; a napok innen naponta nyílnak meg a trainee-knek. A jelenlegi aktív ciklus archiválódik.</DialogDescription>
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setIsNewCycleOpen(false)}>Mégse</Button>
-            <Button onClick={handleStartCycle} className="bg-sky-600 text-white">Indítás</Button>
-          </DialogFooter>
+          <div className="space-y-1.5">
+            <Label htmlFor="cycle-start">Az 1. nap</Label>
+            <Input id="cycle-start" type="date" value={newCycle ?? ""} onChange={(event) => setNewCycle(event.target.value)} className="w-48"/>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setNewCycle(null)}>Mégse</Button>
+            <Button disabled={!newCycle} onClick={() => void startCycle()}>Indítás</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isAddStudentOpen} onOpenChange={setIsAddStudentOpen}>
-        <DialogContent className="bg-slate-950 border-slate-800 text-white">
-          <DialogHeader><DialogTitle>Tanuló Hozzáadása</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Válassz Kadétot</Label>
-              <Select onValueChange={setSelectedUser}>
-                <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
-                  <SelectValue placeholder="Válassz embert..."/>
-                </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white max-h-[300px]">
-                  {availableUsers.map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.full_name} ({u.faction_rank})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <DialogContent className="sm:max-w-md">
+          <div>
+            <DialogTitle className="flex items-center gap-2"><UserPlus className="size-4 text-cyan-300"/> Tanuló hozzáadása</DialogTitle>
+            <DialogDescription className="mt-1">A Deputy Sheriff Trainee rendfokozatú tagok közül.</DialogDescription>
           </div>
-          <DialogFooter>
-            <Button onClick={handleAddStudent} className="bg-sky-600 text-white">Hozzáadás</Button>
-          </DialogFooter>
+          <Input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Név vagy jelvényszám…" autoFocus/>
+          <ul className="max-h-72 space-y-1 overflow-y-auto">
+            {candidates.map((profile) => (
+              <li key={profile.id} className="flex items-center gap-2.5 rounded-lg p-2 hover:bg-white/[0.04]">
+                <MemberAvatar name={profile.full_name} avatarUrl={profile.avatar_url} size={28}/>
+                <span className="min-w-0 flex-1 truncate text-sm text-white">{profile.full_name} <span className="text-xs text-slate-500">#{profile.badge_number}</span></span>
+                <Button size="sm" variant="outline" onClick={() => void addStudent(profile.id)}>Hozzáadás</Button>
+              </li>
+            ))}
+            {candidates.length === 0 && <li className="py-6 text-center text-xs text-slate-500">Nincs felvehető trainee.</li>}
+          </ul>
         </DialogContent>
       </Dialog>
     </div>

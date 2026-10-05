@@ -9,6 +9,7 @@ import type {Case, CaseCollaborator, CaseEvidence, CaseSuspect, Suspect} from "@
 import {cn} from "@/lib/utils";
 import {useAuth} from "@/context/AuthContext";
 import {getOptimizedAvatarUrl, withTransformation} from "@/lib/cloudinary";
+import {formatDate} from "@/lib/datetime";
 
 // --- STÍLUS KONSTANSOK ---
 const TECH_CARD_BASE = "bg-slate-950/80 border border-sky-900/30 backdrop-blur-md shadow-lg overflow-hidden relative group";
@@ -201,7 +202,7 @@ const EvidenceItem = React.memo(function EvidenceItem({file, onView, onDelete}: 
       <div className="min-w-0 flex-1">
         <p
           className="text-xs font-medium text-slate-300 truncate group-hover:text-sky-400 transition-colors">{file.file_name}</p>
-        <p className="text-[9px] text-slate-500 font-mono">{new Date(file.created_at).toLocaleDateString('hu-HU')}</p>
+        <p className="text-[9px] text-slate-500 font-mono">{formatDate(file.created_at)}</p>
       </div>
       {onDelete && (
         <Button variant="ghost" size="icon"

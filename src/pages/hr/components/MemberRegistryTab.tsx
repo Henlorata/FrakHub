@@ -23,6 +23,7 @@ import {canManageMemberDetails, cn, errorMessage, isStaff} from "@/lib/utils";
 import type {ActivityStatus, JoinType, LeaveType, Profile, RehireStatus} from "@/types/supabase";
 import {formatDate} from "../hr-utils";
 import type {DetailsPatch, HrMember} from "../useHrData";
+import {todayKey} from "@/lib/datetime";
 
 interface RegistryForm {
   station: string;
@@ -235,7 +236,7 @@ export function DismissDialog({member, open, onOpenChange, onConfirm}: {
   member: HrMember; open: boolean; onOpenChange: (open: boolean) => void; onConfirm: (departure: Departure) => Promise<void>;
 }) {
   const [leaveType, setLeaveType] = useState<LeaveType>("dismissed");
-  const [leftOn, setLeftOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [leftOn, setLeftOn] = useState(() => todayKey());
   const [reason, setReason] = useState("");
   const [rehire, setRehire] = useState<RehireStatus>("eligible");
   const [rehireNote, setRehireNote] = useState("");
@@ -276,7 +277,7 @@ export function DismissDialog({member, open, onOpenChange, onConfirm}: {
           <div className="grid gap-4 sm:grid-cols-[180px_minmax(0,1fr)]">
             <div className="space-y-1.5">
               <Label>Dátum</Label>
-              <Input type="date" value={leftOn} max={new Date().toISOString().slice(0, 10)} onChange={(event) => setLeftOn(event.target.value)}/>
+              <Input type="date" value={leftOn} max={todayKey()} onChange={(event) => setLeftOn(event.target.value)}/>
             </div>
             <div className="space-y-1.5">
               <Label>Visszatérhet?</Label>

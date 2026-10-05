@@ -30,6 +30,7 @@ import {cn, getStaffCategory} from "@/lib/utils";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import type {LucideIcon} from "lucide-react";
 import {PROFILE_COLUMNS, type Profile, type Ribbon} from "@/types/supabase";
+import {formatDate} from "@/lib/datetime";
 
 interface AwardRow {
   id: string;
@@ -369,7 +370,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
                                   <p
                                     className="text-xs font-bold text-yellow-500 truncate pr-2">{awardItem.ribbon?.name || "Ismeretlen Kitüntetés"}</p>
                                   <span
-                                    className="text-[9px] font-mono text-slate-600 bg-slate-950 px-1 rounded border border-slate-900">{new Date(awardItem.awarded_at).toLocaleDateString('hu-HU')}</span>
+                                    className="text-[9px] font-mono text-slate-600 bg-slate-950 px-1 rounded border border-slate-900">{formatDate(awardItem.awarded_at)}</span>
                                 </div>
                                 <p
                                   className="text-[10px] text-slate-400 mt-1 line-clamp-2">{awardItem.ribbon?.description || "Nincs leírás a kitüntetéshez."}</p>

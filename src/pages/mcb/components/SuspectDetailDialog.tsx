@@ -29,6 +29,7 @@ import {useNavigate} from "react-router";
 import {cn, errorMessage} from "@/lib/utils";
 import {useSuspects} from "@/context/SuspectCacheContext";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
+import {formatDate} from "@/lib/datetime";
 
 interface SuspectDetailDialogProps {
   suspect: Suspect | null;
@@ -218,7 +219,7 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
                   {formData.status === 'wanted' ? 'KÖRÖZÖTT' : formData.status === 'jailed' ? 'BÖRTÖNBEN' : formData.status === 'deceased' ? 'ELHUNYT' : 'SZABADLÁBON'}
                 </Badge>
                 <span
-                  className="text-[10px] text-slate-500 font-mono uppercase">Last Update: {new Date(suspect.updated_at || suspect.created_at).toLocaleDateString('hu-HU')}</span>
+                  className="text-[10px] text-slate-500 font-mono uppercase">Last Update: {formatDate(suspect.updated_at || suspect.created_at)}</span>
               </div>
             </div>
           </div>
@@ -353,7 +354,7 @@ export function SuspectDetailDialog({suspect, open, onOpenChange, onUpdate}: Sus
                             <div className="flex gap-2 text-[10px] uppercase font-bold text-slate-500 mt-0.5">
                               <span className="text-yellow-600">{rec.involvement_type}</span>
                               <span>•</span>
-                              <span>{rec.added_at ? new Date(rec.added_at).toLocaleDateString('hu-HU') : '-'}</span>
+                              <span>{rec.added_at ? formatDate(rec.added_at) : '-'}</span>
                             </div>
                           </div>
                         </div>

@@ -12,6 +12,7 @@ import type {FormerMember, HrRecord, JoinType, Profile} from "@/types/supabase";
 import {formatDate} from "../hr-utils";
 import type {DetailsPatch, HrMember, MemberChanges} from "../useHrData";
 import {findFormerMatch, useFormerMembers} from "./FormerMembersPanel";
+import {todayKey} from "@/lib/datetime";
 
 interface RequestsPanelProps {
   viewer: Profile;
@@ -94,7 +95,7 @@ function PendingRow({member, viewer, onApprove, onReject, former, onSaveDetails}
       await onApprove(member.id, rank !== member.faction_rank ? {faction_rank: rank} : {});
       toast.success(`${member.full_name} jóváhagyva (${rank}).`);
       // The sheet's "joined / returned" and "recruiter" columns, filled at the moment of approval.
-      onSaveDetails(member.id, {joined_on: new Date().toISOString().slice(0, 10), join_type: joinType, recruited_by: recruiter.trim() || null})
+      onSaveDetails(member.id, {joined_on: todayKey(), join_type: joinType, recruited_by: recruiter.trim() || null})
         .catch(() => toast.warning("A csatlakozási adatokat nem sikerült menteni; a Nyilvántartás fülön pótolható."));
     } catch (error) {
       toast.error(errorMessage(error, "A jóváhagyás nem sikerült."));

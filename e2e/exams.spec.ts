@@ -240,3 +240,26 @@ test("long unbroken text wraps on the exam start page and in the runner (390px)"
   await expect(page.getByRole("textbox", {name: "1. kérdés válasza"})).toHaveValue(long);
   expect(await overflow()).toBeLessThanOrEqual(0);
 });
+
+test.describe("Hungarian time", () => {
+  // A browser reporting UTC (privacy modes, misconfigured machines) still sees Hungarian time.
+  test.use({timezoneId: "UTC"});
+
+  test("times are shown in Hungarian time whatever the browser's time zone", async ({page}) => {
+    await mockSupabase(page, {
+      rpc: {
+        get_exam_hub: {
+          ...hub,
+          mine: [{id: SHEET_ID, exam_id: EXAM_ID, exam_title: "SEB alapvizsga", status: "passed", total_score: 9, max_score: 10, percentage: 90,
+            passing_percentage: 80, start_time: "2026-07-01T22:30:00Z", end_time: "2026-07-01T22:50:00Z", deadline: null,
+            retry_allowed_at: null, feedback_visible: false, graded_at: null, finish_reason: "submitted"}],
+        },
+      },
+    });
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/exams?tab=history");
+    // 22:30 UTC on 1 July is 00:30 on 2 July in Budapest (summer time, UTC+2).
+    await expect(page.getByText("2026.07.02. 00:30")).toBeVisible();
+  });
+});

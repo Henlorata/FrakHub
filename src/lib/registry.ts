@@ -1,5 +1,6 @@
-import {differenceInCalendarDays, format, parseISO, subMonths} from "date-fns";
+import {format, parseISO} from "date-fns";
 import {hu} from "date-fns/locale";
+import {addMonths, daysBetween, formatDate, monthKey, todayKey} from "@/lib/datetime";
 import type {ActivityStatus, JoinType, LeaveType, RehireStatus} from "@/types/supabase";
 
 /** Stations of the department (the "Kirendeltség" column of the old sheet). */
@@ -68,12 +69,12 @@ export function parseDuty(input: string): number | null {
   return minutes !== null && minutes <= MAX_MONTH_MINUTES ? minutes : null;
 }
 
-/** First day of the month, as stored in duty_time_entries.month. */
-export const monthStart = (date = new Date()) => format(date, "yyyy-MM-01");
+/** First day of the (Hungarian) month, as stored in duty_time_entries.month. */
+export const monthStart = (date = new Date()) => monthKey(date);
 
 /** The last `count` months, oldest first. */
 export const recentMonths = (count: number, from = new Date()) =>
-  Array.from({length: count}, (_, index) => monthStart(subMonths(from, count - 1 - index)));
+  Array.from({length: count}, (_, index) => addMonths(monthKey(from), index - (count - 1)));
 
 /** "2026. szeptember" or "szept." */
 export const monthLabel = (month: string, style: "long" | "short" = "long") =>
@@ -88,11 +89,11 @@ export const REGISTRATION_SOON_DAYS = 7;
 
 export function registrationStatus(expiresOn: string | null): {state: RegistrationState; days: number | null; label: string} {
   if (!expiresOn) return {state: "missing", days: null, label: "Nincs megadva"};
-  const days = differenceInCalendarDays(parseISO(expiresOn), new Date());
+  const days = daysBetween(todayKey(), expiresOn);
   if (days < 0) return {state: "expired", days, label: `Lejárt (${-days} napja)`};
   if (days === 0) return {state: "soon", days, label: "Ma lejár"};
   if (days <= REGISTRATION_SOON_DAYS) return {state: "soon", days, label: `${days} nap múlva lejár`};
-  return {state: "ok", days, label: `Érvényes: ${format(parseISO(expiresOn), "yyyy.MM.dd.")}`};
+  return {state: "ok", days, label: `Érvényes: ${formatDate(expiresOn)}`};
 }
 
 export const REGISTRATION_PILL: Record<RegistrationState, string> = {

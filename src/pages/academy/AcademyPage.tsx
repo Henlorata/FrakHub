@@ -1,139 +1,98 @@
-import {useState, useMemo} from "react";
-import {useAuth} from "@/context/AuthContext";
-import {cn, isSupervisory, isHighCommand} from "@/lib/utils";
-import {
-  GraduationCap, Siren, Crosshair, BookOpen, ShieldAlert, Lock, ChevronLeft, ChevronRight, Target
-} from "lucide-react";
+import {useCallback, useEffect, useState} from "react";
+import {useSearchParams} from "react-router";
+import {ArrowLeft, GraduationCap, RefreshCw} from "lucide-react";
+import {Button} from "@/components/ui/button";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {PageHeader} from "@/components/layout/PageHeader";
+import {academyApi, type AcademyOverview} from "@/lib/academy";
+import {AcademyCatalog} from "./AcademyCatalog";
 import {BasicAcademyView} from "./views/BasicAcademyView";
-import {DivisionAcademyView} from "./views/DivisionAcademyView";
+import {CourseView} from "./views/CourseView";
+import {CourseSettingsDialog} from "./components/CourseSettingsDialog";
 
-type AcademyView = 'basic' | 'mcb' | 'seb' | string;
-
+/**
+ * SFSD Academy: the catalogue (basic academy and courses with progress, one request), the
+ * basic academy's days and the courses. The open course/day/page is in the URL, so a page can
+ * be linked to trainees.
+ */
 export default function AcademyPage() {
-  const {profile} = useAuth();
-  const [currentView, setCurrentView] = useState<AcademyView>('basic');
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [overview, setOverview] = useState<AcademyOverview | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [creating, setCreating] = useState(false);
 
-  const isInstructor = useMemo(() => {
-    if (!profile) return false;
-    if (profile.faction_rank === 'Deputy Sheriff Trainee') return false;
-    if (profile.qualifications?.includes("TB") || profile.is_bureau_manager || isSupervisory(profile) || isHighCommand(profile)) return true;
-    return false;
-  }, [profile]);
+  const load = useCallback(async () => {
+    try {
+      setOverview(await academyApi.overview());
+      setFailed(false);
+    } catch (error) {
+      console.error(error);
+      setFailed(true);
+    }
+  }, []);
 
-  // Dinamikus kvalifikációk (amiknek lehet tananyaga)
-  const availableQualifications = ['SAHP', 'AB', 'MU', 'GW', 'FAB', 'SIB', 'TB'];
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const view = searchParams.get("course");
+  const page = Math.max(0, Number(searchParams.get("p") ?? 1) - 1) || 0;
+  const day = Math.min(5, Math.max(1, Number(searchParams.get("day") ?? 1) || 1));
+  const navigate = (params: Record<string, string | number | null>) => {
+    const next = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== null && value !== "") next.set(key, String(value));
+    });
+    setSearchParams(next);
+    window.scrollTo({top: 0, behavior: "smooth"});
+  };
+
+  const course = overview?.courses.find((item) => item.id === view) ?? null;
+  const title = view === "basic" ? "Alapkiképzés" : course?.title ?? "SFSD Academy";
 
   return (
-    <div className="flex h-shell bg-[#0b1120]/70 backdrop-blur-xl overflow-hidden text-slate-200 font-sans rounded-xl border border-slate-800 shadow-2xl relative">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6 pb-10">
+      <PageHeader
+        icon={GraduationCap}
+        tone="cyan"
+        eyebrow={view ? "SFSD Academy" : "Oktatás"}
+        title={title}
+        description={view === "basic" ? "Az öt napos trainee akadémia tananyaga." : course?.description ?? "Alapkiképzés, osztály- és képesítési tananyagok egy helyen."}
+        actions={view ? <Button variant="outline" onClick={() => navigate({})}><ArrowLeft/> Összes tananyag</Button> : undefined}
+      />
 
-      {/* Kinyitó gomb, ha össze van csukva */}
-      {isCollapsed && (
-        <button
-          onClick={() => setIsCollapsed(false)}
-          className="absolute top-4 left-4 z-50 p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-md shadow-lg transition-colors"
-        >
-          <ChevronRight className="w-5 h-5 text-slate-300"/>
-        </button>
+      {failed && !overview ? (
+        <div className="panel">
+          <EmptyState icon={RefreshCw} title="Az akadémia betöltése nem sikerült." action={<Button variant="outline" onClick={() => void load()}><RefreshCw/> Újra</Button>}/>
+        </div>
+      ) : !overview ? (
+        <div className="space-y-4"><div className="skeleton h-56"/><div className="grid grid-cols-1 gap-4 md:grid-cols-3">{[0, 1, 2].map((key) => <div key={key} className="skeleton h-44"/>)}</div></div>
+      ) : view === "basic" ? (
+        <BasicAcademyView overview={overview} canEdit={overview.viewer.instructor} day={day} page={page}
+                          onNavigate={(nextDay, nextPage) => navigate({course: "basic", day: nextDay, p: nextPage ? nextPage + 1 : null})}
+                          onChanged={() => void load()}/>
+      ) : view && course ? (
+        <CourseView key={course.id} course={course} canEdit={overview.viewer.instructor} page={page}
+                    onPage={(next) => navigate({course: course.id, p: next ? next + 1 : null})}
+                    onChanged={() => void load()} onClosed={() => {
+                      navigate({});
+                      void load();
+                    }}/>
+      ) : view ? (
+        <div className="panel"><EmptyState icon={GraduationCap} title="Ez a tananyag nem található." action={<Button variant="outline" onClick={() => navigate({})}><ArrowLeft/> Vissza</Button>}/></div>
+      ) : (
+        <AcademyCatalog overview={overview}
+                        onOpenBasic={(target) => navigate({course: "basic", day: target ?? 1})}
+                        onOpenCourse={(id) => navigate({course: id})}
+                        onNewCourse={() => setCreating(true)}/>
       )}
 
-      {/* SIDEBAR */}
-      <div className={cn(
-        "bg-slate-950 border-r border-slate-800 flex flex-col shrink-0 transition-all duration-300 relative",
-        isCollapsed ? "w-0 opacity-0 overflow-hidden border-none" : "w-72 opacity-100"
-      )}>
-        {/* Header */}
-        <div className="p-6 border-b border-slate-900 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-sky-600 to-blue-700 flex items-center justify-center shadow-lg shadow-sky-900/20">
-              <GraduationCap className="text-white w-6 h-6"/>
-            </div>
-            <div>
-              <h1 className="font-black text-white uppercase tracking-wider text-sm leading-tight">SFSD Academy</h1>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Education Center</p>
-            </div>
-          </div>
-          <button onClick={() => setIsCollapsed(true)} className="p-1.5 bg-slate-900 hover:bg-slate-800 rounded-md text-slate-400 hover:text-white transition-colors">
-            <ChevronLeft className="w-4 h-4"/>
-          </button>
-        </div>
-
-        {/* Menu Items */}
-        <div className="flex-1 overflow-y-auto py-6 px-3 space-y-8 custom-scrollbar">
-
-          <div className="space-y-1">
-            <p className="px-3 text-[10px] uppercase font-black text-slate-600 mb-2">Tanulmányok</p>
-            <NavItem active={currentView === 'basic'} onClick={() => setCurrentView('basic')} icon={<BookOpen className="w-4 h-4"/>} label="Alapkiképzés" desc="Trainee Academy"/>
-          </div>
-
-          <div className="space-y-1">
-            <p className="px-3 text-[10px] uppercase font-black text-slate-600 mb-2">Osztály Tananyagok</p>
-            <NavItem active={currentView === 'mcb'} onClick={() => setCurrentView('mcb')} icon={<Siren className="w-4 h-4 text-sky-500"/>} label="MCB Nyomozói" desc="Major Crimes Bureau" highlightColor="group-hover:text-sky-400"/>
-            <NavItem active={currentView === 'seb'} onClick={() => setCurrentView('seb')} icon={<Crosshair className="w-4 h-4 text-red-500"/>} label="SEB Taktikai" desc="Special Enforcement" highlightColor="group-hover:text-red-400"/>
-          </div>
-
-          <div className="space-y-1">
-            <p className="px-3 text-[10px] uppercase font-black text-slate-600 mb-2 flex items-center justify-between">
-              Képesítések (Certifications)
-            </p>
-            {availableQualifications.map(qual => (
-              <NavItem
-                key={qual} active={currentView === `qual_${qual}`} onClick={() => setCurrentView(`qual_${qual}`)}
-                icon={<Target className="w-4 h-4 text-yellow-500"/>} label={`${qual} Képesítés`} highlightColor="group-hover:text-yellow-400"
-              />
-            ))}
-          </div>
-        </div>
-
-        {isInstructor && (
-          <div className="p-4 border-t border-slate-900 bg-slate-900/30 shrink-0">
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 flex items-center gap-3">
-              <ShieldAlert className="w-5 h-5 text-yellow-500 shrink-0"/>
-              <div>
-                <p className="text-xs font-bold text-yellow-500 uppercase leading-none mb-1">Oktatói Jogkör</p>
-                <p className="text-[10px] text-yellow-500/60 leading-none">Teljes hozzáférés és szerkesztés</p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#0b1120]/70 backdrop-blur-xl relative">
-        <div className="absolute inset-0 tex-grid opacity-[0.02] pointer-events-none"></div>
-        <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-sky-500/5 blur-[100px] pointer-events-none rounded-full"></div>
-
-        <div className="flex-1 relative z-10 overflow-hidden flex flex-col">
-          {currentView === 'basic' ? (
-            <BasicAcademyView isInstructor={isInstructor}/>
-          ) : (
-            <DivisionAcademyView
-              courseId={currentView}
-              isInstructor={isInstructor}
-              currentUser={profile}
-            />
-          )}
-        </div>
-      </div>
+      {creating && (
+        <CourseSettingsDialog course={null} onClose={() => setCreating(false)} onSaved={(id) => {
+          setCreating(false);
+          void load().then(() => navigate({course: id}));
+        }}/>
+      )}
     </div>
   );
-}
-
-function NavItem({active, onClick, icon, label, desc, highlightColor = "group-hover:text-white", isLocked = false}: any) {
-  return (
-    <button
-      onClick={isLocked ? undefined : onClick}
-      className={cn(
-        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg group transition-all duration-200 border border-transparent",
-        active ? "bg-slate-800 text-white border-slate-700 shadow-lg" : isLocked ? "opacity-50 cursor-not-allowed grayscale" : "text-slate-400 hover:bg-slate-900 hover:border-slate-800"
-      )}
-    >
-      <div className={cn("transition-colors", active ? "text-white" : highlightColor)}>{icon}</div>
-      <div className="text-left flex-1 min-w-0">
-        <p className={cn("text-sm font-bold truncate leading-none transition-colors", active ? "text-white" : "text-slate-300 group-hover:text-white")}>{label}</p>
-        {desc && <p className="text-[10px] font-mono mt-0.5 truncate text-slate-500 group-hover:text-slate-400">{desc}</p>}
-      </div>
-      {isLocked && <Lock className="w-3 h-3 text-slate-600 shrink-0"/>}
-    </button>
-  )
 }

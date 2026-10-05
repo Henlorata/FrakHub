@@ -11,6 +11,9 @@ const ROUTES: {path: string; text: RegExp}[] = [
   {path: "/notifications", text: /Kommunikáció/i},
   {path: "/notifications?view=settings", text: /Asztali értesítések/i},
   {path: "/reports", text: /jelentés/i},
+  {path: "/reports?tab=folder", text: /jelentési mappa nyitása/i},
+  {path: "/reports?tab=mine", text: /jelentés ebben a hónapban/i},
+  {path: "/reports?tab=summary", text: /Rögzítés tag nevében/i},
   {path: "/hr", text: /Human Resources/i},
   {path: "/hr?tab=requests", text: /Regisztrációk/i},
   {path: "/hr?tab=history", text: /Állományváltozások/i},
@@ -30,9 +33,14 @@ const ROUTES: {path: string; text: RegExp}[] = [
   {path: "/logistics?tab=fleet&view=tuning", text: /hivatalos tuning/i},
   {path: "/logistics/fleet/v1", text: /Kulcsosok/i},
   {path: "/finance", text: /Költségtérítések/i},
+  {path: "/finance?tab=payroll", text: /Hónap lezárása/i},
+  {path: "/finance?tab=settings", text: /Rendfokozat/i},
+  {path: "/finance?tab=overview", text: /Havi kiadások/i},
   {path: "/profile", text: /Személyi Akta/i},
   {path: "/calculator", text: /kalkulátor|büntető/i},
-  {path: "/academy", text: /SFSD Academy/i},
+  {path: "/academy", text: /Trainee akadémia/i},
+  {path: "/academy?course=basic&day=1", text: /még nincs tananyag/i},
+  {path: "/academy?course=qual_AB", text: /Ebben a tananyagban még nincs oldal/i},
 ];
 
 test("every page renders without runtime errors", async ({page}) => {
@@ -50,6 +58,8 @@ test("every page renders without runtime errors", async ({page}) => {
         is_bureau_manager: true,
         qualifications: ["TB"],
       })],
+      payroll_settings: [{id: "global", rank_pay: {}, unit_pay: {}, duty_tiers: [], min_duty_hours: 30, top_duty_pay: [0, 0, 0],
+        top_report_pay: [0, 0, 0], report_pay: 0, picture_pay: 0, training_pay: 0, tax_percent: 3, executive_unit: "BM", updated_at: null}],
       fleet_categories: [{id: "explorer", name: "Marked Ford Explorer", description: null, unit: null, min_rank: null, tone: "orange",
         sort_order: 20}],
       fleet_vehicles: [{
@@ -59,7 +69,23 @@ test("every page renders without runtime errors", async ({page}) => {
         created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-01T00:00:00Z", holders: [],
       }],
     },
-    rpc: {get_exam_hub: {server_now: "2026-10-01T00:00:00Z", exams: [], mine: [], queue: [], live: []}},
+    rpc: {
+      get_exam_hub: {server_now: "2026-10-01T00:00:00Z", exams: [], mine: [], queue: [], live: []},
+      get_academy_overview: {
+        viewer: {instructor: true, trainee: false}, today: "2026-10-02", cycle: {id: "c1", start_date: "2026-10-01", status: "active"},
+        basic: [1, 2, 3, 4, 5].map((day) => ({day, pages: 0})),
+        courses: [{id: "qual_AB", title: "AB képesítés", description: null, category: "qualification", is_open: true, required_rank: null,
+          linear_progression: true, pages: 0, completed: 0, readable: true, rank_ok: true}],
+      },
+      get_payroll: (args: {_month: string}) => ({
+        month: args._month, status: "open", saved: false, withdrawn: null, note: null, closed_at: null, closed_by_name: null, rows: [],
+        settings: {rank_pay: {}, unit_pay: {}, duty_tiers: [], min_duty_hours: 30, top_duty_pay: [0, 0, 0], top_report_pay: [0, 0, 0],
+          report_pay: 0, picture_pay: 0, training_pay: 0, tax_percent: 3, executive_unit: "BM"},
+        total: 0, tax: 0, paid_total: 0, can_edit_settings: true, months: [],
+      }),
+      get_finance_overview: {pending: {count: 0, amount: 0}, months: [{month: "2026-10-01", reimbursed: 0, reimbursements: 0, payroll_status: null,
+        payroll_total: null, payroll_withdrawn: null, payroll_tax_percent: null}]},
+    },
   });
   await login(page);
   await expect(page).toHaveURL(/\/dashboard$/);

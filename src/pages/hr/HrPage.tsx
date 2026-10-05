@@ -19,6 +19,7 @@ import {StatsPanel} from "./components/StatsPanel";
 import {DutyPanel} from "./components/DutyPanel";
 import {FormerMembersPanel} from "./components/FormerMembersPanel";
 import type {Departure} from "./components/MemberRegistryTab";
+import {todayKey} from "@/lib/datetime";
 
 type Tab = "roster" | "duty" | "requests" | "former" | "history" | "stats";
 const TABS: Tab[] = ["roster", "duty", "requests", "former", "history", "stats"];
@@ -120,7 +121,7 @@ export function HrPage() {
       }));
       return row;
     });
-    downloadCsv(`sfsd-allomany-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows]);
+    downloadCsv(`sfsd-allomany-${todayKey()}.csv`, [header, ...rows]);
   };
 
   if (!profile) return null;

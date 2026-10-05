@@ -180,6 +180,30 @@ it. Before applying a migration, replay the deployed client's queries against it
 - Vehicle warnings (`vehicle_warnings`): one decision may cover several people and several
   points (rows share a `batch_id`); every three active points become one personal warning
   (`hr_records`) in a statement trigger. Official tuning per model: `fleet_tuning_presets`.
+- Monthly payroll (the old payroll spreadsheet): `private.payroll_rows()` computes every
+  member's pay from HR (rank, division, qualifications), `duty_time_entries`, the report log
+  and the month's extras in `payroll_entries` (pictures, trained people, TOP places, other
+  pay; `null` = automatic). The amounts live in `payroll_settings`, set by the Commander
+  (`save_payroll_settings()`). The leadership uses `get_payroll()` / `save_payroll_entries()`
+  (duty time and account numbers are written to the HR registry from there) /
+  `set_payroll_paid()` / `close_payroll()` (stores a snapshot with the settings and notifies
+  every paid member) / `reopen_payroll()`; members read their closed months with
+  `get_my_payslips()`. `src/lib/payroll.ts` mirrors the rules for the live sheet.
+- Report log (`report_logs`): members record the reports they posted on the forum (the forum
+  forbids automated reading); one forum post counts once (`forum_post_id`). The payroll counts
+  them per Hungarian month. The BBCode templates (`src/lib/report-templates.ts`) are the
+  forum's required format and are guarded by `e2e/report-template.spec.ts`.
+- Reimbursements are decided with `decide_budget_request()`; the cron removes old proof
+  images (`finance_proof_cleanup()`) but keeps the requests for the finance history
+  (`get_finance_overview()`).
+- Academy: the catalogue comes from `get_academy_overview()` (courses with title,
+  description, access and the reader's progress, the basic academy's days in Hungarian
+  time). Course pages are readable when `private.can_read_academy_course()` allows it (open
+  and rank, or instructor). Images pasted into the editors are uploaded to Cloudinary before
+  saving (`src/lib/inline-images.ts`), so no `data:` image is stored in the page JSON.
+- Dates: the database stays in UTC; the UI formats in Europe/Budapest (`src/lib/datetime.ts`)
+  and SQL functions that use calendar dates carry `set timezone = 'Europe/Budapest'`
+  (`supabase/tests/database/time.test.sql` checks it).
 
 ```bash
 bun run db:types                   # generates src/types/database.types.ts from the local DB
@@ -206,8 +230,10 @@ burn free-tier quota.
 ## Free-tier guard rails
 
 - Supabase: no polling; Realtime only for signed-in users; list queries select only needed
-  columns; member and ribbon lists are cached in memory; the daily cron prunes closed
-  requests and old activity logs (and keeps the free project from pausing).
+  columns; member and ribbon lists are cached in memory; pages with several data sources load
+  through one RPC (dashboard, exams, payroll, academy); rich text never stores embedded
+  images; the daily cron prunes old proofs, closed vehicle requests and old activity logs
+  (and keeps the free project from pausing).
 - Cloudinary: client-side compression, transformation-based delivery, server-side cleanup of
   replaced and deleted assets. Recommended upload preset settings are in `.env.example`.
 - Vercel: hashed assets are cached for a year; the initial page load is about 210 KB of

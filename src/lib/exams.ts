@@ -194,11 +194,8 @@ export function formatDuration(ms: number) {
   return seconds && minutes < 10 ? `${minutes} p ${seconds} mp` : `${minutes} p`;
 }
 
-export function formatDateTime(iso: string | null | undefined) {
-  if (!iso) return "–";
-  const date = new Date(iso);
-  return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}. ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+/** Shown in Hungarian time, see lib/datetime. */
+export {formatDateTime} from "@/lib/datetime";
 
 export function percentOf(score: number | null | undefined, max: number | null | undefined) {
   return max && max > 0 ? Math.round((100 * (score ?? 0)) / max) : 0;

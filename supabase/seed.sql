@@ -190,3 +190,32 @@ select v.id, '00000000-0000-4000-8000-000000000003', w.reason, '00000000-0000-40
 from public.fleet_vehicles v
 cross join (values ('Szabálytalan parkolás a kapitányság előtt'), ('Sérülten leadott jármű')) as w(reason)
 where v.plate = 'SFSD-012';
+
+-- Academy: an active cycle (day 2 today), basic material for three days, an open course with
+-- progress, a closed one and a page with an embedded (pasted) image.
+insert into public.academy_cycles (id, start_date, status, created_by) values
+  ('30000000-0000-4000-8000-000000000001', (now() at time zone 'Europe/Budapest')::date - 1, 'active', '00000000-0000-4000-8000-000000000001');
+insert into public.academy_students (cycle_id, user_id) values
+  ('30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000008');
+insert into public.academy_materials (title, day_number, page_order, category, theme, content) values
+  ('Üdvözlünk az akadémián', 1, 1, 'basic', 'paper',
+   '[{"type":"heading","props":{"level":2},"content":"Az első nap"},{"type":"paragraph","content":"Ma megismered a frakció felépítését, a rangokat és a rádióhasználat alapjait."},{"type":"bulletListItem","content":"Rendfokozatok"},{"type":"bulletListItem","content":"Rádiókódok"}]'),
+  ('Rádiókódok', 1, 2, 'basic', 'paper',
+   '[{"type":"paragraph","content":"10-4: vettem. 10-20: helyzet. 10-99: azonnali segítség."}]'),
+  ('Közlekedési intézkedés', 2, 1, 'basic', 'paper',
+   '[{"type":"heading","props":{"level":2},"content":"A második nap"},{"type":"paragraph","content":"Megállítás, igazoltatás, bírság kiszabása a kalkulátorral."}]'),
+  ('Előállítás és jelentés', 3, 1, 'basic', 'default',
+   '[{"type":"paragraph","content":"Az előállítás menete és a fórum-jelentés megírása."}]');
+update public.academy_courses set is_open = true, required_rank = 'Deputy Sheriff II.' where id = 'qual_AB';
+update public.academy_courses set is_open = true where id = 'qual_SAHP';
+insert into public.academy_division_materials (id, course_id, title, page_order, theme, content) values
+  ('31000000-0000-4000-8000-000000000001', 'qual_AB', 'AB bevezető', 1, 'paper',
+   '[{"type":"heading","props":{"level":2},"content":"Aero Bureau"},{"type":"paragraph","content":"A légi egység feladatai és a helikopter alapjai."},{"type":"image","props":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9QzwAEjDAGNzIwAAAZ8QH/0VwBYwAAAABJRU5ErkJggg==","caption":"Beillesztett kép"}}]'),
+  ('31000000-0000-4000-8000-000000000002', 'qual_AB', 'Repüléselmélet', 2, 'default',
+   '[{"type":"paragraph","content":"Felhajtóerő, a rotor működése, a leszállás szabályai."}]'),
+  ('31000000-0000-4000-8000-000000000003', 'qual_AB', 'Rádiózás a levegőben', 3, 'blue',
+   '[{"type":"paragraph","content":"Kommunikáció a földi egységekkel."}]'),
+  ('31000000-0000-4000-8000-000000000004', 'mcb', 'MCB kézikönyv', 1, 'default',
+   '[{"type":"paragraph","content":"Zárt tananyag: csak az oktatók látják."}]');
+insert into public.academy_progress (user_id, material_id) values
+  ('00000000-0000-4000-8000-000000000003', '31000000-0000-4000-8000-000000000001');

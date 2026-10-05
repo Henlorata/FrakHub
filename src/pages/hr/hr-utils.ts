@@ -1,8 +1,9 @@
-import {differenceInCalendarDays, format} from "date-fns";
+import {daysBetween, todayKey} from "@/lib/datetime";
 import {getStaffCategory, type StaffCategory} from "@/lib/utils";
 
+/** Calendar days in Hungary since a timestamp or date. */
 export const daysSince = (iso?: string | null): number | null =>
-  iso ? Math.max(0, differenceInCalendarDays(new Date(), new Date(iso))) : null;
+  iso ? Math.max(0, daysBetween(todayKey(iso), todayKey())) : null;
 
 /** "12 nap", "4 hónap", "1 év 3 hónap". */
 export const formatSpan = (days: number | null): string => {
@@ -16,7 +17,7 @@ export const formatSpan = (days: number | null): string => {
   return rest > 0 ? `${years} év ${rest} hó` : `${years} év`;
 };
 
-export const formatDate = (iso?: string | null) => (iso ? format(new Date(iso), "yyyy.MM.dd.") : "–");
+export {formatDate} from "@/lib/datetime";
 
 export const CATEGORY_META: Record<StaffCategory, {label: string; short: string; pill: string; dot: string}> = {
   executive: {label: "Executive Staff", short: "Vezérkar", pill: "bg-violet-500/10 text-violet-300 ring-violet-500/30", dot: "bg-violet-400"},
@@ -33,17 +34,4 @@ export const DIVISION_META: Record<string, {label: string; pill: string}> = {
   MCB: {label: "MCB", pill: "bg-sky-500/10 text-sky-300 ring-sky-500/30"},
 };
 
-/** Excel-friendly CSV (UTF-8 BOM, semicolon separated, as Hungarian Excel expects). */
-export function downloadCsv(fileName: string, rows: (string | number | null | undefined)[][]) {
-  const escape = (value: string | number | null | undefined) => {
-    const text = value === null || value === undefined ? "" : String(value);
-    return /[";\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-  };
-  const csv = "﻿" + rows.map((row) => row.map(escape).join(";")).join("\r\n");
-  const url = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
-}
+export {downloadCsv} from "@/lib/csv";
