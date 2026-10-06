@@ -130,7 +130,7 @@ export function IdeasTab({profile}: {profile: Profile}) {
                   </div>
                   {item.response && (
                     <div className="mt-3 rounded-xl bg-emerald-500/[0.06] p-3 text-sm ring-1 ring-emerald-500/20">
-                      <p className="text-[11px] font-semibold tracking-wide text-emerald-300 uppercase">A parancsnokság válasza</p>
+                      <p className="text-[11px] font-semibold tracking-wide text-emerald-300 uppercase">A vezetőség válasza</p>
                       <p className="mt-1 whitespace-pre-wrap wrap-anywhere text-slate-200">{item.response}</p>
                       <p className="mt-1 text-[11px] wrap-anywhere text-slate-500">{item.responded_by_name ?? ""}{item.responded_at ? ` · ${formatDate(item.responded_at)}` : ""}</p>
                     </div>
@@ -163,7 +163,7 @@ function NewIdeaDialog({open, onOpenChange, onCreated}: {open: boolean; onOpenCh
     setSaving(true);
     try {
       await communityApi.suggest(form.title.trim(), form.body.trim(), form.category);
-      toast.success("Ötlet beküldve.", {description: "A tagok szavazhatnak rá, a parancsnokság válaszol."});
+      toast.success("Ötlet beküldve.", {description: "A tagok szavazhatnak rá, a vezetőség válaszol."});
       await onCreated();
     } catch (error) {
       toast.error(errorMessage(error, "Nem sikerült beküldeni."));

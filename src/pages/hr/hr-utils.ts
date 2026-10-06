@@ -20,10 +20,10 @@ export const formatSpan = (days: number | null): string => {
 export {formatDate} from "@/lib/datetime";
 
 export const CATEGORY_META: Record<StaffCategory, {label: string; short: string; pill: string; dot: string}> = {
-  executive: {label: "Executive Staff", short: "Vezérkar", pill: "bg-violet-500/10 text-violet-300 ring-violet-500/30", dot: "bg-violet-400"},
-  command: {label: "Command Staff", short: "Parancsnokság", pill: "bg-amber-500/10 text-amber-300 ring-amber-500/30", dot: "bg-amber-400"},
-  supervisory: {label: "Supervisory Staff", short: "Vezetőség", pill: "bg-emerald-500/10 text-emerald-300 ring-emerald-500/30", dot: "bg-emerald-400"},
-  field: {label: "Field Staff", short: "Állomány", pill: "bg-slate-500/10 text-slate-300 ring-slate-500/25", dot: "bg-slate-400"},
+  executive: {label: "Executive Staff", short: "Executive", pill: "bg-violet-500/10 text-violet-300 ring-violet-500/30", dot: "bg-violet-400"},
+  command: {label: "Command Staff", short: "Command", pill: "bg-amber-500/10 text-amber-300 ring-amber-500/30", dot: "bg-amber-400"},
+  supervisory: {label: "Supervisory Staff", short: "Supervisory", pill: "bg-emerald-500/10 text-emerald-300 ring-emerald-500/30", dot: "bg-emerald-400"},
+  field: {label: "Field Staff", short: "Field", pill: "bg-slate-500/10 text-slate-300 ring-slate-500/25", dot: "bg-slate-400"},
 };
 
 export const rankPillClass = (rank: string) => CATEGORY_META[getStaffCategory(rank)].pill;

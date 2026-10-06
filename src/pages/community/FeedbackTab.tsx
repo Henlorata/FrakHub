@@ -100,7 +100,7 @@ function MineView() {
         </div>
         {blocked ? (
           <div className="rounded-xl bg-red-500/10 p-3 text-sm text-red-100 ring-1 ring-red-500/25">
-            <Ban className="mr-1.5 inline size-4"/> A vezérkar ideiglenesen letiltotta a beküldést: {formatDate(data.blocked_until)}-ig.
+            <Ban className="mr-1.5 inline size-4"/> A vezetőség ideiglenesen letiltotta a beküldést: {formatDate(data.blocked_until)}-ig.
           </div>
         ) : (
           <>

@@ -97,7 +97,7 @@ export function AddCollaboratorDialog({open, onOpenChange, caseId, existingUserI
             <span className="grid size-11 place-items-center rounded-2xl bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/30"><UserPlus className="size-5"/></span>
             <div>
               <DialogTitle>Közreműködő hozzáadása</DialogTitle>
-              <DialogDescription>Az MCB tagjai és a felügyelő állomány vehető fel az aktára.</DialogDescription>
+              <DialogDescription>Az MCB tagjai, valamint a Supervisory Staff és felette vehető fel az aktára.</DialogDescription>
             </div>
           </div>
         </DialogHeader>

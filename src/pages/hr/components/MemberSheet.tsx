@@ -312,7 +312,7 @@ function ProfileTab({member, viewer, onUpdate, onRemove}: {
                 <Switch checked={form.is_bureau_manager} onCheckedChange={(value) => setForm({...form, is_bureau_manager: value})}/>
               </label>
               <label className="flex items-center justify-between gap-3 text-sm text-slate-200">
-                <span>Bureau Commander <span className="block text-xs text-slate-500">A(z) {form.division} osztály parancsnoka.</span></span>
+                <span>Bureau Commander <span className="block text-xs text-slate-500">A(z) {form.division} osztály vezetője.</span></span>
                 <Switch checked={form.is_bureau_commander} disabled={form.division === "TSB"}
                         onCheckedChange={(value) => setForm({...form, is_bureau_commander: value})}/>
               </label>

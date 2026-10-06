@@ -48,9 +48,9 @@ select lives_ok($$with e as (insert into public.events (title, kind, starts_at, 
   'supervisory staff organise events for everyone');
 select is((select created_by from public.events where id = (select id from made where name = 'meeting')), (select supervisor_id from ids),
   'the organiser is the inserting member');
-select throws_ok($$insert into public.events (title, starts_at, audience) values ('Parancsnoki értekezlet', now() + interval '1 day', 'command')$$,
+select throws_ok($$insert into public.events (title, starts_at, audience) values ('Command Staff értekezlet', now() + interval '1 day', 'command')$$,
   '42501', null, 'supervisory staff cannot organise command staff events');
-select lives_ok($$with e as (insert into public.events (title, starts_at, audience) values ('Felügyelői eligazítás', now() + interval '3 days', 'staff')
+select lives_ok($$with e as (insert into public.events (title, starts_at, audience) values ('Supervisory Staff eligazítás', now() + interval '3 days', 'staff')
                             returning id)
                   insert into made select 'staff', id from e$$,
   'supervisory staff organise staff events');

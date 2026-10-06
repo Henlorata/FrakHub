@@ -98,14 +98,14 @@ test.describe("HR", () => {
     await page.goto("/hr");
 
     const row = page.locator("tr", {hasText: "Parancsnok Péter"});
-    await expect(row.getByText("SEB parancsnok")).toBeVisible();
+    await expect(row.getByText("SEB Bureau Commander")).toBeVisible();
     await expect(row.getByText("MU vezető")).toBeVisible();
     await expect(page.locator("tr", {hasText: "Vezető Vera"}).getByText("Bureau Manager")).toBeVisible();
 
     const leaders = page.locator("[data-tour=hr-leaders]");
-    await expect(leaders.locator("li", {hasText: "Divízió parancsnoka"}).filter({hasText: "SEB"})).toContainText("Parancsnok Péter");
-    await expect(leaders.locator("li", {hasText: "Divízió parancsnoka"}).filter({hasText: "MCB"})).toContainText("Nincs kinevezve");
-    await expect(leaders.locator("li", {hasText: "Irodavezető"})).toContainText("Vezető Vera");
+    await expect(leaders.locator("li", {hasText: "Bureau Commander"}).filter({hasText: "SEB"})).toContainText("Parancsnok Péter");
+    await expect(leaders.locator("li", {hasText: "Bureau Commander"}).filter({hasText: "MCB"})).toContainText("Nincs kinevezve");
+    await expect(leaders.locator("li", {hasText: "Bureau Manager"})).toContainText("Vezető Vera");
     await leaders.getByRole("button", {name: /Parancsnok Péter/}).first().click();
     await expect(page).toHaveURL(/member=44444444/);
   });

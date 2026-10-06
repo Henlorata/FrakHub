@@ -551,7 +551,7 @@ export function CaseDetailPage() {
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
         {detail.warrants.length === 0 ? (
           <p className="py-8 text-center text-xs text-slate-500">
-            Elfogató- és házkutatási parancsot az akta szerkesztői kérhetnek; a felügyelő állomány bírálja el.
+            Elfogató- és házkutatási parancsot az akta szerkesztői kérhetnek; a Supervisory Staff és felette vagy egy Investigator III. bírálja el.
           </p>
         ) : detail.warrants.map((warrant) => (
           <WarrantCard key={warrant.id} warrant={warrant} perms={perms} onAction={(entry, action) => setWarrantAction({warrant: entry, action})}

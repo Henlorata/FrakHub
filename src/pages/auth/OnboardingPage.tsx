@@ -280,7 +280,7 @@ export function OnboardingPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Elveszett vizsgakód</DialogTitle>
-            <DialogDescription>A felügyelő állomány (Sergeant és felette) kézzel is hozzád tudja rendelni a vizsgádat.</DialogDescription>
+            <DialogDescription>A Supervisory Staff (Sergeant és felette) kézzel is hozzád tudja rendelni a vizsgádat.</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-slate-300">Írj nekik Discordon vagy TeamSpeaken, és add meg a karakterneved:</p>
           <p className="rounded-xl bg-black/30 p-3 text-center text-lg font-semibold text-amber-200 ring-1 ring-white/10">{profile.full_name}</p>

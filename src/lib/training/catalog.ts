@@ -36,37 +36,37 @@ export const TRAININGS: readonly TrainingInfo[] = [
   {
     id: "mcb", title: "Nyomozó Iroda", icon: Fingerprint, tone: "blue", minutes: 5, version: 1,
     summary: "Akták, dokumentumszerkesztő, bizonyítékok, személyek, körözések, parancsok és teendők az MCB felületén.",
-    requirement: "MCB-tagoknak és a felügyelői rangtól", eligible: (profile) => canViewCaseList(profile),
+    requirement: "MCB-tagoknak, valamint Supervisory Staff és felette", eligible: (profile) => canViewCaseList(profile),
   },
   {
-    id: "supervisor", title: "Felügyelői képzés", icon: ShieldCheck, tone: "violet", minutes: 5, version: 1,
-    summary: "Állomány kezelése, előléptetés, újoncok, figyelmeztetések, kérelmek, vizsgajavítás és a havi összesítők.",
-    requirement: "Sergeant I. rangtól", eligible: (profile) => isStaff(profile),
+    id: "supervisor", title: "Supervisory Staff képzés", icon: ShieldCheck, tone: "violet", minutes: 5, version: 1,
+    summary: "Állomány kezelése, előléptetés, Trainee-k, figyelmeztetések, kérelmek, vizsgajavítás és a havi összesítők.",
+    requirement: "Supervisory Staff (Sergeant I. rangtól)", eligible: (profile) => isStaff(profile),
   },
   {
     id: "instructor", title: "Oktatói képzés", icon: GraduationCap, tone: "cyan", minutes: 3, version: 1,
     summary: "Tananyagok szerkesztése az Akadémián, az alapképzés turnusai és a vizsgák javítása.",
-    requirement: "TB képesítéssel vagy felügyelői rangtól", eligible: (profile) => isAcademyInstructor(profile),
+    requirement: "TB képesítéssel vagy Supervisory Staff és felette", eligible: (profile) => isAcademyInstructor(profile),
   },
   {
-    id: "command", title: "Parancsnoki képzés", icon: Star, tone: "red", minutes: 4, version: 1,
+    id: "command", title: "Command Staff képzés", icon: Star, tone: "red", minutes: 4, version: 1,
     summary: "Készültségi szint, hirdetmények, előléptetések és elbocsátás, a flotta és a vizsgák kezelése.",
-    requirement: "Lieutenant I. rangtól", eligible: (profile) => isHighCommand(profile),
+    requirement: "Command Staff (Lieutenant I. rangtól)", eligible: (profile) => isHighCommand(profile),
   },
   {
-    id: "executive", title: "Vezérkari képzés", icon: Crown, tone: "amber", minutes: 4, version: 1,
+    id: "executive", title: "Executive Staff képzés", icon: Crown, tone: "amber", minutes: 4, version: 1,
     summary: "Havi fizetés, kassza, pénzügyi áttekintés és a kitüntetések.",
-    requirement: "Deputy Commander és Commander", eligible: (profile) => isExecutive(profile),
+    requirement: "Executive Staff (Deputy Commander és Commander)", eligible: (profile) => isExecutive(profile),
   },
   {
-    id: "bureau_commander", title: "Divízióparancsnoki képzés", icon: Briefcase, tone: "emerald", minutes: 3, version: 1,
+    id: "bureau_commander", title: "Bureau Commander képzés", icon: Briefcase, tone: "emerald", minutes: 3, version: 1,
     summary: "A vezetett divízió vagy alegység tagjai, képesítései, járművei, tananyagai és vizsgái.",
-    requirement: "Divízió- és alegység-parancsnokoknak", eligible: leadsDivision,
+    requirement: "Bureau Commandereknek és az alegységek vezetőinek", eligible: leadsDivision,
   },
   {
-    id: "bureau_manager", title: "Irodavezetői képzés", icon: Landmark, tone: "rose", minutes: 3, version: 1,
-    summary: "Az irodavezető teljes jogkörei: parancsnokok kinevezése, fizetés és minden beállítás.",
-    requirement: "Irodavezetőnek", eligible: (profile) => !!profile.is_bureau_manager,
+    id: "bureau_manager", title: "Bureau Manager képzés", icon: Landmark, tone: "rose", minutes: 3, version: 1,
+    summary: "A Bureau Manager teljes jogkörei: Bureau Commanderek kinevezése, fizetés és minden beállítás.",
+    requirement: "A Bureau Managernek", eligible: (profile) => !!profile.is_bureau_manager,
   },
 ];
 

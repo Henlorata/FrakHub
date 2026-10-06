@@ -12,7 +12,7 @@ export function seedProgression(world: World) {
   const {tables, ago} = world;
   tables.promotion_nominations = [
     {id: world.id(), user_id: person(10), from_rank: "Deputy Sheriff II.", to_rank: "Deputy Sheriff III.", status: "pending",
-      reason: "Két hónapja hiánytalanul hozza a jelentéseket, és sokat segít az újoncoknak.", nominated_by: person(5), created_at: ago(2 * DAY),
+      reason: "Két hónapja hiánytalanul hozza a jelentéseket, és sokat segít a Trainee-knek.", nominated_by: person(5), created_at: ago(2 * DAY),
       decided_at: null, decided_by: null, decision_note: null},
   ];
   tables.trainee_mentors = [

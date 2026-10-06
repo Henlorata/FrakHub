@@ -21,11 +21,11 @@ export interface LeadershipRole {
 export function leadershipRoles(member: LeaderSubject): LeadershipRole[] {
   const roles: LeadershipRole[] = [];
   if (member.is_bureau_manager) {
-    roles.push({key: "manager", label: "Bureau Manager", title: "Irodavezető: az állomány legfőbb vezetője, teljes jogkörrel.", icon: Crown,
+    roles.push({key: "manager", label: "Bureau Manager", title: "Bureau Manager: az állomány legfőbb vezetője, teljes jogkörrel.", icon: Crown,
       tone: "bg-violet-500/15 text-violet-200 ring-violet-400/40"});
   }
   if (member.is_bureau_commander && member.division) {
-    roles.push({key: "commander", label: `${member.division} parancsnok`, title: `Bureau Commander: a(z) ${member.division} divízió parancsnoka.`,
+    roles.push({key: "commander", label: `${member.division} Bureau Commander`, title: `Bureau Commander: a(z) ${member.division} divízió vezetője.`,
       icon: Star, tone: "bg-sky-500/15 text-sky-200 ring-sky-400/40"});
   }
   for (const unit of member.commanded_divisions ?? []) {

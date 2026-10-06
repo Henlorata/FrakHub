@@ -154,8 +154,8 @@ export const FEEDBACK_CATEGORIES: Record<FeedbackCategory, string> = {
   conduct: "Magatartás", leadership: "Vezetés", harassment: "Zaklatás", idea: "Javaslat", other: "Egyéb",
 };
 export const FEEDBACK_RECIPIENTS: Record<FeedbackRecipient, {label: string; hint: string}> = {
-  command: {label: "Parancsnokság", hint: "A parancsnoki állomány és az irodavezető olvassa."},
-  manager: {label: "Csak az irodavezető", hint: "Ha a parancsnokság valamelyik tagjáról szól."},
+  command: {label: "Command Staff", hint: "A Command Staff és felette, valamint a Bureau Manager olvassa."},
+  manager: {label: "Csak a Bureau Manager", hint: "Ha a Command Staff valamelyik tagjáról szól."},
 };
 export const FEEDBACK_STATUS: Record<FeedbackStatus, {label: string; tone: string}> = {
   new: {label: "Új", tone: "bg-sky-500/10 text-sky-200 ring-sky-500/25"},

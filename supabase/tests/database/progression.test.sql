@@ -66,7 +66,7 @@ select throws_ok(format('select public.nominate_for_promotion(%L, %L)', (select 
   '23505', null, 'one pending nomination per member');
 select throws_ok(format('select public.nominate_for_promotion(%L, %L)', (select operator_id from ids), 'rövid'),
   '22023', null, 'a nomination needs a reason');
-insert into t select 'nominated', public.nominate_for_promotion((select operator_id from ids), 'Rendszeresen segíti az újoncokat.')::text;
+insert into t select 'nominated', public.nominate_for_promotion((select operator_id from ids), 'Rendszeresen segíti a Trainee-ket.')::text;
 select is(pg_temp.j('nominated') ->> 'to_rank', 'Staff Deputy Sheriff', 'the nomination targets the next rank');
 select throws_ok(format('select public.decide_promotion_nomination(%L, %L, null)', pg_temp.j('nominated') ->> 'id', 'approved'),
   '22023', null, 'approval happens through the promotion itself');

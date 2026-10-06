@@ -64,7 +64,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Adminisztráció",
     items: [
-      {label: "Személyügy", path: "/hr", icon: Users, keywords: "hr állomány előléptetés rang újonc mentor aktivitás"},
+      {label: "Személyügy", path: "/hr", icon: Users, keywords: "hr állomány előléptetés rang trainee újonc mentor aktivitás"},
       {label: "Ki mit tehet?", path: "/permissions", icon: KeyRound, keywords: "jogosultság jog engedély szerepkör"},
     ],
   },

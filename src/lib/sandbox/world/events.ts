@@ -22,7 +22,7 @@ export function seedEvents(world: World) {
       description: "Gyakorlás párban: követés, PIT manőver, blokád. A járműveket a logisztika biztosítja."}),
     event({id: DEMO.event(3), title: "Felvételi vizsganap", kind: "exam", starts_at: at(9, "19:00"), location: "Downtown Station, tanterem",
       audience: "staff", rsvp: true, created_by: person(2),
-      description: "A jelentkezők írásbeli vizsgája és az elbeszélgetések. Két felügyelőt kérünk a felügyelethez."}),
+      description: "A jelentkezők írásbeli vizsgája és az elbeszélgetések. Két Supervisory Staff tagot kérünk a felügyelethez."}),
     event({id: DEMO.event(4), title: "Kitüntetési ünnepség", kind: "ceremony", starts_at: at(12, "20:30"), location: "Városháza lépcsője",
       rsvp: false, description: "Díszegyenruha kötelező. A kitüntetettek névsorát a gyűlésen hirdetjük ki."}),
     event({id: DEMO.event(5), title: "Közös akció a kikötőben", kind: "patrol", starts_at: at(-3, "21:00"), ends_at: at(-3, "23:00"),

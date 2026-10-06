@@ -103,7 +103,7 @@ export function WarrantDialog({open, onOpenChange, caseId, people, warrants, evi
             <span className="grid size-11 place-items-center rounded-2xl bg-red-500/10 text-red-300 ring-1 ring-red-500/30"><Gavel className="size-5"/></span>
             <div>
               <DialogTitle>Parancs kérelmezése</DialogTitle>
-              <DialogDescription>A felügyelő állomány vagy egy Investigator III. bírálja el; saját kérelmet senki sem hagy jóvá.</DialogDescription>
+              <DialogDescription>A Supervisory Staff és felette vagy egy Investigator III. bírálja el; saját kérelmet senki sem hagy jóvá.</DialogDescription>
             </div>
           </div>
         </DialogHeader>

@@ -120,11 +120,11 @@ export const RESPONSE_LABELS: Record<EventStatus, string> = {going: "Ott leszek"
 
 const UNIT_AUDIENCES = [...DIVISIONS, ...QUALIFICATIONS] as readonly string[];
 
-/** "Mindenki", "Felügyelők és felettük", "SEB divízió", "SAHP egység". */
+/** "Mindenki", "Supervisory Staff és felette", "SEB divízió", "SAHP egység". */
 export const audienceLabel = (audience: string) =>
   audience === "all" ? "Mindenki"
-    : audience === "staff" ? "Felügyelők és felettük"
-      : audience === "command" ? "Parancsnokság"
+    : audience === "staff" ? "Supervisory Staff és felette"
+      : audience === "command" ? "Command Staff és felette"
         : (DIVISIONS as readonly string[]).includes(audience) ? `${audience} divízió` : `${audience} egység`;
 
 /** The audiences a member may organise events for (empty: no "new event" button). */

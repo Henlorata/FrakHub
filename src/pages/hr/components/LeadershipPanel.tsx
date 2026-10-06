@@ -14,10 +14,10 @@ const DIVISION_GROUPS = ["SEB", "MCB"];
  */
 export function LeadershipPanel({members, onOpen}: {members: HrMember[]; onOpen: (member: HrMember) => void}) {
   const slots = useMemo(() => [
-    {key: "manager", label: "Bureau Manager", hint: "Irodavezető", icon: Crown, tone: "text-violet-300 bg-violet-500/10 ring-violet-500/30",
+    {key: "manager", label: "Bureau Manager", hint: "Az állomány vezetője", icon: Crown, tone: "text-violet-300 bg-violet-500/10 ring-violet-500/30",
       leaders: members.filter((member) => member.is_bureau_manager)},
     ...[...DIVISION_GROUPS, ...(members.some((member) => member.is_bureau_commander && member.division === "TSB") ? ["TSB"] : [])].map((division) => ({
-      key: `division-${division}`, label: division, hint: "Divízió parancsnoka", icon: Star, tone: "text-sky-300 bg-sky-500/10 ring-sky-500/30",
+      key: `division-${division}`, label: division, hint: "Bureau Commander", icon: Star, tone: "text-sky-300 bg-sky-500/10 ring-sky-500/30",
       leaders: members.filter((member) => member.is_bureau_commander && member.division === division),
     })),
     ...QUALIFICATIONS.map((unit) => ({

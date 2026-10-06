@@ -259,7 +259,7 @@ export function PromotionsPanel({viewer, members, onPromote, onOpenMember}: Prom
           )}
         </section>
         <p className="px-1 text-[11px] leading-relaxed text-slate-500">
-          A feltételeket a vezérkar állítja be rangonként. A duty időt a gyűléseken rögzített havi idő adja, a jelentéseket a jelentésnapló.
+          A feltételeket az Executive Staff állítja be rangonként. A duty időt a gyűléseken rögzített havi idő adja, a jelentéseket a jelentésnapló.
           Elfogadni egy javaslatot az előléptetéssel lehet; a javaslat ekkor magától lezárul.
         </p>
       </aside>
@@ -383,7 +383,7 @@ function NominateDialog({member, onOpenChange, onDone}: {member: BoardMember | n
     setSaving(true);
     try {
       await progressionApi.nominate(member.user_id, reason);
-      toast.success("Javaslat elküldve.", {description: "A parancsnokság értesítést kapott."});
+      toast.success("Javaslat elküldve.", {description: "Akik dönthetnek róla, értesítést kaptak."});
       onDone();
     } catch (error) {
       toast.error(errorMessage(error, "A javaslat nem ment el."));
@@ -404,8 +404,8 @@ function NominateDialog({member, onOpenChange, onDone}: {member: BoardMember | n
         <div className="space-y-1.5">
           <Label htmlFor="nomination-reason">Miért javaslod?</Label>
           <Textarea id="nomination-reason" rows={4} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)}
-                    placeholder="Például: megbízható, jó jelentéseket ír, segíti az újoncokat."/>
-          <p className="text-[11px] text-slate-500">Legalább 10 karakter. A parancsnokság és a javasolt tag felettesei látják.</p>
+                    placeholder="Például: megbízható, jó jelentéseket ír, segíti a Trainee-ket."/>
+          <p className="text-[11px] text-slate-500">Legalább 10 karakter. A Supervisory Staff és felette látja, a javasolt tag nem.</p>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Mégse</Button>
@@ -531,7 +531,7 @@ function CriteriaDialog({open, onOpenChange, board, onSaved}: {
         <DialogHeader>
           <DialogTitle>Előléptetési feltételek</DialogTitle>
           <DialogDescription>
-            {editable ? "Rangonként: mi kell ahhoz, hogy valaki megkapja. Az üres mező nem feltétel." : "Rangonként: mi kell ahhoz, hogy valaki megkapja (a vezérkar állítja be)."}
+            {editable ? "Rangonként: mi kell ahhoz, hogy valaki megkapja. Az üres mező nem feltétel." : "Rangonként: mi kell ahhoz, hogy valaki megkapja (az Executive Staff állítja be)."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
@@ -577,7 +577,7 @@ function CriteriaDialog({open, onOpenChange, board, onSaved}: {
               <div className="space-y-1">
                 <Label htmlFor="criteria-note" className="text-xs">Megjegyzés</Label>
                 <Input id="criteria-note" maxLength={300} disabled={!editable} value={draft.note}
-                       onChange={(event) => setDraft((prev) => ({...prev, note: event.target.value}))} placeholder="Például: parancsnoki interjú is kell."/>
+                       onChange={(event) => setDraft((prev) => ({...prev, note: event.target.value}))} placeholder="Például: Command Staff interjú is kell."/>
               </div>
             </div>
           )}

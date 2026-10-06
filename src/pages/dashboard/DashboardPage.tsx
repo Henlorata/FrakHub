@@ -178,9 +178,9 @@ export function DashboardPage() {
     {label: "Elolvasandó szabályzat", value: summary?.policies_to_acknowledge, icon: BookCheck, tone: "emerald", to: "/policies"},
     {label: "Szavazás vár rád", value: summary?.open_polls, icon: Vote, tone: "violet", to: "/community"},
     {label: "Előléptetési javaslat", value: summary?.nominations_pending, icon: Medal, tone: "gold", to: "/hr?tab=promotions"},
-    {label: "Felavatásra kész újonc", value: summary?.trainees_ready, icon: GraduationCap, tone: "emerald", to: "/hr?tab=trainees"},
-    {label: "Mentor nélküli újonc", value: summary?.trainees_without_mentor, icon: HeartHandshake, tone: "orange", to: "/hr?tab=trainees"},
-    {label: "Mentorált újoncom", value: summary?.mentees, icon: HeartHandshake, tone: "cyan", to: "/hr?tab=trainees"},
+    {label: "Felavatásra kész Trainee", value: summary?.trainees_ready, icon: GraduationCap, tone: "emerald", to: "/hr?tab=trainees"},
+    {label: "Mentor nélküli Trainee", value: summary?.trainees_without_mentor, icon: HeartHandshake, tone: "orange", to: "/hr?tab=trainees"},
+    {label: "Mentorált Trainee-m", value: summary?.mentees, icon: HeartHandshake, tone: "cyan", to: "/hr?tab=trainees"},
     {label: "Új névtelen visszajelzés", value: summary?.feedback_new, icon: MessageSquareLock, tone: "violet", to: "/community?tab=feedback&box=inbox"},
   ];
   const openTasks = tasks.filter((task) => (task.value ?? 0) > 0);
@@ -528,7 +528,7 @@ function TraineeWeek() {
       <header className="mb-3 flex items-center gap-3">
         <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/25"><GraduationCap className="size-4"/></div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-white">Az újonchetem</h2>
+          <h2 className="text-sm font-semibold text-white">A Trainee hetem</h2>
           <p className="text-xs text-slate-500">{Math.min(me.days + 1, 99)}. nap · {done}/{me.checks.length} kész</p>
         </div>
       </header>

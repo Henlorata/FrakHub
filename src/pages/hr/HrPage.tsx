@@ -141,7 +141,7 @@ export function HrPage() {
     {id: "roster", label: "Állomány", icon: Users, visible: true},
     {id: "duty", label: "Szolgálati idő", icon: Clock, visible: true},
     {id: "promotions", label: "Előléptetés", icon: Medal, visible: isStaff(profile)},
-    {id: "trainees", label: "Újoncok", icon: GraduationCap, visible: true},
+    {id: "trainees", label: "Trainee-k", icon: GraduationCap, visible: true},
     {id: "requests", label: "Kérelmek", icon: Inbox, count: requestCount, visible: isStaff(profile)},
     {id: "former", label: "Kilépettek", icon: DoorOpen, visible: isStaff(profile)},
     {id: "history", label: "Változások", icon: History, visible: true},

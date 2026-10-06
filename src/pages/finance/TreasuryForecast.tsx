@@ -21,7 +21,7 @@ export function TreasuryForecast({overview, onOpenPayroll}: {overview: FinanceOv
     return (
       <section data-tour="treasury-forecast" className="panel animate-rise p-5">
         <EmptyState compact icon={Landmark} title="Még nincs beírt kasszaegyenleg."
-                    description="A Havi fizetés lapon a vezérkar beírja a frakciókassza egyenlegét (a játékból, kifizetés előtt): ebből készül az előrejelzés."
+                    description="A Havi fizetés lapon az Executive Staff beírja a frakciókassza egyenlegét (a játékból, kifizetés előtt): ebből készül az előrejelzés."
                     action={onOpenPayroll && <Button variant="outline" size="sm" onClick={onOpenPayroll}><Wallet/> Havi fizetés</Button>}/>
       </section>
     );

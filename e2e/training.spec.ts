@@ -134,7 +134,7 @@ test.describe("trainings", () => {
     await login(page);
     await expect(page).toHaveURL(/\/dashboard$/);
     await page.goto("/profile?tab=trainings");
-    const command = page.locator("[data-tour=profile-trainings] article", {has: page.getByRole("heading", {name: "Parancsnoki képzés"})});
+    const command = page.locator("[data-tour=profile-trainings] article", {has: page.getByRole("heading", {name: "Command Staff képzés"})});
     await expect(command.getByText("Lieutenant I. rangtól")).toBeVisible();
     await expect(command.getByRole("button")).toHaveCount(0);
   });

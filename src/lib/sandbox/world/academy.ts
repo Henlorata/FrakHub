@@ -23,7 +23,7 @@ export function seedAcademy(world: World) {
   tables.academy_courses = [
     {id: DEMO_COURSE, title: "SAHP – autópálya-rendészet", description: "Üldözés, útzár és sebességmérés az autópályán.", category: "qualification",
       is_open: true, required_rank: null, linear_progression: true, sort_order: 10},
-    {id: "qual_TB", title: "TB – oktatói képesítés", description: "Hogyan tarts órát, és hogyan értékeld az újoncokat.", category: "qualification",
+    {id: "qual_TB", title: "TB – oktatói képesítés", description: "Hogyan tarts órát, és hogyan értékeld a Trainee-ket.", category: "qualification",
       is_open: true, required_rank: "Corporal", linear_progression: false, sort_order: 20},
     {id: "mcb", title: "MCB – nyomozói alapok", description: "Helyszíni szemle, kihallgatás és aktavezetés.", category: "division",
       is_open: true, required_rank: null, linear_progression: true, sort_order: 30},

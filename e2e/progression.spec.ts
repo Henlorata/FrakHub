@@ -47,7 +47,7 @@ test.describe("HR progression", () => {
 
     // Criteria are read-only below the executive staff.
     await page.getByRole("button", {name: /Feltételek/}).click();
-    await expect(page.getByRole("dialog").getByText("a vezérkar állítja be")).toBeVisible();
+    await expect(page.getByRole("dialog").getByText("az Executive Staff állítja be")).toBeVisible();
     await expect(page.getByRole("dialog").getByRole("button", {name: /Mentés:/})).toHaveCount(0);
   });
 

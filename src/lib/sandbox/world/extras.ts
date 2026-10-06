@@ -33,7 +33,7 @@ export function seedExtras(world: World) {
       voted: null},
   ];
   tables.suggestions = [
-    {id: "de-idea-1", title: "Havi közös lőtéri edzés", body: "Havonta egy közös edzés, ahol a felügyelők értékelnek is.", category: "training", status: "planned",
+    {id: "de-idea-1", title: "Havi közös lőtéri edzés", body: "Havonta egy közös edzés, ahol a Supervisory Staff is értékel.", category: "training", status: "planned",
       response: "Novembertől lesz, az első időpont a naptárban.", responded_at: ago(DAY), created_at: ago(6 * DAY), author_id: person(9), votes: 7, voted: false},
   ];
   tables.member_settings = [];

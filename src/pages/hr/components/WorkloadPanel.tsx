@@ -188,7 +188,7 @@ const STAGES: {key: keyof Omit<FunnelMonth, "month">; label: string; hint: strin
   {key: "exam_takers", label: "Felvételi vizsga", hint: "Leadott felvételi lapok"},
   {key: "exam_passed", label: "Sikeres vizsga", hint: "Átment a felvételin"},
   {key: "joined", label: "Csatlakozott", hint: "Az állományba került"},
-  {key: "deputy", label: "Felavatták", hint: "Már nem újonc"},
+  {key: "deputy", label: "Felavatták", hint: "Már nem Trainee"},
   {key: "stayed_30", label: "30 nap után is itt", hint: "Csak a legalább egy hónapos belépők"},
   {key: "stayed_90", label: "90 nap után is itt", hint: "Csak a legalább három hónapos belépők"},
 ];

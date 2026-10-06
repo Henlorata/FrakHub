@@ -39,15 +39,15 @@ const person = (rank: FactionRank, extra: Partial<Profile> = {}): Profile => ({
 });
 
 export const MATRIX_ROLES: MatrixRole[] = [
-  {key: "trainee", label: "Újonc", hint: "Deputy Sheriff Trainee", profile: person(TRAINEE_RANK)},
-  {key: "member", label: "Tag", hint: "Deputy Sheriff I.–Corporal", profile: person("Deputy Sheriff II.")},
+  {key: "trainee", label: "Trainee", hint: "Deputy Sheriff Trainee", profile: person(TRAINEE_RANK)},
+  {key: "member", label: "Field Staff", hint: "Deputy Sheriff I.–Corporal", profile: person("Deputy Sheriff II.")},
   {key: "instructor", label: "Kiképző", hint: "TB képesítéssel", profile: person("Senior Deputy Sheriff", {qualifications: ["TB"]})},
-  {key: "investigator", label: "Nyomozó", hint: "MCB, Investigator I–II.", profile: person("Deputy Sheriff III.", {division: "MCB", division_rank: "Investigator II."})},
+  {key: "investigator", label: "Investigator", hint: "MCB, Investigator I–II.", profile: person("Deputy Sheriff III.", {division: "MCB", division_rank: "Investigator II."})},
   {key: "unit_lead", label: "Egységvezető", hint: "pl. SAHP vezető", profile: person("Senior Deputy Sheriff", {qualifications: ["SAHP"], commanded_divisions: ["SAHP"]})},
-  {key: "supervisor", label: "Felügyelő", hint: "Sergeant I–II.", profile: person("Sergeant I.")},
-  {key: "command", label: "Parancsnokság", hint: "Lieutenant–Captain", profile: person("Captain II.")},
-  {key: "executive", label: "Vezérkar", hint: "Deputy Commander, Commander", profile: person("Commander")},
-  {key: "manager", label: "Irodavezető", hint: "Bureau Manager", profile: person("Lieutenant I.", {is_bureau_manager: true})},
+  {key: "supervisor", label: "Supervisory Staff", hint: "Sergeant I–II.", profile: person("Sergeant I.")},
+  {key: "command", label: "Command Staff", hint: "Lieutenant–Captain", profile: person("Captain II.")},
+  {key: "executive", label: "Executive Staff", hint: "Deputy Commander, Commander", profile: person("Commander")},
+  {key: "manager", label: "Bureau Manager", hint: "Az állomány vezetője", profile: person("Lieutenant I.", {is_bureau_manager: true})},
 ];
 
 /** The highest rank `profile` may give ("Corporal-ig"), or false. */
@@ -62,7 +62,7 @@ function promotionRange(profile: Profile): Capability {
 function eventAudiences(profile: Profile): Capability {
   const audiences = organisableAudiences(profile);
   if (audiences.includes("command")) return true;
-  if (audiences.includes("all")) return "parancsnokságon kívül";
+  if (audiences.includes("all")) return "a Command Staff kivételével";
   return audiences.length ? "saját egység" : false;
 }
 
@@ -78,10 +78,10 @@ export const MATRIX: MatrixGroup[] = [
       {label: "Regisztrációk és szabadságkérelmek elbírálása", check: isStaff},
       {label: "Rangváltás", hint: "A saját rangod felett senkiét", check: promotionRange},
       {label: "Előléptetési javaslat", check: isStaff},
-      {label: "Javaslat elbírálása", hint: "A parancsnokság Sergeant II.-ig, a vezérkar mindig",
+      {label: "Javaslat elbírálása", hint: "A Command Staff Sergeant II.-ig, az Executive Staff mindig",
         check: (profile) => executiveOrManager(profile) ? true : isHighCommand(profile) ? "Sergeant II.-ig" : false},
       {label: "Figyelmeztetés, dicséret, feljegyzés", hint: "Az alacsonyabb rangúaknak", check: isStaff},
-      {label: "Mentor kijelölése, újonc jóváhagyása", hint: "A mentor a saját újoncát hagyja jóvá",
+      {label: "Mentor kijelölése, Trainee jóváhagyása", hint: "A mentor a saját Trainee-jét hagyja jóvá",
         check: (profile) => isStaff(profile) || isAcademyInstructor(profile) ? true : profile.faction_rank === TRAINEE_RANK ? false : "ha mentor vagy"},
       {label: "Aktivitásfigyelő, munkamegosztás, toborzás", check: isStaff},
     ],
@@ -103,7 +103,7 @@ export const MATRIX: MatrixGroup[] = [
       {label: "Jelenlét rögzítése", hint: "A saját eseményein", check: (profile) => eventAudiences(profile) !== false},
       {label: "Szabályzatok szerkesztése és közzététele", check: adminOrManager},
       {label: "Válasz az ötletekre", check: adminOrManager},
-      {label: "Névtelen visszajelzések olvasása", hint: "Az irodavezetőnek szólókat csak ő", check: (profile) => !!profile.is_bureau_manager || isHighCommand(profile)},
+      {label: "Névtelen visszajelzések olvasása", hint: "A Bureau Managernek szólókat csak ő", check: (profile) => !!profile.is_bureau_manager || isHighCommand(profile)},
       {label: "Visszaélő beküldő tiltása", hint: "Hogy ki az, ekkor sem derül ki", check: executiveOrManager},
     ],
   },

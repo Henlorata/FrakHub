@@ -71,7 +71,7 @@ export function OrgChart({members, onOpen}: {members: HrMember[]; onOpen: (membe
         tone: division === "SEB" ? "text-red-300 bg-red-500/10 ring-red-500/30" : division === "MCB" ? "text-sky-300 bg-sky-500/10 ring-sky-500/30"
           : "text-slate-200 bg-slate-500/10 ring-slate-400/30",
         // TSB has a commander slot only when someone leads it.
-        leaders: division === "TSB" && !commanders.length ? null : commanders, leaderLabel: "Divízió parancsnoka",
+        leaders: division === "TSB" && !commanders.length ? null : commanders, leaderLabel: "Bureau Commander",
         groups: divisionGroups(division, own.filter((member) => !member.is_bureau_commander)),
       };
     });
@@ -105,7 +105,7 @@ export function OrgChart({members, onOpen}: {members: HrMember[]; onOpen: (membe
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-white"><Network className="size-4 text-primary"/> Szervezeti ábra</h2>
-          <p className="text-xs text-slate-500">Az iroda vezetése, a divíziók parancsnokai és tagjai, az alegységek vezetői. Kattints egy névre az adatlapért.</p>
+          <p className="text-xs text-slate-500">A Bureau Manager, az Executive és a Command Staff, a divíziók (Bureau Commander és tagok) és az alegységek vezetői. Kattints egy névre az adatlapért.</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative w-full sm:w-60">
@@ -142,7 +142,7 @@ export function OrgChart({members, onOpen}: {members: HrMember[]; onOpen: (membe
           <>
             <Connector/>
             <div className="animate-rise w-full max-w-4xl rounded-2xl bg-white/[0.02] p-3 ring-1 ring-white/10" style={{"--i": 1} as CSSProperties}>
-              <p className="mb-2 text-center text-[10px] font-semibold tracking-wide text-slate-400 uppercase">Vezérkar és parancsnokság</p>
+              <p className="mb-2 text-center text-[10px] font-semibold tracking-wide text-slate-400 uppercase">Executive Staff és Command Staff</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {leadership.map((member) => (
                   <Person key={member.id} member={member} onOpen={onOpen} dimmed={!!term && !matches(member)} framed/>

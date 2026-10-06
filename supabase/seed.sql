@@ -234,7 +234,7 @@ insert into public.events (id, title, description, kind, starts_at, ends_at, loc
   ('40000000-0000-4000-8000-000000000002', 'MU elsősegély-gyakorlat', 'Sebellátás, újraélesztés, mentés járműből.', 'training',
    date_trunc('day', now()) + interval '5 days 17 hours', date_trunc('day', now()) + interval '5 days 19 hours', 'Angel Pine kórház',
    'MU', true, null, '00000000-0000-4000-8000-000000000007'),
-  ('40000000-0000-4000-8000-000000000003', 'Felügyelői eligazítás', null, 'meeting',
+  ('40000000-0000-4000-8000-000000000003', 'Supervisory Staff eligazítás', null, 'meeting',
    date_trunc('day', now()) + interval '3 days 19 hours', null, 'Downtown Station', 'staff', true, null, '00000000-0000-4000-8000-000000000005'),
   ('40000000-0000-4000-8000-000000000004', 'Közös akció a kikötőben', null, 'patrol',
    date_trunc('day', now()) - interval '3 days' + interval '20 hours', date_trunc('day', now()) - interval '3 days' + interval '22 hours',
@@ -273,7 +273,7 @@ cross join lateral generate_series(1, m.n) g;
 -- Promotion: a pending nomination. Trainee: a mentor with a note (not signed off yet).
 insert into public.promotion_nominations (user_id, from_rank, to_rank, reason, nominated_by, created_at)
 values ('00000000-0000-4000-8000-000000000003', 'Deputy Sheriff II.', 'Deputy Sheriff III.',
-        'Megbízható járőr: a hónap jelentéseit hiánytalanul leadta, és két újoncot is segített.',
+        'Megbízható járőr: a hónap jelentéseit hiánytalanul leadta, és két Trainee-t is segített.',
         '00000000-0000-4000-8000-000000000002', now() - interval '1 day');
 insert into public.trainee_mentors (trainee_id, mentor_id, assigned_by, assigned_at)
 values ('00000000-0000-4000-8000-000000000008', '00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8000-000000000002',
@@ -349,7 +349,7 @@ insert into public.poll_votes (poll_id, option_id, user_id) values
   ('35000000-0000-4000-8000-000000000002', '35100000-0000-4000-8000-000000000005', null);
 insert into public.suggestions (id, title, body, category, author_id, status, response, responded_by, responded_at, created_at) values
   ('36000000-0000-4000-8000-000000000001', 'Közös lőtéri edzés minden hónapban',
-   'Jó lenne havonta egy közös lőtéri edzés, ahol a felügyelők értékelnek is.', 'training',
+   'Jó lenne havonta egy közös lőtéri edzés, ahol a Supervisory Staff is értékel.', 'training',
    '00000000-0000-4000-8000-000000000003', 'planned', 'Novembertől havonta egyszer lesz, az első időpont már a naptárban.',
    '00000000-0000-4000-8000-000000000001', now() - interval '1 day', now() - interval '6 days'),
   ('36000000-0000-4000-8000-000000000002', 'Jelentéssablon a közlekedési balesetekhez',

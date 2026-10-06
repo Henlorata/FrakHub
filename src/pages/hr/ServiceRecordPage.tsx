@@ -62,7 +62,7 @@ export function ServiceRecordPage() {
     : record.reports.map((entry) => entry.month.slice(0, 10));
   const roles = [
     member.is_bureau_manager && "Bureau Manager",
-    member.is_bureau_commander && `${member.division} parancsnok`,
+    member.is_bureau_commander && `${member.division} Bureau Commander`,
     ...(member.commanded_divisions ?? []).map((unit) => `${UNIT_LABELS[unit as keyof typeof UNIT_LABELS] ?? unit} vezető`),
   ].filter(Boolean) as string[];
 

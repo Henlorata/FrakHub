@@ -232,7 +232,7 @@ function MemberRow({member, maxLoad}: {member: McbOverviewMember; maxLoad: numbe
         </div>
       </td>
       <td className="px-3 py-2.5 text-xs text-slate-300">
-        {member.is_bureau_commander ? <span className="text-amber-300">Irodavezető</span> : member.division === "MCB" ? member.division_rank ?? "MCB"
+        {member.is_bureau_commander ? <span className="text-amber-300">Bureau Commander</span> : member.division === "MCB" ? member.division_rank ?? "MCB"
           : <span className="text-slate-500">{member.division} (nem MCB)</span>}
       </td>
       <td className="px-3 py-2.5">

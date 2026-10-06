@@ -61,7 +61,7 @@ export function NewBudgetRequestDialog({open, onOpenChange, onSuccess}: NewBudge
         user_id: user.id, amount: value, reason: reason.trim(), proof_image_path: paths, status: "pending",
       });
       if (error) throw error;
-      toast.success("Kérelem beküldve. A parancsnokság bírálja el.");
+      toast.success("Kérelem beküldve. A Command Staff bírálja el.");
       setAmount("");
       setReason("");
       setFiles([]);

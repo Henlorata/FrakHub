@@ -92,15 +92,15 @@ export function TraineesPanel({viewer, members, onPromote, onOpenMember}: Traine
   };
 
   if (failed) {
-    return <EmptyState icon={X} title="Az újoncok listája nem tölthető be." action={<Button variant="outline" onClick={() => void load()}><RefreshCw/> Újra</Button>}/>;
+    return <EmptyState icon={X} title="A Trainee-k listája nem tölthető be." action={<Button variant="outline" onClick={() => void load()}><RefreshCw/> Újra</Button>}/>;
   }
   if (!trainees) return <div className="grid gap-4 lg:grid-cols-2">{[0, 1].map((index) => <div key={index} className="skeleton h-72"/>)}</div>;
 
   if (trainees.length === 0) {
     return (
       <div className="panel">
-        <EmptyState icon={GraduationCap} title={coach ? "Most nincs újonc az állományban." : "Nincs követett újoncod."}
-                    description={coach ? "Az új tagok a felvételi után itt jelennek meg." : "Ha mentornak jelölnek ki, itt követheted az újonc hetét."}/>
+        <EmptyState icon={GraduationCap} title={coach ? "Most nincs Trainee az állományban." : "Nincs követett Trainee-d."}
+                    description={coach ? "Az új tagok a felvételi után itt jelennek meg." : "Ha mentornak jelölnek ki, itt követheted a Trainee hetét."}/>
       </div>
     );
   }
@@ -112,7 +112,7 @@ export function TraineesPanel({viewer, members, onPromote, onOpenMember}: Traine
     <div className="space-y-4" data-tour="hr-trainees">
       {coach && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-300 ring-1 ring-white/10"><b className="text-white tabular-nums">{trainees.length}</b> újonc</span>
+          <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-300 ring-1 ring-white/10"><b className="text-white tabular-nums">{trainees.length}</b> Trainee</span>
           {withoutMentor > 0 && (
             <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-200 ring-1 ring-amber-500/25"><b className="tabular-nums">{withoutMentor}</b> mentor nélkül</span>
           )}
@@ -183,7 +183,7 @@ function TraineeCard({trainee, index, self, coach, canPromote, canSign, busy, on
         </div>
       </header>
 
-      <div className="px-4" aria-label={`${day}. nap a ${WEEK} napos újonchétből`}>
+      <div className="px-4" aria-label={`${day}. nap a ${WEEK} napos Trainee hétből`}>
         <div className="flex gap-1">
           {Array.from({length: WEEK}, (_, slot) => (
             <span key={slot} className={cn("h-1.5 flex-1 rounded-full",
@@ -277,7 +277,7 @@ function NotesBox({trainee, onAdded}: {trainee: Trainee; onAdded: () => Promise<
   };
   return (
     <div className="mt-auto border-t border-white/5 bg-black/10 px-4 py-3">
-      <p className="mb-2 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Mentori jegyzetek <span className="font-normal normal-case text-slate-600">(az újonc nem látja)</span></p>
+      <p className="mb-2 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Mentori jegyzetek <span className="font-normal normal-case text-slate-600">(a Trainee nem látja)</span></p>
       {trainee.notes && trainee.notes.length > 0 ? (
         <ul className="mb-2 max-h-40 space-y-2 overflow-y-auto pr-1">
           {trainee.notes.map((note) => (
@@ -320,7 +320,7 @@ function MentorDialog({trainee, onOpenChange, onDone}: {trainee: Trainee | null;
     setSaving(true);
     try {
       await progressionApi.assignMentor(trainee.user_id, mentorId);
-      toast.success(mentorId ? "Mentor kijelölve." : "A mentort levetted.", {description: mentorId ? "A mentor és az újonc értesítést kapott." : undefined});
+      toast.success(mentorId ? "Mentor kijelölve." : "A mentort levetted.", {description: mentorId ? "A mentor és a Trainee értesítést kapott." : undefined});
       onDone();
     } catch (error) {
       toast.error(errorMessage(error, "Nem sikerült."));
@@ -333,10 +333,10 @@ function MentorDialog({trainee, onOpenChange, onDone}: {trainee: Trainee | null;
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Mentor: {trainee?.full_name}</DialogTitle>
-          <DialogDescription>Egy felavatott tag, aki az első héten végigkíséri az újoncot: közös járőr, kérdések, rövid jegyzetek.</DialogDescription>
+          <DialogDescription>Egy felavatott tag, aki az első héten végigkíséri a Trainee-t: közös járőr, kérdések, rövid jegyzetek.</DialogDescription>
         </DialogHeader>
         <PersonPicker people={profiles} selected={selected ? [selected] : []} autoFocus
-                      blocker={(person) => person.faction_rank === TRAINEE_RANK ? "Újonc" : person.id === trainee?.user_id ? "Saját maga" : null}
+                      blocker={(person) => person.faction_rank === TRAINEE_RANK ? "Trainee" : person.id === trainee?.user_id ? "Saját maga" : null}
                       onToggle={(person) => setSelected((current) => current === person.id ? null : person.id)}/>
         <DialogFooter className="gap-2 sm:justify-between">
           {trainee?.mentor ? (
@@ -376,7 +376,7 @@ function SignOffDialog({trainee, onOpenChange, onDone}: {trainee: Trainee | null
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Kész az előléptetésre?</DialogTitle>
-          <DialogDescription>{trainee?.full_name} felavatható {NEXT_RANK} rangra? Az előléptetésről ezután a felügyelő állomány dönt.</DialogDescription>
+          <DialogDescription>{trainee?.full_name} felavatható {NEXT_RANK} rangra? Az előléptetésről ezután a Supervisory Staff dönt.</DialogDescription>
         </DialogHeader>
         {missing.length > 0 && (
           <div className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-100 ring-1 ring-amber-500/25">

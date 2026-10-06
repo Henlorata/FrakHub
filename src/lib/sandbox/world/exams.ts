@@ -30,7 +30,7 @@ const QUESTIONS: DemoQuestion[] = [
   {id: "de-q4", page_number: 2, question_text: "Mi a teendő, ha ittas sofőrt állítasz meg?", question_type: "text", points: 3, is_required: true,
     guide: "Megállítás, alkoholszonda, pozitív eredménynél előállítás és jármű lefoglalása.", options: []},
   {id: "de-q5", page_number: 2, question_text: "Ki hagyhatja jóvá a házkutatási parancsot?", question_type: "single_choice", points: 1, is_required: true,
-    guide: null, options: [option("de-q5a", "Bármelyik járőr"), option("de-q5b", "Felügyelői rangtól, illetve Investigator III.", true),
+    guide: null, options: [option("de-q5a", "Bármelyik járőr"), option("de-q5b", "Supervisory Staff és felette, illetve Investigator III.", true),
       option("de-q5c", "A bejelentő")]},
 ];
 

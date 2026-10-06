@@ -76,7 +76,7 @@ export function ActivityWatchPanel({viewer, members, onOpenMember}: {viewer: Pro
           <p className="flex items-start gap-2 px-4 py-2.5 text-[11px] leading-relaxed text-slate-500">
             <Info className="mt-0.5 size-3.5 shrink-0 text-slate-500"/>
             Csak a gyűlésen rögzített havi duty időt nézi (a weboldal használatát és a jelentéseket nem, mert sokaknak nincs rá szükségük).
-            A jóváhagyott szabadság menti a hónapot, az újoncok és az új tagok kimaradnak. Automatikusan senki nem kap üzenetet:
+            A jóváhagyott szabadság menti a hónapot, a Trainee-k és az új tagok kimaradnak. Automatikusan senki nem kap üzenetet:
             egy felettes havonta egy barátságos emlékeztetőt küldhet.
           </p>
           {watch.members.length > 0 && (

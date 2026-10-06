@@ -47,7 +47,7 @@ const ROUTES: {path: string; text: RegExp}[] = [
   {path: "/codes?tab=callsign", text: /Igazoltatott jármű/i},
   {path: "/codes?tab=quiz", text: /Mit jelent|Melyik kód/i},
   {path: "/hr?tab=promotions", text: /Javaslatok/i},
-  {path: "/hr?tab=trainees", text: /Most nincs újonc/i},
+  {path: "/hr?tab=trainees", text: /Most nincs Trainee/i},
   {path: "/hr?tab=duty", text: /Aktivitásfigyelő/i},
   {path: "/hr/record/u1", text: /Szolgálati lap/i},
   {path: "/mcb/informants", text: /Még nincs informátor/i},

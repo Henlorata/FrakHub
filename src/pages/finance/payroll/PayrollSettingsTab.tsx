@@ -109,7 +109,7 @@ export function PayrollSettingsTab({canEdit}: {canEdit: boolean}) {
         </div>
         <div className="space-y-4">
           <Section icon={Users} title="Egység és képesítés" hint="Mindig jár (duty időtől függetlenül). Egy tag egy egység és egy képesítés után kap.">
-            <Row label="A vezérkar egysége" hint="Commander és Deputy Commander ezzel fizet, nem az osztályával.">
+            <Row label="Az Executive Staff egysége" hint="Commander és Deputy Commander ezzel fizet, nem az osztályával.">
               <Input disabled={!canEdit} value={draft.executive_unit ?? ""} maxLength={20} placeholder="pl. BM"
                      onChange={(event) => set({executive_unit: event.target.value.toUpperCase() || null})} className="h-9 font-mono"/>
             </Row>
@@ -117,7 +117,7 @@ export function PayrollSettingsTab({canEdit}: {canEdit: boolean}) {
               {unitKeys.map((key) => {
                 const custom = !(DIVISIONS as readonly string[]).includes(key) && !(QUALIFICATIONS as readonly string[]).includes(key) && key !== draft.executive_unit;
                 return (
-                  <Row key={key} label={key} hint={(QUALIFICATIONS as readonly string[]).includes(key) ? "képesítés" : (DIVISIONS as readonly string[]).includes(key) ? "osztály" : key === draft.executive_unit ? "vezérkar" : "egyéb"}>
+                  <Row key={key} label={key} hint={(QUALIFICATIONS as readonly string[]).includes(key) ? "képesítés" : (DIVISIONS as readonly string[]).includes(key) ? "osztály" : key === draft.executive_unit ? "Executive Staff" : "egyéb"}>
                     <div className="flex gap-1">
                       <MoneyField label={`${key} fizetése`} disabled={!canEdit} value={draft.unit_pay[key] ?? 0}
                                   onChange={(value) => set({unit_pay: {...draft.unit_pay, [key]: value}})} className="flex-1"/>
