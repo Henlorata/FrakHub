@@ -149,7 +149,7 @@ export function LogisticsPage() {
       </div>
 
       {tab === "fleet" ? (
-        <div key="fleet" className="animate-fade"><FleetPanel/></div>
+        <div key="fleet" className="animate-fade"><FleetPanel requests={requests}/></div>
       ) : (
         <div key="requests" data-tour="logistics-requests" className="animate-fade space-y-6">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

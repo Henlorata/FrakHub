@@ -1,5 +1,5 @@
 import {
-  Banknote, Bell, Calculator, CalendarDays, ClipboardList, FileText, Fingerprint, GraduationCap, LayoutDashboard, Radio, Truck, Users,
+  Banknote, Bell, Calculator, CalendarDays, ClipboardList, FileText, Fingerprint, GraduationCap, LayoutDashboard, Radio, Sparkles, Truck, User, Users,
   type LucideIcon,
 } from "lucide-react";
 import {canViewCaseList} from "@/lib/utils";
@@ -59,6 +59,12 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+/** Pages the quick search finds that are not in the sidebar (account menu, dashboard strip). */
+export const EXTRA_PAGES: NavItem[] = [
+  {label: "Profilom", path: "/profile", icon: User, keywords: "profil adataim szabadság képzések jelszó"},
+  {label: "Újdonságok", path: "/changelog", icon: Sparkles, keywords: "újdonság változás frissítés hírek változásnapló"},
+];
+
 export const visibleSections = (profile: Profile): NavSection[] =>
   NAV_SECTIONS
     .map((section) => ({...section, items: section.items.filter((item) => !item.visible || item.visible(profile))}))
@@ -73,7 +79,9 @@ export const pageTitleFor = (pathname: string): string => {
   if (pathname.startsWith("/mcb/suspects")) return "Bűnügyi nyilvántartás";
   if (pathname.startsWith("/mcb/warrants")) return "Parancsok";
   if (pathname.startsWith("/mcb/admin")) return "Az iroda vezetése";
+  if (pathname.startsWith("/mcb/templates")) return "Aktasablonok";
   if (pathname.startsWith("/logistics/fleet/")) return "Jármű";
+  if (pathname.startsWith("/changelog")) return "Újdonságok";
   const match = NAV_SECTIONS.flatMap((section) => section.items)
     .filter((item) => pathname.startsWith(item.path))
     .sort((a, b) => b.path.length - a.path.length)[0];

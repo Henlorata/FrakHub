@@ -1,6 +1,6 @@
 import {useState} from "react";
 import {useNavigate} from "react-router";
-import {FolderPlus, Loader2} from "lucide-react";
+import {FilePlus2, FolderPlus, Loader2} from "lucide-react";
 import {toast} from "sonner";
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
@@ -8,10 +8,10 @@ import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
 import {useAuth} from "@/context/AuthContext";
+import {BLANK_TEMPLATE_ID, templateIcon, useCaseTemplates} from "@/lib/case-templates";
 import {CATEGORIES, CATEGORY, PRIORITIES, PRIORITY} from "@/lib/mcb";
 import {cn, errorMessage} from "@/lib/utils";
 import type {CaseCategory, CasePriority} from "@/types/supabase";
-import {CASE_TEMPLATES} from "../case-templates";
 
 interface NewCaseDialogProps {
   open: boolean;
@@ -26,15 +26,20 @@ export function NewCaseDialog({open, onOpenChange, onCreated}: NewCaseDialogProp
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<CasePriority>("medium");
   const [category, setCategory] = useState<CaseCategory | null>(null);
-  const [template, setTemplate] = useState(CASE_TEMPLATES[0].id);
+  // The leadership's starting documents (loaded once per session when the dialog opens).
+  const {templates} = useCaseTemplates("document", {enabled: open});
+  const [template, setTemplate] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // The first template unless another one is picked (one deleted meanwhile falls back too).
+  const picked = template === BLANK_TEMPLATE_ID || templates?.some((item) => item.id === template) ? template : null;
+  const chosen = picked ?? templates?.[0]?.id ?? BLANK_TEMPLATE_ID;
 
   const reset = () => {
     setTitle("");
     setDescription("");
     setPriority("medium");
     setCategory(null);
-    setTemplate(CASE_TEMPLATES[0].id);
+    setTemplate(null);
   };
 
   const submit = async () => {
@@ -43,7 +48,8 @@ export function NewCaseDialog({open, onOpenChange, onCreated}: NewCaseDialogProp
     if (name.length > 160) return toast.error("Az akta címe legfeljebb 160 karakter lehet.");
     setSaving(true);
     try {
-      const blocks = CASE_TEMPLATES.find((item) => item.id === template)?.blocks() ?? [];
+      const source = templates?.find((item) => item.id === chosen);
+      const blocks = source ? structuredClone(source.blocks) : [];
       const {data, error} = await supabase.from("cases").insert({
         title: name, description: description.trim() || null, priority, category, status: "open", owner_id: profile?.id, body: blocks,
       }).select("id").single();
@@ -122,15 +128,18 @@ export function NewCaseDialog({open, onOpenChange, onCreated}: NewCaseDialogProp
 
           <div className="space-y-1.5">
             <Label>Kiinduló dokumentum</Label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {CASE_TEMPLATES.map((item) => (
-                <button key={item.id} type="button" onClick={() => setTemplate(item.id)}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-tour="case-templates">
+              {templates === null ? [0, 1, 2, 3].map((index) => <div key={index} className="skeleton h-[68px] rounded-xl"/>) : [
+                ...templates.map((item) => ({id: item.id, label: item.label, description: item.description, Icon: templateIcon(item.icon)})),
+                {id: BLANK_TEMPLATE_ID, label: "Üres akta", description: "Üres dokumentum, saját felépítéssel.", Icon: FilePlus2},
+              ].map((item) => (
+                <button key={item.id} type="button" onClick={() => setTemplate(item.id)} aria-pressed={chosen === item.id}
                         className={cn("flex min-w-0 items-start gap-3 rounded-xl p-3 text-left ring-1 transition",
-                          template === item.id ? "bg-amber-500/10 ring-amber-500/40" : "bg-white/[0.02] ring-white/10 hover:bg-white/[0.05]")}>
-                  <item.icon className={cn("mt-0.5 size-5 shrink-0", template === item.id ? "text-amber-300" : "text-slate-500")}/>
+                          chosen === item.id ? "bg-amber-500/10 ring-amber-500/40" : "bg-white/[0.02] ring-white/10 hover:bg-white/[0.05]")}>
+                  <item.Icon className={cn("mt-0.5 size-5 shrink-0", chosen === item.id ? "text-amber-300" : "text-slate-500")}/>
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-white">{item.label}</span>
-                    <span className="block text-xs text-slate-400">{item.description}</span>
+                    <span className="block text-sm font-medium text-white wrap-anywhere">{item.label}</span>
+                    {item.description && <span className="block text-xs text-slate-400 wrap-anywhere">{item.description}</span>}
                   </span>
                 </button>
               ))}

@@ -76,7 +76,8 @@ test.describe("long unbroken text", () => {
       await login(page);
       await expect(page).toHaveURL(/\/dashboard$/);
 
-      for (const path of ["/dashboard", "/notifications", "/logistics", "/logistics?tab=fleet", "/logistics/fleet/fv1", "/hr", "/profile"]) {
+      for (const path of ["/dashboard", "/notifications", "/logistics", "/logistics?tab=fleet", "/logistics?tab=fleet&view=usage",
+        "/logistics/fleet/fv1", "/hr", "/hr?view=org", "/profile", "/events", "/changelog", "/mcb/templates"]) {
         await page.goto(path);
         await page.waitForLoadState("networkidle");
         await expectNoHorizontalOverflow(page, path);

@@ -1,5 +1,6 @@
 import {fromHungarian} from "@/lib/datetime";
 import {eventEnd, isInAudience, organisableAudiences, type EventStatus} from "@/lib/events";
+import type {FleetSubject} from "@/lib/fleet";
 import type {Row} from "../postgrest";
 import {DAY, DEMO, SandboxError, type RpcHandler, type World} from "./context";
 import {person} from "./people";
@@ -25,7 +26,7 @@ export function seedEvents(world: World) {
     event({id: DEMO.event(4), title: "Kitüntetési ünnepség", kind: "ceremony", starts_at: at(12, "20:30"), location: "Városháza lépcsője",
       rsvp: false, description: "Díszegyenruha kötelező. A kitüntetettek névsorát a gyűlésen hirdetjük ki."}),
     event({id: DEMO.event(5), title: "Közös akció a kikötőben", kind: "patrol", starts_at: at(-3, "21:00"), ends_at: at(-3, "23:00"),
-      location: "San Fierro kikötő", created_by: person(5), created_at: ago(8 * DAY)}),
+      location: "San Fierro kikötő", created_by: person(5), created_at: ago(8 * DAY), attendance_taken_at: ago(2 * DAY), attendance_taken_by: person(5)}),
     event({id: DEMO.event(6), title: "Lőtéri edzés", kind: "training", starts_at: at(4, "17:00"), location: "Fort Carson lőtér",
       cancelled_at: ago(6 * 60), created_by: person(2)}),
   ];
@@ -41,7 +42,18 @@ export function seedEvents(world: World) {
     ...[2, 5, 6, 8, 9].map((n) => answer(DEMO.event(5), person(n), "going")),
     answer(DEMO.event(5), me.id, "going"),
   ];
+  // The past action's attendance: the member was there, one who said they come was not.
+  tables.event_attendance = [...[2, 5, 6, 9].map((n) => person(n)), me.id]
+    .map((userId) => ({event_id: DEMO.event(5), user_id: userId, recorded_by: person(5), recorded_at: ago(2 * DAY)}));
+  // The one who answered "Szabadságon leszek" has an approved leave over the meeting.
+  (tables.hr_records ??= []).push({
+    id: world.id(), user_id: person(11), kind: "leave", title: "Szabadság", details: null, starts_on: world.day(1), ends_on: world.day(3),
+    status: "active", created_by: person(11), created_at: ago(3 * DAY), decided_by: person(2), decided_at: ago(2 * DAY),
+  });
 }
+
+const attendeesOf = (world: World, eventId: unknown) =>
+  (world.tables.event_attendance ?? []).filter((row) => row.event_id === eventId).map((row) => String(row.user_id));
 
 const canManage = (world: World, row: Row) => organisableAudiences(world.me).includes(String(row.audience));
 
@@ -82,8 +94,14 @@ export const eventsRpc: Record<string, RpcHandler> = {
         const manage = canManage(world, row);
         const answers = (world.tables.event_responses ?? []).filter((answer) => answer.event_id === row.id);
         const mine = answers.find((answer) => answer.user_id === world.me.id);
+        const attendees = attendeesOf(world, row.id);
+        const taken = row.attendance_taken_at ?? null;
         return {
           ...row,
+          attendance_taken_at: taken,
+          attended_count: taken ? attendees.length : null,
+          i_attended: taken ? attendees.includes(world.me.id) : null,
+          attendee_ids: manage ? attendees : null,
           created_by_name: world.person(row.created_by as string)?.full_name ?? null,
           can_manage: manage,
           my_status: mine?.status ?? null,
@@ -119,4 +137,48 @@ export const eventsRpc: Record<string, RpcHandler> = {
     }
     return countsOf(world, row.id);
   },
+
+  set_event_attendance: (args, world) => {
+    const row = (world.tables.events ?? []).find((item) => item.id === args._event_id);
+    if (!row || !visible(world, row)) throw new SandboxError("Az esemény nem található.", "P0002");
+    if (!canManage(world, row)) throw new SandboxError("A jelenlétet az esemény szervezője rögzíti.", "42501");
+    if (row.cancelled_at) throw new SandboxError("Elmaradt eseményhez nem rögzíthető jelenlét.");
+    if (Date.parse(String(row.starts_at)) > Date.now()) throw new SandboxError("A jelenlétet az esemény kezdete után rögzítheted.");
+    const ids = [...new Set((args._user_ids as string[] | null) ?? [])].filter((id) => world.person(id) || id === world.me.id);
+    world.tables.event_attendance = [
+      ...(world.tables.event_attendance ?? []).filter((item) => item.event_id !== row.id),
+      ...ids.map((userId) => ({event_id: row.id, user_id: userId, recorded_by: world.me.id, recorded_at: world.stamp()})),
+    ];
+    row.attendance_taken_at = world.stamp();
+    row.attendance_taken_by = world.me.id;
+    return {attended: ids.length, attendance_taken_at: row.attendance_taken_at};
+  },
+
+  get_member_attendance: (args, world) => {
+    const target = String(args._user_id ?? world.me.id);
+    const who = target === world.me.id ? world.me : world.person(target);
+    const since = Date.now() - 90 * DAY * 60_000;
+    const events = (world.tables.events ?? [])
+      .filter((row) => row.attendance_taken_at && !row.cancelled_at && Date.parse(String(row.starts_at)) >= since
+        && Date.parse(String(row.starts_at)) <= Date.now() && visible(world, row)
+        && ((who && isInAudience(who as unknown as FleetSubject, String(row.audience))) || attendeesOf(world, row.id).includes(target)))
+      .sort((a, b) => String(b.starts_at).localeCompare(String(a.starts_at)))
+      .map((row) => ({
+        id: row.id, title: row.title, kind: row.kind, starts_at: row.starts_at, audience: row.audience,
+        response: (world.tables.event_responses ?? []).find((answer) => answer.event_id === row.id && answer.user_id === target)?.status ?? null,
+        attended: attendeesOf(world, row.id).includes(target),
+      }));
+    return {attended: events.filter((item) => item.attended).length, total: events.length, events};
+  },
+
+  get_absences: (args, world) => (world.tables.hr_records ?? [])
+    .filter((row) => row.kind === "leave" && row.status === "active" && String(row.starts_on) <= String(args._to) && String(row.ends_on) >= String(args._from))
+    .map((row) => {
+      const who = row.user_id === world.me.id ? world.me : world.person(row.user_id as string);
+      return {
+        user_id: row.user_id, full_name: who?.full_name ?? "Ismeretlen", badge_number: who?.badge_number ?? null, faction_rank: who?.faction_rank ?? null,
+        avatar_url: who?.avatar_url ?? null, starts_on: row.starts_on, ends_on: row.ends_on,
+      };
+    })
+    .sort((a, b) => String(a.starts_on).localeCompare(String(b.starts_on))),
 };

@@ -138,6 +138,10 @@ values ('00000000-0000-4000-8000-000000000003', 'warning', 'Késés az eligazít
 insert into public.hr_records (user_id, kind, title, starts_on, ends_on, status, created_by)
 values ('00000000-0000-4000-8000-000000000007', 'leave', 'Nyaralás', current_date + 2, current_date + 9, 'pending',
         '00000000-0000-4000-8000-000000000007');
+-- An approved leave: shown on the roster and in the events calendar.
+insert into public.hr_records (user_id, kind, title, starts_on, ends_on, status, created_by, decided_by, decided_at)
+values ('00000000-0000-4000-8000-000000000006', 'leave', 'Családi program', current_date + 1, current_date + 4, 'active',
+        '00000000-0000-4000-8000-000000000006', '00000000-0000-4000-8000-000000000002', now() - interval '2 days');
 insert into public.announcements (title, content, type, is_pinned, show_author, created_by)
 values ('Új egyenruha szabályzat', 'Hétfőtől kötelező az új egyenruha viselése szolgálatban.', 'info', true, true,
         '00000000-0000-4000-8000-000000000005');
@@ -244,3 +248,15 @@ insert into public.event_responses (event_id, user_id, status, note) values
   ('40000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000007', 'absent', 'Szabadságon leszek.'),
   ('40000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000003', 'going', null),
   ('40000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000006', 'going', null);
+-- The past action's attendance: one who said they come was there, one was not, and one came unannounced.
+insert into public.event_attendance (event_id, user_id, recorded_by) values
+  ('40000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000005'),
+  ('40000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000005');
+update public.events set attendance_taken_at = date_trunc('day', now()) - interval '2 days', attendance_taken_by = '00000000-0000-4000-8000-000000000005'
+where id = '40000000-0000-4000-8000-000000000004';
+
+-- The faction account's balance read in the game over the last months (the treasury forecast).
+insert into public.payroll_runs (month, balance, balance_at, balance_by, created_by)
+select (date_trunc('month', now() at time zone 'Europe/Budapest') - make_interval(months => b.ago))::date, b.balance,
+       now() - make_interval(days => b.ago * 30), '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'
+from (values (3, 520000000::bigint), (2, 545000000::bigint), (1, 538000000::bigint), (0, 561000000::bigint)) as b(ago, balance);

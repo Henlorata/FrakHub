@@ -1,13 +1,15 @@
 # FrakHub
 
 Management hub ("MDT") for the San Fierro Sheriff's Department roleplay faction: MCB case
-management, HR (roster with one-click promotions, monthly duty time sheet, former members,
-the old Google Sheet's registry columns), logistics (requests, the vehicle fleet with key
-holders, registration renewals read from a screenshot of the in-game licence, vehicle warnings
-and tuning) and finance, penal code calculator, report
+management (with case templates kept by the MCB leadership), HR (roster with one-click
+promotions and an org chart, monthly duty time sheet, former members, the old Google Sheet's
+registry columns), logistics (requests, the vehicle fleet with key holders and a utilisation
+view, registration renewals read from a screenshot of the in-game licence, vehicle warnings and
+tuning) and finance (payroll, reimbursements, a treasury forecast), penal code calculator, report
 generator (with the person's data read from an in-game screenshot, in the browser), exams and
-academy training, an events calendar with attendance, a radio code book, plus interactive guided
-trainings per rank that run on demo data. The user interface is Hungarian.
+academy training, an events calendar with attendance and absences, a radio code book, release
+notes, plus interactive guided trainings per rank that run on demo data. The user interface is
+Hungarian.
 
 **Stack:** React 19 · Vite 8 (Rolldown) · TypeScript 6 · Tailwind CSS 4 · shadcn/Radix ·
 BlockNote · Supabase (Postgres, Auth, Realtime, Storage) · Cloudinary · Vercel (static
@@ -182,7 +184,10 @@ it. Before applying a migration, replay the deployed client's queries against it
   editor autosaves and keeps a local draft. Status, hand-over and warrant decisions go through
   `set_case_status()`, `transfer_case()` and `decide_warrant()` (no approval of one's own
   request); `case_events` keeps the history of every case. The direct table updates of the
-  old frontend are removed by the post-deploy step.
+  old frontend are removed by the post-deploy step. New cases start from `case_templates`
+  (starting documents and the editor's "/" snippets, no pictures), which everyone in the case
+  area reads and the MCB leadership edits on `/mcb/templates` (`reorder_case_templates()` for
+  the order).
 - Exams run on the server: `start_exam()` creates the attempt with a server-side deadline
   (question pools and shuffling per attempt, no answer key sent), `save_exam_progress()`
   autosaves, `finish_exam()` hands in (claim codes for guests). Choice questions are scored
@@ -227,7 +232,8 @@ it. Before applying a migration, replay the deployed client's queries against it
   forum's required format and are guarded by `e2e/report-template.spec.ts`.
 - Reimbursements are decided with `decide_budget_request()`; the cron removes old proof
   images (`finance_proof_cleanup()`) but keeps the requests for the finance history
-  (`get_finance_overview()`).
+  (`get_finance_overview()`, which also returns the recorded account balances and the open
+  month's pay so far for the treasury forecast computed in `src/lib/treasury.ts`).
 - Academy: the catalogue comes from `get_academy_overview()` (courses with title,
   description, access and the reader's progress, the basic academy's days in Hungarian
   time). Course pages are readable when `private.can_read_academy_course()` allows it (open
@@ -236,7 +242,10 @@ it. Before applying a migration, replay the deployed client's queries against it
 - Events: `events` and `event_responses`; who sees and organises an event is decided by
   `private.can_see_event()` / `private.can_manage_event()` (audience: everyone, supervisory staff,
   command staff, or a division/unit). Answers go through `respond_to_event()`; the calendar loads
-  with one `get_events()` call.
+  with one `get_events()` call. Organisers record attendance after the start with
+  `set_event_attendance()` (`event_attendance`); members see whether they were there, staff a
+  member's record with `get_member_attendance()`. `get_absences()` lists approved leave (dates
+  only) for the calendar and the planning dialog.
 - Trainings: `training_progress` holds one row per member and training (completed or
   skipped, with the training's version); members read, insert and update only their own rows.
 - Dates: the database stays in UTC; the UI formats in Europe/Budapest (`src/lib/datetime.ts`)

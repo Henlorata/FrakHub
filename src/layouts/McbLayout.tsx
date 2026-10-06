@@ -1,10 +1,10 @@
 import {Suspense} from "react";
 import {Link, Navigate, Outlet, useLocation} from "react-router";
-import {FolderKanban, Gavel, LineChart, UserSearch} from "lucide-react";
+import {FolderKanban, Gavel, LayoutTemplate, LineChart, UserSearch} from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {SuspectCacheProvider} from "@/context/SuspectCacheContext";
 import {canViewCaseList, cn} from "@/lib/utils";
-import {canViewMcbOverview} from "@/lib/mcb";
+import {canViewMcbOverview, isMcbLead} from "@/lib/mcb";
 import {PageLoader} from "@/layouts/AppLayout";
 
 /** MCB area shell. AppLayout already guarantees a signed-in, approved profile. */
@@ -23,6 +23,7 @@ export function McbLayout() {
     {path: "/mcb/suspects", label: "Nyilvántartás", icon: UserSearch},
     {path: "/mcb/warrants", label: "Parancsok", icon: Gavel},
     ...(canViewMcbOverview(profile) ? [{path: "/mcb/admin", label: "Vezetés", icon: LineChart}] : []),
+    ...(isMcbLead(profile) ? [{path: "/mcb/templates", label: "Sablonok", icon: LayoutTemplate}] : []),
   ];
 
   return (

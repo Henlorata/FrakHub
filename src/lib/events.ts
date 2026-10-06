@@ -1,6 +1,6 @@
 import {CalendarDays, GraduationCap, Medal, ScrollText, Siren, Users, type LucideIcon} from "lucide-react";
 import {DIVISIONS, isHighCommand, isStaff, QUALIFICATIONS} from "@shared/ranks";
-import {isUnitMember, leadsUnit} from "@/lib/fleet";
+import {isUnitMember, leadsUnit, type FleetSubject} from "@/lib/fleet";
 import {supabase} from "@/lib/supabaseClient";
 import type {Profile} from "@/types/supabase";
 
@@ -49,6 +49,31 @@ export interface FactionEvent {
   my_note: string | null;
   counts: EventCounts;
   responses: EventResponse[];
+  /** When the organisers recorded who was there (null: not yet). */
+  attendance_taken_at?: string | null;
+  attended_count?: number | null;
+  /** Whether the reader was there (null: attendance not taken). */
+  i_attended?: boolean | null;
+  /** Who was there: organisers only. */
+  attendee_ids?: string[] | null;
+}
+
+/** Approved leave in the calendar (dates only, like the roster). */
+export interface Absence {
+  user_id: string;
+  full_name: string;
+  badge_number: string | null;
+  faction_rank: string | null;
+  avatar_url: string | null;
+  starts_on: string;
+  ends_on: string;
+}
+
+/** A member's attendance of the last 90 days (themselves and the staff). */
+export interface MemberAttendance {
+  attended: number;
+  total: number;
+  events: {id: string; title: string; kind: EventKind; starts_at: string; audience: string; response: EventStatus | null; attended: boolean}[];
 }
 
 /** What the dashboard shows of the next events. */
@@ -111,7 +136,7 @@ export function organisableAudiences(profile: Profile | null | undefined): strin
 }
 
 /** Whether the member is part of an event's audience (organisers see more). */
-export const isInAudience = (profile: Profile, audience: string) =>
+export const isInAudience = (profile: FleetSubject, audience: string) =>
   audience === "all"
   || (audience === "staff" && isStaff(profile))
   || (audience === "command" && (isHighCommand(profile) || !!profile.is_bureau_manager))
@@ -122,6 +147,13 @@ export const eventEnd = (event: Pick<FactionEvent, "starts_at" | "ends_at">) =>
   event.ends_at ? Date.parse(event.ends_at) : Date.parse(event.starts_at) + 3 * 3_600_000;
 
 export const canRespond = (event: FactionEvent, now = Date.now()) => event.rsvp && !event.cancelled_at && eventEnd(event) > now;
+
+/** Attendance is recorded by the organisers from the start until 30 days later (set_event_attendance). */
+export const canTakeAttendance = (event: FactionEvent, now = Date.now()) =>
+  event.can_manage && !event.cancelled_at && Date.parse(event.starts_at) <= now && Date.parse(event.starts_at) >= now - 30 * 86_400_000;
+
+/** The absences covering a calendar day ("2026-10-09"). */
+export const absentOn = (absences: Absence[], day: string) => absences.filter((item) => item.starts_on <= day && item.ends_on >= day);
 
 async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   const {data, error} = await supabase.rpc(name, args);
@@ -135,6 +167,11 @@ export const eventsApi = {
   list: (from: Date, to: Date) => rpc<FactionEvent[]>("get_events", {_from: from.toISOString(), _to: to.toISOString()}),
   respond: (eventId: string, status: EventStatus | null, note?: string | null) =>
     rpc<EventCounts>("respond_to_event", {_event_id: eventId, _status: status, _note: note ?? null}),
+  /** Approved leave overlapping the days ("2026-10-01" to "2026-12-31"). */
+  absences: async (from: string, to: string) => (await rpc<Absence[] | null>("get_absences", {_from: from, _to: to})) ?? [],
+  setAttendance: (eventId: string, userIds: string[]) =>
+    rpc<{attended: number; attendance_taken_at: string}>("set_event_attendance", {_event_id: eventId, _user_ids: userIds}),
+  memberAttendance: (userId: string) => rpc<MemberAttendance>("get_member_attendance", {_user_id: userId}),
   create: async (draft: EventDraft) => {
     const {data, error} = await supabase.from("events").insert(draft).select(COLUMNS).single();
     if (error) throw error;

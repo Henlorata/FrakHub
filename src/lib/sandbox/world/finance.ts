@@ -188,8 +188,11 @@ export const financeRpc: Record<string, RpcHandler> = {
     const requests = world.tables.budget_requests ?? [];
     const pending = requests.filter((row) => row.status === "pending");
     const all = months.get(world)!;
+    const current = world.month();
     return {
       pending: {count: pending.length, amount: pending.reduce((sum, row) => sum + Number(row.amount), 0)},
+      current: {month: current, status: all[current]?.status ?? "open",
+        estimate: all[current]?.status === "closed" ? null : payrollMonth(world, current).total, tax_percent: 3},
       months: Array.from({length: count}, (_, index) => world.month(index - count + 1)).reverse().map((month, index) => {
         const state = all[month];
         const total = state ? payrollMonth(world, month).total : null;
@@ -197,6 +200,8 @@ export const financeRpc: Record<string, RpcHandler> = {
           month, reimbursed: [4500, 12800, 9600, 15200, 7300, 11000][index] ?? 0, reimbursements: [1, 4, 3, 5, 2, 4][index] ?? 0,
           payroll_status: state?.status ?? (index > 1 ? "closed" : null), payroll_total: total ?? (index > 1 ? 180_000_000 + index * 7_500_000 : null),
           payroll_withdrawn: state?.withdrawn ?? (index > 1 ? 185_000_000 + index * 7_500_000 : null), payroll_tax_percent: 3,
+          balance: state?.balance ?? [null, null, 384_000_000, 371_000_000, 352_000_000, 330_000_000][index] ?? null,
+          balance_at: state?.balanceAt ?? (index > 1 ? world.ago(index * 30 * 24 * 60) : null),
         };
       }),
     };

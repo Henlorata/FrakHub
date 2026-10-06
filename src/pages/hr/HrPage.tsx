@@ -1,7 +1,7 @@
 import {useCallback, useMemo, useState} from "react";
 import {useSearchParams} from "react-router";
 import {toast} from "sonner";
-import {BarChart3, CalendarOff, Clock, DoorOpen, Download, History, Inbox, RefreshCw, UserPlus, Users} from "lucide-react";
+import {BarChart3, CalendarOff, Clock, DoorOpen, Download, History, Inbox, List, Network, RefreshCw, UserPlus, Users} from "lucide-react";
 import {PageHeader} from "@/components/layout/PageHeader";
 import {StatCard} from "@/components/layout/StatCard";
 import {Button} from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {CATEGORY_META, downloadCsv, formatDate} from "./hr-utils";
 import {useHrData, type HrMember} from "./useHrData";
 import {RosterTable} from "./components/RosterTable";
 import {LeadershipPanel} from "./components/LeadershipPanel";
+import {OrgChart} from "./components/OrgChart";
 import {MemberSheet} from "./components/MemberSheet";
 import {RequestsPanel} from "./components/RequestsPanel";
 import {HistoryFeed} from "./components/HistoryFeed";
@@ -39,6 +40,7 @@ export function HrPage() {
   const requested = searchParams.get("tab");
   const tab: Tab = requested === "pending" ? "requests" : TABS.includes(requested as Tab) ? requested as Tab : "roster";
   const openMemberId = searchParams.get("member");
+  const rosterView = searchParams.get("view") === "org" ? "org" : "list";
 
   const members = useMemo(() => allMembers.filter((member) => member.system_role !== "pending"), [allMembers]);
   const pending = useMemo(() => allMembers.filter((member) => member.system_role === "pending"), [allMembers]);
@@ -209,10 +211,25 @@ export function HrPage() {
           <StatsPanel members={members}/>
         ) : (
           <div className="space-y-4">
-            <LeadershipPanel members={members} onOpen={(member) => setParam("member", member.id)}/>
-            <RosterTable members={members} viewer={profile} staff={staff} busyId={busyId}
-                         onRankChange={(member, rank) => void changeRank(member, rank)}
-                         onOpen={(member) => setParam("member", member.id)}/>
+            <div className="inline-flex rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10" role="tablist" aria-label="Nézet" data-tour="hr-view">
+              {([["list", "Lista", List], ["org", "Szervezeti ábra", Network]] as const).map(([id, label, Icon]) => (
+                <button key={id} type="button" role="tab" aria-selected={rosterView === id} onClick={() => setParam("view", id === "list" ? null : id)}
+                        className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors",
+                          rosterView === id ? "bg-white/10 text-white" : "text-slate-400 hover:text-slate-200")}>
+                  <Icon className="size-3.5"/>{label}
+                </button>
+              ))}
+            </div>
+            {rosterView === "org" ? (
+              <OrgChart members={members} onOpen={(member) => setParam("member", member.id)}/>
+            ) : (
+              <>
+                <LeadershipPanel members={members} onOpen={(member) => setParam("member", member.id)}/>
+                <RosterTable members={members} viewer={profile} staff={staff} busyId={busyId}
+                             onRankChange={(member, rank) => void changeRank(member, rank)}
+                             onOpen={(member) => setParam("member", member.id)}/>
+              </>
+            )}
           </div>
         )}
       </div>

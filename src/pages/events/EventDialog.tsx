@@ -1,6 +1,6 @@
 import {useState} from "react";
 import {toast} from "sonner";
-import {CalendarPlus, Loader2, Save} from "lucide-react";
+import {CalendarOff, CalendarPlus, Loader2, Save} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
@@ -9,17 +9,22 @@ import {Textarea} from "@/components/ui/textarea";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {formatTime, fromHungarian, todayKey} from "@/lib/datetime";
-import {audienceLabel, EVENT_KIND_ORDER, EVENT_KINDS, eventsApi, type EventDraft, type EventKind, type FactionEvent} from "@/lib/events";
+import {
+  absentOn, audienceLabel, EVENT_KIND_ORDER, EVENT_KINDS, eventsApi, type Absence, type EventDraft, type EventKind, type FactionEvent,
+} from "@/lib/events";
 import {cn, errorMessage} from "@/lib/utils";
 
 const DAY = 86_400_000;
+const NAMES_SHOWN = 4;
 
 /** Organising an event (new, or editing one). Saving a new one notifies its audience. */
-export function EventDialog({event, audiences, onClose, onSaved}: {
+export function EventDialog({event, audiences, absences = [], onClose, onSaved}: {
   /** The event to edit; null: a new one. */
   event: FactionEvent | null;
   /** Audiences the member may organise for. */
   audiences: string[];
+  /** Approved leave: who is away on the chosen day. */
+  absences?: Absence[];
   onClose: () => void;
   onSaved: (id: string) => void;
 }) {
@@ -34,6 +39,7 @@ export function EventDialog({event, audiences, onClose, onSaved}: {
   const [rsvp, setRsvp] = useState(event?.rsvp ?? true);
   const [saving, setSaving] = useState(false);
   const options = [...new Set([...audiences, ...(event ? [event.audience] : [])])];
+  const away = /^\d{4}-\d{2}-\d{2}$/.test(date) ? absentOn(absences, date) : [];
 
   const save = async () => {
     if (title.trim().length < 3) return toast.error("Adj meg címet (legalább 3 karakter).");
@@ -104,6 +110,15 @@ export function EventDialog({event, audiences, onClose, onSaved}: {
               <Input id="event-to" type="time" value={to} onChange={(changeEvent) => setTo(changeEvent.target.value)}/>
             </div>
           </div>
+          {away.length > 0 && (
+            <p className="-mt-1 flex items-start gap-1.5 text-xs text-sky-200 wrap-anywhere" data-tour="event-absences">
+              <CalendarOff className="mt-0.5 size-3.5 shrink-0 text-sky-300"/>
+              <span>
+                Ezen a napon {away.length} tag szabadságon van: {away.slice(0, NAMES_SHOWN).map((item) => item.full_name).join(", ")}
+                {away.length > NAMES_SHOWN ? ` és még ${away.length - NAMES_SHOWN}` : ""}.
+              </span>
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="event-location">Helyszín</Label>

@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
 import {toast} from "sonner";
 import {
-  AlertTriangle, Award, CalendarOff, Check, ClipboardList, Crown, History, KeyRound, Loader2, Medal, NotebookPen, Plus, Save,
+  AlertTriangle, Award, CalendarCheck, CalendarOff, Check, ClipboardList, Crown, History, KeyRound, Loader2, Medal, NotebookPen, Plus, Save,
   ShieldCheck, ThumbsUp, Trash2, UserMinus, X,
 } from "lucide-react";
 import {Sheet, SheetContent, SheetDescription, SheetTitle} from "@/components/ui/sheet";
@@ -17,6 +17,7 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/c
 import {EmptyState} from "@/components/layout/EmptyState";
 import {useAuth} from "@/context/AuthContext";
 import {postApi} from "@/lib/api";
+import {eventsApi, type MemberAttendance} from "@/lib/events";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import {useProfileDirectory} from "@/lib/profile-directory";
 import {getRibbonCatalogue} from "@/lib/ribbons";
@@ -142,7 +143,8 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
             <MemberRegistryTab key={`${member.details?.updated_at ?? ""}|${member.bankAccount ?? ""}`} member={member} viewer={viewer}
                                onSaveDetails={onSaveDetails} onSaveBankAccount={onSaveBankAccount}/>
           </TabsContent>
-          <TabsContent value="history" className="mt-0">
+          <TabsContent value="history" className="mt-0 space-y-5">
+            {tab === "history" && (isStaff(viewer) || viewer.id === member.id) && <MemberAttendanceSummary member={member}/>}
             {tab === "history" && <MemberHistoryTimeline member={member}/>}
           </TabsContent>
           <TabsContent value="records" className="mt-0">
@@ -455,6 +457,56 @@ export const eventTone = (event: MemberEvent) => {
 };
 
 /** Service history of a member (rank changes, awards, ...), newest first. */
+/** Events with recorded attendance of the last 90 days that were meant for the member (staff and the member). */
+function MemberAttendanceSummary({member}: {member: Pick<Profile, "id">}) {
+  const [data, setData] = useState<MemberAttendance | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    eventsApi.memberAttendance(member.id)
+      .then((result) => {
+        if (active) setData(result);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [member.id]);
+
+  if (failed) return null;
+  if (!data) return <div className="skeleton h-16 rounded-xl"/>;
+  const rate = data.total ? Math.round((data.attended / data.total) * 100) : null;
+
+  return (
+    <section className="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/5" data-tour="member-attendance">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <p className="flex items-center gap-1.5 text-sm font-medium text-slate-100"><CalendarCheck className="size-4 text-emerald-300"/> Részvétel az eseményeken</p>
+        <p className="text-xs text-slate-500">utolsó 90 nap, ahol rögzítették a jelenlétet</p>
+        <p className={cn("ml-auto text-sm font-semibold tabular-nums", rate === null ? "text-slate-500" : rate >= 50 ? "text-emerald-300" : "text-amber-300")}>
+          {data.total ? `${data.attended} / ${data.total}` : "–"}{rate !== null && <span className="ml-1 text-xs font-normal text-slate-400">({rate}%)</span>}
+        </p>
+      </div>
+      {data.events.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {data.events.slice(0, 6).map((item) => (
+            <li key={item.id} className="flex min-w-0 items-center gap-2 text-xs">
+              <span className={cn("size-1.5 shrink-0 rounded-full", item.attended ? "bg-emerald-400" : "bg-slate-600")}/>
+              <span className="min-w-0 flex-1 truncate text-slate-300">{item.title}</span>
+              <span className="shrink-0 text-slate-500">{formatDate(item.starts_at)}</span>
+              <span className={cn("w-20 shrink-0 text-right", item.attended ? "text-emerald-300" : "text-slate-500")}>
+                {item.attended ? "jelen volt" : item.response === "absent" ? "jelezte, nem jön" : "nem volt jelen"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function MemberHistoryTimeline({member}: {member: Pick<Profile, "id">}) {
   const {supabase} = useAuth();
   const {profiles} = useProfileDirectory();

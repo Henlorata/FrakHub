@@ -2,7 +2,7 @@ import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "rea
 import {Link, useSearchParams} from "react-router";
 import {toast} from "sonner";
 import {
-  AlertTriangle, Car, ChevronDown, FileSearch, FolderTree, Gauge, KeyRound, MapPin, Plus, Search, ShieldAlert, Ship,
+  AlertTriangle, BarChart3, Car, ChevronDown, FileSearch, FolderTree, Gauge, KeyRound, MapPin, Plus, Search, ShieldAlert, Ship,
 } from "lucide-react";
 import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
@@ -22,15 +22,16 @@ import {useFleet} from "@/lib/fleet-store";
 import {useProfileDirectory, type DirectoryProfile} from "@/lib/profile-directory";
 import {registrationStatus, type RegistrationState} from "@/lib/registry";
 import {cn, isStaff} from "@/lib/utils";
-import type {FleetCategory, FleetVehicle, VehicleWarning} from "@/types/supabase";
+import type {FleetCategory, FleetVehicle, VehicleRequest, VehicleWarning} from "@/types/supabase";
 import {RegistrationReviews} from "./RegistrationReviews";
 import {WarningsList} from "./WarningsList";
 import {TuningPanel} from "./TuningPanel";
 import {VehicleEditorDialog} from "./VehicleEditorDialog";
 import {CategoriesDialog} from "./CategoriesDialog";
+import {UsagePanel} from "./UsagePanel";
 
 type StatusFilter = "all" | "attention" | RegistrationState;
-type View = "vehicles" | "reviews" | "warnings" | "tuning";
+type View = "vehicles" | "reviews" | "warnings" | "tuning" | "usage";
 const ALL = "all";
 
 const GLOW: Record<RegistrationState, string> = {
@@ -46,15 +47,16 @@ const vehicleState = (vehicle: FleetVehicle): RegistrationState | null =>
 /**
  * The fleet ("Car Database" sheets): every vehicle of the stock grouped like the sheet,
  * who holds its keys, its registration and special features; reviews of renewals, vehicle
- * warnings and the official tuning in sub-views.
+ * warnings, the official tuning and (staff) the utilisation in sub-views.
  */
-export function FleetPanel() {
+export function FleetPanel({requests = null}: {requests?: VehicleRequest[] | null}) {
   const {profile, supabase} = useAuth();
   const {vehicles, categories, error} = useFleet();
   const {profiles} = useProfileDirectory();
   const [searchParams, setSearchParams] = useSearchParams();
-  const view = (["reviews", "warnings", "tuning"].includes(searchParams.get("view") ?? "") ? searchParams.get("view") : "vehicles") as View;
   const staff = isStaff(profile);
+  const views: View[] = staff ? ["reviews", "warnings", "tuning", "usage"] : ["warnings", "tuning"];
+  const view = (views.includes(searchParams.get("view") as View) ? searchParams.get("view") : "vehicles") as View;
   const people = useMemo(() => new Map(profiles.map((person) => [person.id, person])), [profiles]);
   const viewer = profile ? people.get(profile.id) ?? null : null;
   const canAssign = canAssignAnyVehicle(profile, categories);
@@ -144,6 +146,7 @@ export function FleetPanel() {
     ...(staff ? [["reviews", "Forgalmi ellenőrzés", FileSearch, reviewCount] as [View, string, typeof Car, number]] : []),
     ["warnings", "Hibapontok", AlertTriangle, null],
     ["tuning", "Tuning", Gauge, null],
+    ...(staff ? [["usage", "Kihasználtság", BarChart3, null] as [View, string, typeof Car, null]] : []),
   ];
 
   return (
@@ -180,6 +183,15 @@ export function FleetPanel() {
         </div>
       ) : view === "tuning" ? (
         <div key="tuning" className="animate-fade"><TuningPanel canManage={staff}/></div>
+      ) : view === "usage" && staff ? (
+        <div key="usage" className="animate-fade">
+          {vehicles === null ? <div className="skeleton h-64"/> : (
+            <UsagePanel vehicles={vehicles} categories={categories} requests={requests} onShowCategory={(id) => {
+              setCategory(id ?? ALL);
+              setView("vehicles");
+            }}/>
+          )}
+        </div>
       ) : (
         <div key="vehicles" data-tour="fleet-list" className="animate-fade space-y-5">
           <div className="panel flex flex-col gap-3 p-4">

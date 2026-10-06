@@ -2,15 +2,19 @@ import {useMemo, useState, type CSSProperties} from "react";
 import {ChevronLeft, ChevronRight} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {addMonths, monthKey, todayKey} from "@/lib/datetime";
-import {EVENT_KINDS, type FactionEvent} from "@/lib/events";
+import {absentOn, EVENT_KINDS, type Absence, type FactionEvent} from "@/lib/events";
 import {cn} from "@/lib/utils";
 
 const monthTitle = new Intl.DateTimeFormat("hu-HU", {timeZone: "UTC", year: "numeric", month: "long"});
 const WEEKDAYS = ["H", "K", "Sze", "Cs", "P", "Szo", "V"];
 
-/** A month at a glance: the days with events carry a dot per kind; a click jumps to the day. */
-export function MiniCalendar({events, selected, onSelect}: {
+/**
+ * A month at a glance: the days with events carry a dot per kind, the days when members are on
+ * leave a line on top; a click selects the day.
+ */
+export function MiniCalendar({events, absences, selected, onSelect}: {
   events: FactionEvent[];
+  absences: Absence[];
   selected: string | null;
   onSelect: (day: string) => void;
 }) {
@@ -47,15 +51,17 @@ export function MiniCalendar({events, selected, onSelect}: {
         {cells.map((day, index) => {
           if (!day) return <span key={`empty-${index}`}/>;
           const dayEvents = byDay.get(day) ?? [];
+          const away = absentOn(absences, day).length;
           const kinds = [...new Set(dayEvents.filter((event) => !event.cancelled_at).map((event) => event.kind))].slice(0, 3);
           return (
-            <button key={day} type="button" disabled={!dayEvents.length} onClick={() => onSelect(day)}
-                    aria-label={`${day}${dayEvents.length ? `: ${dayEvents.length} esemény` : ""}`}
+            <button key={day} type="button" disabled={!dayEvents.length && !away} onClick={() => onSelect(day)}
+                    aria-label={[day, dayEvents.length ? `${dayEvents.length} esemény` : "", away ? `${away} tag szabadságon` : ""].filter(Boolean).join(", ")}
                     className={cn("relative flex aspect-square flex-col items-center justify-center rounded-lg text-xs tabular-nums transition-colors",
-                      dayEvents.length ? "font-semibold text-white hover:bg-white/10" : "text-slate-500",
+                      dayEvents.length ? "font-semibold text-white hover:bg-white/10" : away ? "text-slate-300 hover:bg-white/10" : "text-slate-500",
                       day === today && "ring-1 ring-primary/60",
                       day === selected && "bg-primary/15 text-primary",
                       day < today && "opacity-60")}>
+              {away > 0 && <span aria-hidden className="absolute top-1 h-0.5 w-3 rounded-full bg-sky-400/80"/>}
               {Number(day.slice(8))}
               {kinds.length > 0 && (
                 <span className="absolute bottom-1 flex gap-0.5">

@@ -76,7 +76,7 @@ export function FinancePage() {
         )}
         {highCommand && (
           <TabsContent value="overview" className="mt-0">
-            {tab === "overview" && <OverviewTab onOpenPending={() => setTab("requests")}/>}
+            {tab === "overview" && <OverviewTab onOpenPending={() => setTab("requests")} onOpenPayroll={payrollManager ? () => setTab("payroll") : undefined}/>}
           </TabsContent>
         )}
       </Tabs>

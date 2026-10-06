@@ -149,15 +149,22 @@ export interface Payslip {
 
 // --- Overview ------------------------------------------------------------------
 
+export interface FinanceOverviewMonth {
+  month: string;
+  reimbursed: number;
+  reimbursements: number;
+  payroll_status: PayrollStatus | null;
+  payroll_total: number | null;
+  payroll_withdrawn: number | null;
+  payroll_tax_percent: number | null;
+  /** The faction account's balance read in the game before that month's payout. */
+  balance?: number | null;
+  balance_at?: string | null;
+}
+
 export interface FinanceOverview {
   pending: {count: number; amount: number};
-  months: {
-    month: string;
-    reimbursed: number;
-    reimbursements: number;
-    payroll_status: PayrollStatus | null;
-    payroll_total: number | null;
-    payroll_withdrawn: number | null;
-    payroll_tax_percent: number | null;
-  }[];
+  /** The month in progress: its pay so far (without tax; null once closed). */
+  current?: {month: string; status: PayrollStatus; estimate: number | null; tax_percent: number | null};
+  months: FinanceOverviewMonth[];
 }

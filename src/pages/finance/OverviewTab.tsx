@@ -6,9 +6,10 @@ import {financeApi, formatMoney, formatMoneyShort} from "@/lib/finance";
 import {monthLabel} from "@/lib/registry";
 import {cn} from "@/lib/utils";
 import type {FinanceOverview} from "@/types/finance";
+import {TreasuryForecast} from "./TreasuryForecast";
 
-/** The last six months of the faction account: payroll and reimbursements per Hungarian month. */
-export function OverviewTab({onOpenPending}: {onOpenPending: () => void}) {
+/** The last six months of the faction account: the forecast, payroll and reimbursements per Hungarian month. */
+export function OverviewTab({onOpenPending, onOpenPayroll}: {onOpenPending: () => void; onOpenPayroll?: () => void}) {
   const [data, setData] = useState<FinanceOverview | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -28,6 +29,8 @@ export function OverviewTab({onOpenPending}: {onOpenPending: () => void}) {
 
   return (
     <div className="space-y-5">
+      <TreasuryForecast overview={data} onOpenPayroll={onOpenPayroll}/>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard index={0} icon={Clock} tone="orange" label="Elbírálásra váró költségtérítés" value={formatMoney(data.pending.amount)}
                   hint={`${data.pending.count} kérelem`} onClick={onOpenPending}/>

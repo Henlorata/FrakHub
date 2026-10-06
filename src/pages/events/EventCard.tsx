@@ -1,6 +1,7 @@
 import {useState, type CSSProperties} from "react";
 import {
-  Ban, Check, ChevronDown, Clock, HelpCircle, MapPin, MessageSquareText, MoreHorizontal, Pencil, RotateCcw, Trash2, UserRound, Users, X,
+  Ban, Check, ChevronDown, ClipboardCheck, Clock, HelpCircle, MapPin, MessageSquareText, MoreHorizontal, Pencil, RotateCcw, Trash2, UserRound, Users,
+  X,
 } from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -10,7 +11,7 @@ import {
 import {MemberAvatar} from "@/pages/finance/components/MemberAvatar";
 import {formatDate, formatTime, todayKey} from "@/lib/datetime";
 import {
-  audienceLabel, canRespond, EVENT_KINDS, eventEnd, RESPONSE_LABELS, type EventStatus, type FactionEvent,
+  audienceLabel, canRespond, canTakeAttendance, EVENT_KINDS, eventEnd, RESPONSE_LABELS, type EventStatus, type FactionEvent,
 } from "@/lib/events";
 import {cn} from "@/lib/utils";
 
@@ -28,17 +29,20 @@ function timeRange(event: FactionEvent) {
   return `${start}–${sameDay ? "" : `${formatDate(event.ends_at)} `}${formatTime(event.ends_at)}`;
 }
 
-export function EventCard({event, index, now, highlighted, busy, onRespond, onEdit, onToggleCancel, onDelete}: {
+export function EventCard({event, index, now, highlighted, busy, inAudience, onRespond, onEdit, onToggleCancel, onDelete, onAttendance}: {
   event: FactionEvent;
   index: number;
   /** The time of the page's last load (what counts as past). */
   now: number;
   highlighted: boolean;
   busy: boolean;
+  /** The reader is one the event is for (their attendance is shown). */
+  inAudience: boolean;
   onRespond: (status: EventStatus | null, note?: string | null) => void;
   onEdit: () => void;
   onToggleCancel: () => void;
   onDelete: () => void;
+  onAttendance: () => void;
 }) {
   const look = EVENT_KINDS[event.kind] ?? EVENT_KINDS.other;
   const [expanded, setExpanded] = useState(false);
@@ -50,6 +54,8 @@ export function EventCard({event, index, now, highlighted, busy, onRespond, onEd
   const going = event.responses.filter((response) => response.status === "going");
   const long = (event.description?.length ?? 0) > 240 || (event.description?.split("\n").length ?? 0) > 4;
   const total = event.counts.going + event.counts.maybe + event.counts.absent;
+  const attendance = canTakeAttendance(event, now);
+  const taken = !!event.attendance_taken_at;
 
   return (
     <article id={`event-${event.id}`} data-tour="event-card" style={{"--i": Math.min(index, 8)} as CSSProperties}
@@ -151,6 +157,27 @@ export function EventCard({event, index, now, highlighted, busy, onRespond, onEd
                   <Users className="size-3.5"/>{event.counts.going} jön{event.counts.maybe ? ` · ${event.counts.maybe} talán` : ""}
                   <ChevronDown className={cn("size-3.5 transition-transform", showPeople && "rotate-180")}/>
                 </button>
+              )}
+            </div>
+          )}
+
+          {!event.cancelled_at && (taken || attendance) && (
+            <div data-tour="event-attendance" className="flex flex-wrap items-center gap-2 text-xs">
+              {taken ? (
+                <span className="inline-flex items-center gap-1.5 text-slate-400">
+                  <ClipboardCheck className="size-3.5 text-emerald-300"/> Jelenlét: <strong className="font-semibold text-slate-200">{event.attended_count ?? 0} fő</strong>
+                </span>
+              ) : <span className="text-slate-500">A jelenlét még nincs rögzítve.</span>}
+              {event.i_attended === true && (
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-200 ring-1 ring-emerald-500/30">Jelen voltál</span>
+              )}
+              {event.i_attended === false && inAudience && (
+                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-slate-400 ring-1 ring-white/10">Nem voltál jelen</span>
+              )}
+              {attendance && (
+                <Button size="sm" variant="outline" className="ml-auto h-7" onClick={onAttendance}>
+                  <ClipboardCheck className="size-3.5"/> {taken ? "Jelenlét módosítása" : "Jelenlét rögzítése"}
+                </Button>
               )}
             </div>
           )}

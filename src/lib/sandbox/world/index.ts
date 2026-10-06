@@ -1,4 +1,5 @@
 import {isHighCommand, isStaff, isSupervisory} from "@shared/ranks";
+import {canViewCaseList} from "@/lib/utils";
 import type {Profile} from "@/types/supabase";
 import type {SandboxBackend} from "../state";
 import {handleRest, type Row, type Schema} from "../postgrest";
@@ -107,6 +108,10 @@ function withDefaults(world: World, table: string, row: Row): Row {
       Object.assign(out, {created_by: world.me.id, updated_at: now, updated_by: null, cancelled_at: null, rsvp: out.rsvp ?? true,
         description: out.description ?? null, ends_at: out.ends_at ?? null, location: out.location ?? null, audience: out.audience ?? "all"});
       break;
+    case "case_templates":
+      Object.assign(out, {kind: out.kind ?? "document", description: out.description ?? null, icon: out.icon ?? "file", aliases: out.aliases ?? [],
+        blocks: out.blocks ?? [], sort_order: out.sort_order ?? 100, created_by: world.me.id, updated_at: now, updated_by: null});
+      break;
     case "member_details":
     case "duty_time_entries":
     case "former_members":
@@ -153,6 +158,7 @@ function visibility(me: Profile): Partial<Record<string, (row: Row) => boolean>>
     exam_submissions_view: (row) => own(row) || grader,
     fleet_registration_requests: (row) => row.submitted_by === me.id || staff,
     former_members: () => staff,
+    case_templates: () => canViewCaseList(me),
     duty_time_entries: () => true,
   };
 }

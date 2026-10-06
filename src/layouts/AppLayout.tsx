@@ -1,7 +1,7 @@
 import {Suspense, useCallback, useEffect, useState} from "react";
 import {Link, Navigate, Outlet, useLocation, useNavigate} from "react-router";
 import {
-  BellRing, ChevronsLeft, ChevronsRight, Loader2, LogOut, Menu, RotateCcw, Search, User,
+  BellRing, ChevronsLeft, ChevronsRight, Loader2, LogOut, Menu, RotateCcw, Search, Sparkles, User,
 } from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {useSystemStatus} from "@/context/SystemStatusContext";
@@ -21,6 +21,7 @@ import {CommandPalette} from "@/components/layout/CommandPalette";
 import {SystemStatusMenu} from "@/components/layout/SystemStatusMenu";
 import {AppBackdrop} from "@/components/layout/AppBackdrop";
 import {SheriffStar} from "@/components/brand/SheriffStar";
+import {useChangelogUnseen} from "@/lib/changelog";
 import {ALERT_LEVELS} from "@/lib/alert-levels";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import {cn} from "@/lib/utils";
@@ -264,6 +265,7 @@ function SidebarNav({profile, collapsed, onNavigate, tour}: {profile: Profile; c
 
 function UserMenu({profile, signOut}: {profile: Profile; signOut: () => Promise<void>}) {
   const navigate = useNavigate();
+  const unseen = useChangelogUnseen();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -288,6 +290,10 @@ function UserMenu({profile, signOut}: {profile: Profile; signOut: () => Promise<
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => navigate("/notifications?view=settings")}>
           <BellRing/> Értesítési beállítások
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate("/changelog")}>
+          <Sparkles/> Újdonságok
+          {unseen && <span className="ml-auto size-2 rounded-full bg-primary shadow-[0_0_8px_rgb(234_179_8/0.8)]" aria-label="Új"/>}
         </DropdownMenuItem>
         <DropdownMenuSeparator/>
         <DropdownMenuItem variant="destructive" onSelect={() => void signOut()}>

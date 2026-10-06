@@ -1,3 +1,4 @@
+import {builtinTemplates} from "@/lib/case-templates";
 import {canApproveWarrants, isMcbLead, seesAllCases} from "@/lib/mcb";
 import {canViewCaseList} from "@/lib/utils";
 import type {Row} from "../postgrest";
@@ -160,6 +161,11 @@ export function seedMcb(world: World) {
     event("document", {saves: 3}, person(6), 50),
     event("warrant_requested", {type: "search", target: "Kikötő, 3-as raktár"}, person(6), 3 * 60),
   ];
+
+  // The starter templates (the MCB leadership edits them on /mcb/templates).
+  tables.case_templates = builtinTemplates().map((template) => ({
+    ...template, id: world.id(), created_at: ago(40 * DAY), updated_at: ago(40 * DAY), created_by: person(1), updated_by: null,
+  }));
 }
 
 // --- Reads ---------------------------------------------------------------------------------
@@ -227,6 +233,16 @@ function addEvent(world: World, caseId: unknown, kind: string, details: Row) {
 }
 
 export const mcbRpc: Record<string, RpcHandler> = {
+  reorder_case_templates: (args, world) => {
+    if (!isMcbLead(world.me)) throw new SandboxError("A sablonokat az MCB vezetése kezeli.", "42501");
+    const ids = (args._ids as string[] | null) ?? [];
+    for (const row of world.tables.case_templates ?? []) {
+      const position = ids.indexOf(row.id as string);
+      if (position >= 0) row.sort_order = (position + 1) * 10;
+    }
+    return null;
+  },
+
   get_case_list: (args, world) => (world.tables.cases ?? [])
     .filter((item) => args._include_archived || item.status !== "archived")
     .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))

@@ -1,14 +1,14 @@
-import type {LucideIcon} from "lucide-react";
-import {ClipboardList, FilePlus2, FileSearch, MessagesSquare} from "lucide-react";
+import type {TemplateBlock, TemplateDraft} from "./case-templates";
 
 /**
- * Starting documents of a new case and snippets of the editor's slash menu. Blocks are stored in
- * BlockNote's full form (text nodes, not plain strings), so the database search finds their text.
+ * The templates the app shipped with: the database starts with the same ones (seeded by the
+ * migration), the MCB leadership may change them since. Used when the list cannot be loaded,
+ * by "restore the starter templates" and by practice mode. Blocks are stored in BlockNote's
+ * full form (text nodes, not plain strings), so the database search finds their text.
  */
 
 type Styles = {bold?: true; italic?: true; textColor?: string};
 type Inline = {type: "text"; text: string; styles: Styles};
-export type TemplateBlock = Record<string, unknown>;
 
 const text = (value: string, styles: Styles = {}): Inline => ({type: "text", text: value, styles});
 const hint = (value: string) => text(value, {italic: true, textColor: "gray"});
@@ -58,21 +58,14 @@ const listTable = (headers: string[], rows = 3): TemplateBlock => ({
   children: [],
 });
 
-export interface CaseTemplate {
-  id: string;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  blocks: () => TemplateBlock[];
-}
-
-export const CASE_TEMPLATES: CaseTemplate[] = [
+export const BUILTIN_TEMPLATES: TemplateDraft[] = [
   {
-    id: "investigation",
+    kind: "document",
     label: "Nyomozati akta",
     description: "Összefoglaló, előzmények, helyszín, személyek, bizonyítékok, teendők és következtetés.",
-    icon: FileSearch,
-    blocks: () => [
+    icon: "search",
+    aliases: [],
+    blocks: [
       heading("1. Az ügy összefoglalása"),
       paragraph(hint("Röviden: mi történt, mikor, hol, és mi a nyomozás célja.")),
       heading("2. Előzmények, bejelentés"),
@@ -92,11 +85,12 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     ],
   },
   {
-    id: "scene",
+    kind: "document",
     label: "Helyszíni szemle",
     description: "Jegyzőkönyv a helyszínről, lefoglalt tárgyakkal és fényképekkel.",
-    icon: ClipboardList,
-    blocks: () => [
+    icon: "clipboard",
+    aliases: [],
+    blocks: [
       heading("Helyszíni szemle jegyzőkönyve", 1),
       fieldTable(["Időpont", "Helyszín", "Szemlét végezte", "Jelen voltak", "Látási viszonyok"]),
       heading("A helyszín leírása"),
@@ -108,11 +102,12 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     ],
   },
   {
-    id: "interview",
+    kind: "document",
     label: "Kihallgatási jegyzőkönyv",
     description: "Kihallgatott személy, körülmények, vallomás és a nyomozó megjegyzései.",
-    icon: MessagesSquare,
-    blocks: () => [
+    icon: "messages",
+    aliases: [],
+    blocks: [
       heading("Kihallgatási jegyzőkönyv", 1),
       fieldTable(["Kihallgatott", "Minősége", "Időpont", "Helyszín", "Kihallgató", "Jelen voltak"]),
       heading("Figyelmeztetések"),
@@ -125,50 +120,43 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     ],
   },
   {
-    id: "blank",
-    label: "Üres akta",
-    description: "Üres dokumentum, saját felépítéssel.",
-    icon: FilePlus2,
-    blocks: () => [],
-  },
-];
-
-/** Slash menu snippets: ready-made blocks inserted after the cursor. */
-export const DOCUMENT_SNIPPETS: {id: string; title: string; subtext: string; aliases: string[]; blocks: () => TemplateBlock[]}[] = [
-  {
-    id: "statement",
-    title: "Tanúvallomás",
-    subtext: "Címsor, adatok és a vallomás idézetként",
+    kind: "snippet",
+    label: "Tanúvallomás",
+    description: "Címsor, adatok és a vallomás idézetként",
+    icon: "quote",
     aliases: ["vallomas", "tanu", "statement"],
-    blocks: () => [
+    blocks: [
       heading("Tanúvallomás", 3),
       fieldTable(["Tanú", "Időpont", "Rögzítette"]),
       quote(hint("A vallomás szövege.")),
     ],
   },
   {
-    id: "seized",
-    title: "Lefoglalt tárgyak",
-    subtext: "Táblázat a lefoglalt eszközökről",
+    kind: "snippet",
+    label: "Lefoglalt tárgyak",
+    description: "Táblázat a lefoglalt eszközökről",
+    icon: "package",
     aliases: ["lefoglalt", "targyak", "foglalas"],
-    blocks: () => [heading("Lefoglalt tárgyak", 3), listTable(["#", "Tárgy", "Fellelés helye", "Megjegyzés"])],
+    blocks: [heading("Lefoglalt tárgyak", 3), listTable(["#", "Tárgy", "Fellelés helye", "Megjegyzés"])],
   },
   {
-    id: "timeline",
-    title: "Idővonal",
-    subtext: "Események időrendben",
+    kind: "snippet",
+    label: "Idővonal",
+    description: "Események időrendben",
+    icon: "clock",
     aliases: ["idovonal", "esemenyek", "timeline"],
-    blocks: () => [
+    blocks: [
       heading("Idővonal", 3),
       bullet(text("00:00 – ", {bold: true}), hint("esemény")),
       bullet(text("00:00 – ", {bold: true}), hint("esemény")),
     ],
   },
   {
-    id: "separator",
-    title: "Új fejezet",
-    subtext: "Elválasztó és címsor",
+    kind: "snippet",
+    label: "Új fejezet",
+    description: "Elválasztó és címsor",
+    icon: "divider",
     aliases: ["fejezet", "szakasz"],
-    blocks: () => [divider(), heading("Új fejezet")],
+    blocks: [divider(), heading("Új fejezet")],
   },
 ];

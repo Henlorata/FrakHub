@@ -109,4 +109,44 @@ test.describe("HR", () => {
     await leaders.getByRole("button", {name: /Parancsnok Péter/}).first().click();
     await expect(page).toHaveURL(/member=44444444/);
   });
+
+  test("the org chart shows the bureau manager, the divisions and the units", async ({page}) => {
+    const commander = testProfile({
+      id: "44444444-4444-4444-8444-444444444444", full_name: "Parancsnok Péter", badge_number: "2002", faction_rank: "Sergeant I.",
+      system_role: "supervisor", division: "SEB", division_rank: "Operator III.", is_bureau_commander: true, commanded_divisions: ["MU"],
+    });
+    const manager = testProfile({
+      id: "55555555-5555-4555-8555-555555555555", full_name: "Vezető Vera", badge_number: "2003", faction_rank: "Commander",
+      system_role: "admin", is_bureau_manager: true,
+    });
+    const medic = testProfile({
+      id: "66666666-6666-4666-8666-666666666666", full_name: "Mentős Márk", badge_number: "2004", faction_rank: "Deputy Sheriff III.",
+      system_role: "user", division: "SEB", division_rank: "Operator I.", qualifications: ["MU"],
+    });
+    const self = testProfile({faction_rank: "Deputy Sheriff II.", system_role: "user"});
+    await mockSupabase(page, {tables: {profiles: [self, commander, manager, deputy, medic]}});
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/hr");
+    await page.getByRole("tab", {name: "Szervezeti ábra"}).click();
+    await expect(page).toHaveURL(/view=org/);
+
+    const chart = page.locator("[data-tour=hr-org-chart]");
+    await expect(chart.getByRole("button", {name: /Vezető Vera/}).first()).toBeVisible();
+    const seb = chart.locator("article", {hasText: "Special Enforcement Bureau"});
+    await expect(seb).toContainText("Parancsnok Péter");
+    const mu = chart.locator("article", {hasText: "Medical Unit"});
+    await expect(mu).toContainText("Parancsnok Péter");
+
+    await chart.getByRole("button", {name: "Mind kibontása"}).click();
+    await expect(seb.getByText("Operator I.", {exact: false})).toBeVisible();
+    await expect(seb.getByRole("button", {name: /Mentős Márk/})).toBeVisible();
+    await expect(mu.getByRole("button", {name: /Mentős Márk/})).toBeVisible();
+    await expect(chart.locator("article", {hasText: "Field Staff"}).getByRole("button", {name: /Deputy Dénes/})).toBeVisible();
+
+    await chart.getByPlaceholder("Név vagy jelvényszám…").fill("márk");
+    await expect(chart.getByText("1 találat")).toBeVisible();
+    await seb.getByRole("button", {name: /Mentős Márk/}).click();
+    await expect(page).toHaveURL(/member=66666666/);
+  });
 });

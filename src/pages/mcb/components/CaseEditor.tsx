@@ -16,6 +16,7 @@ import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, 
 import {useSuspects} from "@/context/SuspectCacheContext";
 import {useProfileDirectory} from "@/lib/profile-directory";
 import {toInitialContent} from "@/lib/blocknote-content";
+import {templateIcon, useCaseTemplates} from "@/lib/case-templates";
 import {uploadToCloudinary} from "@/lib/cloudinary";
 import {uploadInlineImages} from "@/lib/inline-images";
 import {hu} from "@/lib/blocknote-hu";
@@ -23,7 +24,6 @@ import {formatAgo, formatDateTime, formatTime} from "@/lib/datetime";
 import {documentReferences, mcbApi, type CaseListItem} from "@/lib/mcb";
 import {cn, errorMessage} from "@/lib/utils";
 import type {CaseEvidence} from "@/types/supabase";
-import {DOCUMENT_SNIPPETS} from "../case-templates";
 import {CaseEditorProvider, useCaseEditorContext, type MentionRole} from "./CaseEditorContext";
 import {EvidenceBlock} from "./EvidenceBlock";
 
@@ -179,6 +179,8 @@ export function CaseEditor({
 }: CaseEditorProps) {
   const {suspects} = useSuspects();
   const {profiles: officers} = useProfileDirectory();
+  // The leadership's ready-made blocks for the "/" menu (cached; editors only).
+  const {templates: snippets} = useCaseTemplates("snippet", {enabled: !readOnly});
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [state, setState] = useState<SaveState>("clean");
   const [savedAt, setSavedAt] = useState<string>(updatedAt);
@@ -357,16 +359,19 @@ export function CaseEditor({
       icon: <ImagePlus size={18}/>,
       onItemClick: () => editor.insertBlocks([{type: "evidence", props: {evidenceId: ""}}], editor.getTextCursorPosition().block, "after"),
     },
-    ...DOCUMENT_SNIPPETS.map<DefaultReactSuggestionItem>((snippet) => ({
-      title: snippet.title,
-      subtext: snippet.subtext,
-      aliases: snippet.aliases,
-      group: "Nyomozás",
-      icon: <ScrollText size={18}/>,
-      onItemClick: () => editor.insertBlocks(snippet.blocks() as CaseBlock[], editor.getTextCursorPosition().block, "after"),
-    })),
+    ...(snippets ?? []).map<DefaultReactSuggestionItem>((snippet) => {
+      const Icon = templateIcon(snippet.icon);
+      return {
+        title: snippet.label,
+        subtext: snippet.description ?? undefined,
+        aliases: snippet.aliases,
+        group: "Nyomozás",
+        icon: <Icon size={18}/>,
+        onItemClick: () => editor.insertBlocks(structuredClone(snippet.blocks) as CaseBlock[], editor.getTextCursorPosition().block, "after"),
+      };
+    }),
     ...getDefaultReactSlashMenuItems(editor).filter((item) => !HIDDEN_SLASH_ITEMS.has((item as {key?: string}).key ?? "")),
-  ], [editor]);
+  ], [editor, snippets]);
 
   const mentionItems = useCallback((): DefaultReactSuggestionItem[] => {
     const insert = (props: {user: string; id: string; role: MentionRole}) => () => {

@@ -1,5 +1,5 @@
 import {organisableAudiences} from "@/lib/events";
-import {canApproveWarrants, canViewMcbOverview} from "@/lib/mcb";
+import {canApproveWarrants, canViewMcbOverview, isMcbLead} from "@/lib/mcb";
 import {DEMO} from "@/lib/sandbox/world/context";
 import type {TrainingId} from "./catalog";
 import type {TourStep, TrainingScript} from "./types";
@@ -19,6 +19,8 @@ const canOrganise = (profile: Parameters<typeof organisableAudiences>[0]) => org
 const CASE = DEMO.case(1);
 const SHEET = DEMO.sheet(1);
 const MEETING = DEMO.event(1);
+/** The past joint action (attendance recorded). */
+const PAST_EVENT = DEMO.event(5);
 const FINISH = (title: string, body: string): TourStep => ({chapter: "Kész", title, body});
 
 const BASIC: TourStep[] = [
@@ -88,8 +90,12 @@ const BASIC: TourStep[] = [
   {chapter: "Események", title: "Ott leszel?", target: `#event-${MEETING} ${tour("event-rsvp")}`, placement: "bottom",
     action: {type: "click", hint: "Jelezd, hogy ott leszel a gyűlésen."},
     body: "Egy kattintás: **Ott leszek**, **Talán** vagy **Nem tudok menni**. A szervező látja, kire számíthat."},
+  {chapter: "Események", title: "Távollétek", target: tour("events-absences"), placement: "left",
+    body: "Ki van szabadságon a kiválasztott napon és a következő két hétben; a naptárban kék vonal jelöli ezeket a napokat."},
   {chapter: "Személyügy", title: "Kik a vezetők?", route: "/hr", target: tour("hr-leaders"), placement: "bottom",
     body: "Az iroda, a divíziók és az alegységek vezetői egy helyen: egy egységgel kapcsolatban hozzájuk fordulj."},
+  {chapter: "Személyügy", title: "Szervezeti ábra", target: tour("hr-view"), placement: "bottom",
+    body: "A **Szervezeti ábra** nézet fán mutatja az irodát, a divíziókat és az alegységeket; egy névre kattintva megnyílik az adatlap."},
   {chapter: "Eszközök", title: "Kódtár", route: "/codes", target: tour("codes-search"), placement: "bottom", interactive: true,
     body: "Minden rádiókód egy helyen, kereséssel és másolással. A **Gyakorlás** fülön kvízzel tanulhatod őket."},
   {chapter: "Profil", title: "Profilod", route: "/profile", target: tour("profile-card"), placement: "left",
@@ -107,7 +113,7 @@ const MCB: TourStep[] = [
   {chapter: "Akták", title: "Aktalista", target: tour("mcb-cases"), placement: "top",
     body: "Minden akta: állapot, prioritás, felelős, bizonyítékok és parancsok. Felül szűrsz és keresel, a keresés az akták szövegében is talál."},
   {chapter: "Akták", title: "Új akta", target: tour("mcb-new-case"), placement: "bottom",
-    body: "Sablonból indul (nyomozati akta, helyszíni szemle, kihallgatás): a dokumentum váza kész."},
+    body: "A vezetőség sablonjaiból indul (pl. nyomozati akta, helyszíni szemle, kihallgatás): a dokumentum váza kész."},
   {chapter: "Akták", title: "Nyissunk meg egyet", target: `${tour("mcb-case")}[data-case-id="${CASE}"]`, placement: "bottom",
     action: {type: "click", hint: "Kattints a „Fegyvercsempészet a kikötőben” aktára."}, body: "Ez a gyakorló akta, te is szerkesztheted."},
   {chapter: "Az akta", title: "Fejléc", route: `/mcb/case/${CASE}`, target: tour("case-header"), placement: "bottom",
@@ -137,6 +143,8 @@ const MCB: TourStep[] = [
     body: "Te jóváhagyhatsz. Nézd meg az indoklást és a bizonyítékokat; próbáld ki a **Jóváhagyás** gombot, itt nem élesedik."},
   {chapter: "Vezetés", title: "Az iroda vezetése", route: "/mcb/admin", target: tour("mcb-overview"), placement: "bottom", when: (profile) => canViewMcbOverview(profile),
     body: "Statisztikák, a nyomozók terhelése és a gazdátlan akták egy oldalon."},
+  {chapter: "Vezetés", title: "Aktasablonok", route: "/mcb/templates", target: tour("templates-list"), placement: "right", when: (profile) => isMcbLead(profile),
+    body: "A kiinduló dokumentumokat és a **/** menü kész blokkjait itt szerkeszted és rendezed; a már megnyitott akták nem változnak."},
   FINISH("Kész!", "Bátran nyiss aktát: a dokumentum, a csevegés és a parancsok mind ugyanazon az oldalon vannak."),
 ];
 
@@ -167,10 +175,15 @@ const SUPERVISOR: TourStep[] = [
     body: "A függő igényléseket te bírálod el. Jóváhagyáskor a járműparkból választasz, és a kulcs automatikusan a kérelmezőé lesz. Próbáld ki!"},
   {chapter: "Logisztika", title: "Forgalmi ellenőrzés és hibapontok", route: "/logistics?tab=fleet", target: tour("fleet-views"), placement: "bottom",
     body: "Ha a gép nem tudta elolvasni a forgalmi képét, itt döntesz róla. A **Hibapont** gombbal szabálytalan járműhasználatot rögzítesz."},
+  {chapter: "Logisztika", title: "Kihasználtság", route: "/logistics?tab=fleet&view=usage", target: tour("fleet-usage"), placement: "top",
+    body: "Mely járművek állnak kulcs nélkül, melyek teltek be, és milyen típust kérnek a tagok: ebből látszik, mit érdemes beszerezni vagy kivezetni."},
   {chapter: "Jelentések", title: "Havi összesítő", route: "/reports?tab=summary", target: tour("reports-summary"), placement: "top",
     body: "Ki hány jelentést rögzített a hónapban; tag nevében is rögzíthetsz."},
   {chapter: "Események", title: "Esemény szervezése", route: "/events", target: tour("event-new"), placement: "bottom", when: canOrganise,
     body: "Gyűlést, képzést vagy vizsganapot itt hirdetsz meg. Az érintettek értesítést kapnak, a jelentkezőket az esemény kártyáján látod."},
+  {chapter: "Események", title: "Jelenlét", route: `/events?id=${PAST_EVENT}`, target: `#event-${PAST_EVENT} ${tour("event-attendance")}`, placement: "top",
+    when: canOrganise,
+    body: "Az esemény után itt rögzíted, ki volt ott. A tag a kártyán látja, a vezetőség a tag adatlapján, az **Előzmények** fülön."},
   FINISH("Kész!", "A vezetői teendőidet az irányítópult **Teendők** sávja mindig összegyűjti."),
 ];
 
@@ -211,6 +224,8 @@ const COMMAND: TourStep[] = [
     body: "A kérelmeket a parancsnokság bírálja el; a bizonylatokat itt nézed meg."},
   {chapter: "Pénzügy", title: "Áttekintés", target: tab("overview"), placement: "bottom",
     body: "A havi költségtérítések és fizetések összesítve, hónapokra bontva."},
+  {chapter: "Pénzügy", title: "Kassza-előrejelzés", route: "/finance?tab=overview", target: tour("treasury-forecast"), placement: "bottom",
+    body: "A Havi fizetés lapon beírt egyenlegből: mennyi marad a kifizetések után, és merre tart a kassza az elmúlt hónapok üteme alapján."},
   {chapter: "Nyomozó Iroda", title: "Rálátás minden aktára", route: "/mcb", target: tour("mcb-cases"), placement: "top",
     body: "Parancsnokként minden aktát megnyithatsz, és dönthetsz a parancsokról."},
   FINISH("Kész!", "A parancsnoki eszközöket a fejléc, a Személyügy és a Pénzügy oldal fogja össze."),
@@ -245,6 +260,8 @@ const BUREAU_COMMANDER: TourStep[] = [
     body: "Vizsgát hozhatsz létre és szerkeszthetsz az egységednek; a beadott lapokat te javítod."},
   {chapter: "Események", title: "Egységesemény", route: "/events", target: tour("event-new"), placement: "bottom", when: canOrganise,
     body: "Képzést vagy gyakorlatot hirdethetsz az egységednek; csak az egység tagjai kapnak róla értesítést."},
+  {chapter: "Nyomozó Iroda", title: "Aktasablonok", route: "/mcb/templates", target: tour("templates-list"), placement: "right",
+    when: (profile) => isMcbLead(profile), body: "Az MCB parancsnokaként te szerkeszted az új akták kiinduló dokumentumait és a **/** menü blokkjait."},
   FINISH("Kész!", "Az egységed ügyei mindig a Személyügy és a Logisztika oldalon futnak össze."),
 ];
 
@@ -255,6 +272,8 @@ const BUREAU_MANAGER: TourStep[] = [
     body: "A havi fizetést és a fizetési táblát is te kezeled."},
   {chapter: "Nyomozó Iroda", title: "Az iroda vezetése", route: "/mcb/admin", target: tour("mcb-overview"), placement: "bottom",
     body: "Minden aktát látsz, archiválhatsz, és vezetheted az irodát."},
+  {chapter: "Nyomozó Iroda", title: "Aktasablonok", route: "/mcb/templates", target: tour("templates-list"), placement: "right",
+    body: "Az új akták kiinduló dokumentumait és a **/** menü blokkjait te szerkeszted."},
   {chapter: "Készültség", title: "Készültség és tagfelvétel", route: "/dashboard", target: tour("status"), placement: "bottom",
     body: "A készültségi szintet és a tagfelvételt is te állíthatod."},
   FINISH("Kész!", "Nagy jogkör, nagy felelősség: minden változás naplózva van."),

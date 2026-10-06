@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState, type CSSProperties} from "react";
+import {useEffect, useMemo, useRef, useState, type CSSProperties} from "react";
 import {useSearchParams} from "react-router";
 import {toast} from "sonner";
 import {CalendarDays, CalendarPlus, CalendarX2, ChevronDown, History} from "lucide-react";
@@ -9,9 +9,12 @@ import {useConfirm} from "@/components/ConfirmDialog";
 import {useAuth} from "@/context/AuthContext";
 import {formatCalendarDay, formatDayLabel, todayKey} from "@/lib/datetime";
 import {
-  EVENT_KIND_ORDER, EVENT_KINDS, eventEnd, eventsApi, organisableAudiences, type EventStatus, type FactionEvent,
+  EVENT_KIND_ORDER, EVENT_KINDS, eventEnd, eventsApi, isInAudience, organisableAudiences, type Absence, type EventStatus, type FactionEvent,
 } from "@/lib/events";
+import {useDialogParam} from "@/lib/use-dialog-param";
 import {errorMessage} from "@/lib/utils";
+import {AbsencePanel} from "./AbsencePanel";
+import {AttendanceDialog} from "./AttendanceDialog";
 import {EventCard} from "./EventCard";
 import {EventDialog} from "./EventDialog";
 import {MiniCalendar} from "./MiniCalendar";
@@ -46,12 +49,32 @@ export function EventsPage() {
   const [now, setNow] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
   const [editing, setEditing] = useState<FactionEvent | "new" | null>(null);
+  // The quick search opens a new event with /events?new=1.
+  const [newFromUrl, setNewFromUrl] = useDialogParam("new");
   const [showPast, setShowPast] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [absences, setAbsences] = useState<Absence[]>([]);
+  const [attendanceFor, setAttendanceFor] = useState<FactionEvent | null>(null);
   const focusId = searchParams.get("id");
   const audiences = useMemo(() => organisableAudiences(profile), [profile]);
 
+  // Approved leave of the same window (dates only): the calendar and the planning hints.
+  useEffect(() => {
+    let active = true;
+    const now = Date.now();
+    eventsApi.absences(todayKey(now - PAST_DAYS * DAY), todayKey(now + FUTURE_DAYS * DAY))
+      .then((list) => {
+        if (active) setAbsences(list);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // A link to a past event (notification, training) keeps the history open after the highlight ends.
+  const linkedEvent = useRef(focusId);
   useEffect(() => {
     let active = true;
     const now = Date.now();
@@ -60,6 +83,9 @@ export function EventsPage() {
         if (!active) return;
         setEvents(data ?? []);
         setNow(Date.now());
+        const linked = (data ?? []).find((item) => item.id === linkedEvent.current);
+        if (linked && eventEnd(linked) < Date.now()) setShowPast(true);
+        linkedEvent.current = null;
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -151,6 +177,8 @@ export function EventsPage() {
   };
 
   const jumpTo = (day: string) => {
+    // A second click on the picked day goes back to today's absences.
+    if (day === selectedDay) return setSelectedDay(null);
     setSelectedDay(day);
     if (day < todayKey(now)) setShowPast(true);
     window.setTimeout(() => document.getElementById(`day-${day}`)?.scrollIntoView({behavior: "smooth", block: "start"}), 60);
@@ -158,8 +186,10 @@ export function EventsPage() {
 
   const card = (event: FactionEvent, index: number) => (
     <EventCard key={event.id} event={event} index={index} now={now} highlighted={event.id === focusId} busy={busyId === event.id}
+               inAudience={isInAudience(profile, event.audience)}
                onRespond={(status, note) => void respond(event, status, note)} onEdit={() => setEditing(event)}
-               onToggleCancel={() => void toggleCancel(event)} onDelete={() => void remove(event)}/>
+               onToggleCancel={() => void toggleCancel(event)} onDelete={() => void remove(event)}
+               onAttendance={() => setAttendanceFor(event)}/>
   );
 
   const myAnswers = upcoming.filter((event) => !event.cancelled_at && event.my_status === "going").length;
@@ -215,7 +245,7 @@ export function EventsPage() {
         </div>
 
         <aside className="space-y-4 xl:sticky xl:top-20">
-          <MiniCalendar events={events ?? []} selected={selectedDay} onSelect={jumpTo}/>
+          <MiniCalendar events={events ?? []} absences={absences} selected={selectedDay} onSelect={jumpTo}/>
           <section className="panel animate-rise space-y-3 p-4" style={{"--i": 2} as CSSProperties}>
             <p className="text-xs text-slate-400">
               {myAnswers ? <>A következő hetekben <span className="font-semibold text-emerald-300">{myAnswers}</span> eseményre jelentkeztél.</> : "Még nem jelentkeztél eseményre."}
@@ -225,17 +255,34 @@ export function EventsPage() {
               {EVENT_KIND_ORDER.map((kind) => (
                 <li key={kind} className="flex items-center gap-1.5"><span className={`size-2 rounded-full ${EVENT_KINDS[kind].dot}`}/>{EVENT_KINDS[kind].label}</li>
               ))}
+              <li className="flex items-center gap-1.5"><span className="h-0.5 w-2.5 rounded-full bg-sky-400/80"/>Szabadság</li>
             </ul>
           </section>
+          {now > 0 && <AbsencePanel absences={absences} selected={selectedDay} today={todayKey(now)}/>}
         </aside>
       </div>
 
-      {editing && (
-        <EventDialog event={editing === "new" ? null : editing} audiences={audiences} onClose={() => setEditing(null)}
+      {(editing ?? (newFromUrl && audiences.length > 0 ? "new" : null)) && (
+        <EventDialog event={editing && editing !== "new" ? editing : null} audiences={audiences} absences={absences}
+                     onClose={() => {
+                       setEditing(null);
+                       setNewFromUrl(false);
+                     }}
                      onSaved={() => {
                        setEditing(null);
+                       setNewFromUrl(false);
                        setReloadKey((key) => key + 1);
                      }}/>
+      )}
+      {attendanceFor && (
+        <AttendanceDialog event={attendanceFor} absences={absences} onClose={() => setAttendanceFor(null)}
+                          onSaved={(ids, takenAt) => {
+                            patch(attendanceFor.id, (current) => ({
+                              ...current, attendance_taken_at: takenAt, attended_count: ids.length, attendee_ids: ids,
+                              i_attended: ids.includes(profile.id),
+                            }));
+                            setAttendanceFor(null);
+                          }}/>
       )}
     </div>
   );

@@ -36,6 +36,7 @@ const AdminPage = lazyPage(() => import("@/pages/mcb/AdminPage"), "AdminPage");
 const SuspectsPage = lazyPage(() => import("@/pages/mcb/SuspectsPage"), "SuspectsPage");
 const WarrantsPage = lazyPage(() => import("@/pages/mcb/WarrantsPage"), "WarrantsPage");
 const CasePrintPage = lazyPage(() => import("@/pages/mcb/CasePrintPage"), "CasePrintPage");
+const TemplatesPage = lazyPage(() => import("@/pages/mcb/TemplatesPage"), "TemplatesPage");
 const ExamHub = lazyPage(() => import("@/pages/exams/ExamHub"), "ExamHub");
 const ExamEditor = lazyPage(() => import("@/pages/exams/ExamEditor"), "ExamEditor");
 const ExamGradingPage = lazyPage(() => import("@/pages/exams/grading/ExamGradingPage"), "ExamGradingPage");
@@ -47,6 +48,7 @@ const CalculatorPage = lazyPage(() => import("@/pages/calculator/CalculatorPage"
 const AcademyPage = lazyPage(() => import("@/pages/academy/AcademyPage"), "default");
 const EventsPage = lazyPage(() => import("@/pages/events/EventsPage"), "EventsPage");
 const CodesPage = lazyPage(() => import("@/pages/codes/CodesPage"), "CodesPage");
+const ChangelogPage = lazyPage(() => import("@/pages/changelog/ChangelogPage"), "ChangelogPage");
 
 function AppRoutes() {
   return (
@@ -70,6 +72,7 @@ function AppRoutes() {
             <Route path="admin" element={<AdminPage/>}/>
             <Route path="suspects" element={<SuspectsPage/>}/>
             <Route path="warrants" element={<WarrantsPage/>}/>
+            <Route path="templates" element={<TemplatesPage/>}/>
           </Route>
 
           <Route path="/exams" element={<ExamHub/>}/>
@@ -84,6 +87,7 @@ function AppRoutes() {
           <Route path="/academy" element={<AcademyPage/>}/>
           <Route path="/events" element={<EventsPage/>}/>
           <Route path="/codes" element={<CodesPage/>}/>
+          <Route path="/changelog" element={<ChangelogPage/>}/>
         </Route>
 
         <Route path="/" element={<Navigate to="/dashboard" replace/>}/>

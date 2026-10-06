@@ -7,7 +7,7 @@ import {getProfileDirectory, type DirectoryProfile} from "@/lib/profile-director
 import {canViewCaseList, cn} from "@/lib/utils";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import {QUICK_ACTIONS} from "@/layouts/quick-actions";
-import {visibleSections} from "@/layouts/navigation";
+import {EXTRA_PAGES, visibleSections} from "@/layouts/navigation";
 
 interface PaletteEntry {
   id: string;
@@ -79,7 +79,7 @@ export function CommandPalette({open, onOpenChange}: {open: boolean; onOpenChang
     const term = fold(query.trim());
     const matches = (...values: (string | undefined)[]) => !term || values.some((value) => value && fold(value).includes(term));
 
-    const pages = visibleSections(profile).flatMap((section) => section.items)
+    const pages = [...visibleSections(profile).flatMap((section) => section.items), ...EXTRA_PAGES]
       .filter((item) => matches(item.label, item.keywords))
       .map<PaletteEntry>((item) => ({id: `page:${item.path}`, group: "Oldalak", label: item.label, icon: item.icon, run: go(item.path)}));
 

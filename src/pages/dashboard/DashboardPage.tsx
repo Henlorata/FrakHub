@@ -28,6 +28,7 @@ import {daysSince, formatSpan, rankPillClass} from "@/pages/hr/hr-utils";
 import {
   daysBetween, formatDate, formatDayLabel, formatLongDate, formatTime, hungarianHour, hungarianParts, todayKey,
 } from "@/lib/datetime";
+import {WhatsNewStrip} from "./WhatsNewStrip";
 
 interface DashboardSummary {
   unread_notifications: number;
@@ -149,6 +150,8 @@ export function DashboardPage() {
       <NewAnnouncementDialog open={isAnnouncementOpen} onOpenChange={setIsAnnouncementOpen} onCreated={loadAnnouncements}/>
 
       <Hero summary={summary} openTasks={openTasks.length}/>
+
+      <WhatsNewStrip/>
 
       {openTasks.length > 0 && (
         <section aria-label="Teendők" data-tour="dashboard-tasks" className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-3">
