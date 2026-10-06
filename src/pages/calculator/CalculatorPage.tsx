@@ -19,6 +19,7 @@ import {
 import {categoryAnchor, ItemList} from "./ItemList";
 import {SentencePanel} from "./SentencePanel";
 import {HistoryDialog, SaveTemplateDialog, TemplatesDialog} from "./CalculatorDialogs";
+import {PenalChangesBanner} from "./PenalChangesBanner";
 
 const MAX_HISTORY = 10;
 /** The same copy within this time is logged to the activity feed only once. */
@@ -209,6 +210,8 @@ export function CalculatorPage() {
                       <Button variant="outline" onClick={() => setDialog("templates")}><ClipboardCheck/> Sablonok</Button>
                     </>
                   )}/>
+
+      <PenalChangesBanner/>
 
       <div className={cn("grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]",
         sidebar ? "2xl:grid-cols-[240px_minmax(0,1fr)_420px]" : "2xl:grid-cols-[minmax(0,1fr)_440px]")}>

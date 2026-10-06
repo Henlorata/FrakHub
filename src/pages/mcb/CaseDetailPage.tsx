@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {Link, useNavigate, useParams} from "react-router";
 import {
-  AlertTriangle, ArchiveRestore, ArrowLeft, Check, ChevronRight, FileText, FolderArchive, Gavel, History, Info, Loader2, Lock,
+  AlertTriangle, ArchiveRestore, ArrowLeft, Boxes, Check, ChevronRight, FileText, FolderArchive, Gavel, History, Info, ListTodo, Loader2, Lock,
   LogOut, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Paperclip, Pencil,
   Printer, ShieldAlert, Trash2, Unlock, ArrowRightLeft, X,
 } from "lucide-react";
@@ -38,12 +38,15 @@ import {LinkedCaseDialog} from "./components/LinkedCaseDialog";
 import {CaseStatusChip, CategoryChip, MemberAvatar, PriorityChip} from "./components/McbBadges";
 import {PeopleCard, ReferencesCard, SummaryCard, TeamCard} from "./components/CaseSidebar";
 import {UploadEvidenceDialog} from "./components/UploadEvidenceDialog";
+import {TasksPanel} from "./components/TasksPanel";
+import {ItemsPanel} from "./components/ItemsPanel";
+import {SuggestionsCard} from "./components/SuggestionsCard";
 import {WarrantActionDialog, WarrantCard, type WarrantAction, type WarrantPermissions} from "./components/WarrantCard";
 import {WarrantDialog} from "./components/WarrantDialog";
 import {WarrantDocument} from "./components/WarrantDocument";
 import {useCaseRoom, type CaseChange, type CaseNoteRow} from "./useCaseRoom";
 
-type RightTab = "evidence" | "warrants" | "chat" | "log";
+type RightTab = "evidence" | "tasks" | "warrants" | "items" | "chat" | "log";
 type MobileTab = "document" | "info" | RightTab;
 
 const RAILS_KEY = "frakhub.mcb.rails";
@@ -188,6 +191,8 @@ export function CaseDetailPage() {
       setLogKey((key) => key + 1);
       if (what === "evidence") void refreshEvidence();
       else if (what === "people") void refreshPeople();
+      else if (what === "tasks") void mcbApi.tasks(caseId).then((tasks) => patch((current) => ({...current, tasks}))).catch(() => undefined);
+      else if (what === "items") void mcbApi.items(caseId).then((items) => patch((current) => ({...current, items}))).catch(() => undefined);
       else void refreshMeta();
     },
     onNote: (note) => {
@@ -232,7 +237,9 @@ export function CaseDetailPage() {
   const linkedSuspectIds = useMemo(() => (detail?.people ?? []).map((item) => item.suspect_id), [detail?.people]);
   const sortedEvidence = useMemo(() => [...(detail?.evidence ?? [])].sort((a, b) => (numbers.get(a.id) ?? 0) - (numbers.get(b.id) ?? 0)),
     [detail?.evidence, numbers]);
-  const pendingWarrants = (detail?.warrants ?? []).filter((item) => item.status === "pending").length;
+  const pendingWarrants = (detail?.warrants ?? []).filter((item) => item.status === "pending" || (item.status === "approved" && !!item.renewal_requested_at)).length;
+  const openTasks = (detail?.tasks ?? []).filter((task) => !task.done_at).length;
+  const overdueTasks = (detail?.tasks ?? []).filter((task) => !task.done_at && task.overdue).length;
 
   const perms: WarrantPermissions = useMemo(() => ({
     myId: profile?.id,
@@ -527,6 +534,7 @@ export function CaseDetailPage() {
                 onRemove={removeCollaborator} onLeave={leaveCase} onTransfer={() => setTransferOpen(true)} onOpenMember={setOfficerId}/>
       <ReferencesCard refs={refs} linkedSuspectIds={linkedSuspectIds} canEdit={canEdit} onOfficer={setOfficerId} onSuspect={openSuspectId}
                       onLinkSuspect={(id) => setPersonDialog({preselect: id})} onCase={setLinkedCase}/>
+      <SuggestionsCard suggestions={(detail.suggestions ?? []).filter((entry) => !refs.cases.has(entry.id))} onOpen={(entry) => setLinkedCase(entry.id)}/>
     </div>
   );
 
@@ -555,7 +563,9 @@ export function CaseDetailPage() {
 
   const tabs: {value: RightTab; label: string; icon: typeof Paperclip; badge?: number; alert?: boolean}[] = [
     {value: "evidence", label: "Bizonyítékok", icon: Paperclip, badge: detail.evidence.length},
+    {value: "tasks", label: "Teendők", icon: ListTodo, badge: openTasks || undefined, alert: overdueTasks > 0},
     {value: "warrants", label: "Parancsok", icon: Gavel, badge: detail.warrants.length, alert: pendingWarrants > 0},
+    {value: "items", label: "Tárgyak", icon: Boxes, badge: (detail.items ?? []).length || undefined},
     {value: "chat", label: "Üzenetek", icon: MessageSquare, badge: unread || undefined, alert: unread > 0},
     {value: "log", label: "Napló", icon: History},
   ];
@@ -568,6 +578,20 @@ export function CaseDetailPage() {
                      if (!wide) setMobileTab("document");
                    }}
                    onRename={renameEvidence} onDelete={deleteEvidence}/>
+  ) : tab === "tasks" ? (
+    <div className="h-full p-3">
+      <TasksPanel detail={detail} myId={profile?.id} onChanged={(tasks) => {
+        patch((current) => ({...current, tasks}));
+        announce("tasks");
+      }}/>
+    </div>
+  ) : tab === "items" ? (
+    <div className="h-full p-3">
+      <ItemsPanel detail={detail} myId={profile?.id} onChanged={(items) => {
+        patch((current) => ({...current, items}));
+        announce("items");
+      }}/>
+    </div>
   ) : tab === "warrants" ? warrantList : tab === "chat" ? (
     <CaseChat caseId={caseId} canWrite={canChat} liveNote={liveNote}/>
   ) : (

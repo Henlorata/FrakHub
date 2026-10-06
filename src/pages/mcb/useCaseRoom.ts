@@ -18,7 +18,7 @@ export interface CaseNoteRow {
   created_at: string;
 }
 
-export type CaseChange = "evidence" | "people" | "team" | "meta";
+export type CaseChange = "evidence" | "people" | "team" | "meta" | "tasks" | "items";
 
 interface RoomHandlers {
   /** Someone else saved the document. */

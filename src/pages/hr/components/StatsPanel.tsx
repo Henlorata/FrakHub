@@ -5,6 +5,7 @@ import {FACTION_RANKS, QUALIFICATIONS} from "@/types/supabase";
 import {cn, getStaffCategory} from "@/lib/utils";
 import {CATEGORY_META, daysSince, DIVISION_META, formatSpan} from "../hr-utils";
 import type {HrMember} from "../useHrData";
+import {WorkloadPanel} from "./WorkloadPanel";
 
 function Bars({rows, total, tone}: {rows: {label: string; value: number}[]; total: number; tone: string}) {
   return (
@@ -22,8 +23,8 @@ function Bars({rows, total, tone}: {rows: {label: string; value: number}[]; tota
   );
 }
 
-/** Headcount by rank, division and qualification, plus recent movement. */
-export function StatsPanel({members}: {members: HrMember[]}) {
+/** Headcount by rank, division and qualification, plus recent movement (staff: workload and recruitment too). */
+export function StatsPanel({members, staff}: {members: HrMember[]; staff?: boolean}) {
   const stats = useMemo(() => {
     const total = members.length;
     const byRank = FACTION_RANKS.map((rank) => ({label: rank, value: members.filter((m) => m.faction_rank === rank).length}))
@@ -37,10 +38,12 @@ export function StatsPanel({members}: {members: HrMember[]}) {
     const byCategory = (Object.keys(CATEGORY_META) as (keyof typeof CATEGORY_META)[]).map((key) => ({
       label: CATEGORY_META[key].label, value: members.filter((m) => getStaffCategory(m.faction_rank) === key).length,
     }));
-    const joined30 = members.filter((m) => (daysSince(m.created_at) ?? 999) <= 30).length;
+    // Service time from the registry's joining day, like the roster (accounts of old members are younger than their service).
+    const joined = (m: HrMember) => m.details?.joined_on ?? m.created_at;
+    const joined30 = members.filter((m) => (daysSince(joined(m)) ?? 999) <= 30).length;
     const promoted30 = members.filter((m) => m.last_promotion_date && (daysSince(m.last_promotion_date) ?? 999) <= 30
-      && (daysSince(m.created_at) ?? 0) > 30).length;
-    const service = members.map((m) => daysSince(m.created_at) ?? 0);
+      && (daysSince(joined(m)) ?? 0) > 30).length;
+    const service = members.map((m) => daysSince(joined(m)) ?? 0);
     const avgService = service.length ? Math.round(service.reduce((a, b) => a + b, 0) / service.length) : 0;
     const awards = members.reduce((sum, m) => sum + m.awards.length, 0);
     return {total, byRank, byDivision, byQualification, byCategory, joined30, promoted30, avgService, awards};
@@ -76,6 +79,7 @@ export function StatsPanel({members}: {members: HrMember[]}) {
           </div>
         </section>
       </div>
+      {staff && <WorkloadPanel/>}
     </div>
   );
 }

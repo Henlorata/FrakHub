@@ -260,3 +260,127 @@ insert into public.payroll_runs (month, balance, balance_at, balance_by, created
 select (date_trunc('month', now() at time zone 'Europe/Budapest') - make_interval(months => b.ago))::date, b.balance,
        now() - make_interval(days => b.ago * 30), '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'
 from (values (3, 520000000::bigint), (2, 545000000::bigint), (1, 538000000::bigint), (0, 561000000::bigint)) as b(ago, balance);
+
+-- Reports of the last weeks (the promotion board, the workload chart and the leaderboard).
+insert into public.report_logs (user_id, occurred_on, title, created_by)
+select m.id, current_date - (g * 7 % 26),
+       format('%s – %s', (array['Gyorshajtás', 'Rablás', 'Garázdaság', 'Testi sértés', 'Lopás'])[1 + g % 5],
+              (array['John Doe', 'Jane Roe', 'Carl Johnson', 'Big Smoke'])[1 + g % 4]), m.id
+from (values ('00000000-0000-4000-8000-000000000003'::uuid, 5), ('00000000-0000-4000-8000-000000000006'::uuid, 12),
+             ('00000000-0000-4000-8000-000000000007'::uuid, 3), ('00000000-0000-4000-8000-000000000002'::uuid, 8)) as m(id, n)
+cross join lateral generate_series(1, m.n) g;
+
+-- Promotion: a pending nomination. Trainee: a mentor with a note (not signed off yet).
+insert into public.promotion_nominations (user_id, from_rank, to_rank, reason, nominated_by, created_at)
+values ('00000000-0000-4000-8000-000000000003', 'Deputy Sheriff II.', 'Deputy Sheriff III.',
+        'Megbízható járőr: a hónap jelentéseit hiánytalanul leadta, és két újoncot is segített.',
+        '00000000-0000-4000-8000-000000000002', now() - interval '1 day');
+insert into public.trainee_mentors (trainee_id, mentor_id, assigned_by, assigned_at)
+values ('00000000-0000-4000-8000-000000000008', '00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8000-000000000002',
+        now() - interval '3 days');
+insert into public.trainee_notes (trainee_id, author_id, body, created_at)
+values ('00000000-0000-4000-8000-000000000008', '00000000-0000-4000-8000-000000000007',
+        'Első közös járőr: a rádiózás még bizonytalan, a megállításnál figyelmes volt.', now() - interval '2 days');
+
+-- MCB: tasks (one overdue, one done), a seized item with its custody trail and an informant.
+insert into public.case_tasks (case_id, title, assignee_id, due_on, done_at, done_by, created_by, created_at) values
+  ('30000000-0000-4000-8000-000000000001', 'Kamerafelvételek bekérése a kikötőből', '00000000-0000-4000-8000-000000000002',
+   current_date - 1, null, null, '00000000-0000-4000-8000-000000000006', now() - interval '3 days'),
+  ('30000000-0000-4000-8000-000000000001', 'Tanúkihallgatás: a 3-as dokk éjszakás munkása', '00000000-0000-4000-8000-000000000006',
+   current_date + 3, null, null, '00000000-0000-4000-8000-000000000006', now() - interval '1 day'),
+  ('30000000-0000-4000-8000-000000000001', 'A kikötőben parkoló járművek rendszámainak listája', '00000000-0000-4000-8000-000000000006',
+   current_date - 4, now() - interval '2 days', '00000000-0000-4000-8000-000000000006', '00000000-0000-4000-8000-000000000006',
+   now() - interval '5 days');
+insert into public.case_items (id, case_id, label, description, quantity, status, location, created_by, created_at)
+values ('32000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'Gépkarabély (AK-47)',
+        'A 3-as dokknál talált lezárt láda tartalma.', '2 db', 'held', 'Downtown, bizonyítékraktár B-12',
+        '00000000-0000-4000-8000-000000000006', now() - interval '2 days');
+insert into public.case_item_events (item_id, case_id, action, location, note, actor_id, created_at) values
+  ('32000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'seized', '3-as dokk', 'Lefoglalva a helyszínen.',
+   '00000000-0000-4000-8000-000000000006', now() - interval '2 days'),
+  ('32000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'moved', 'Downtown, bizonyítékraktár B-12', null,
+   '00000000-0000-4000-8000-000000000006', now() - interval '47 hours');
+insert into public.informants (id, codename, real_name, handler_id, reliability, status, contact, notes, created_by)
+values ('33000000-0000-4000-8000-000000000001', 'Holló', 'Marco Vitale', '00000000-0000-4000-8000-000000000006', 4, 'active',
+        'Telefon: 555-0142, csak este', 'A kikötői banda alsó szintjén mozog, pénzért beszél.', '00000000-0000-4000-8000-000000000006');
+insert into public.informant_contacts (informant_id, met_on, summary, value, case_id, payment, created_by)
+values ('33000000-0000-4000-8000-000000000001', current_date - 2, 'Szerinte a következő szállítmány csütörtökön érkezik a 3-as dokkra.',
+        'high', '30000000-0000-4000-8000-000000000001', 50000, '00000000-0000-4000-8000-000000000006');
+
+-- Policies: a published rule to acknowledge (three members already did) and a draft.
+insert into public.policies (id, title, category, summary, body, version, requires_ack, status, sort_order, published_at, created_by, updated_by)
+values ('34000000-0000-4000-8000-000000000001', 'Járműhasználati szabályzat', 'vehicles',
+        'Ki, mikor és hogyan használhatja a frakció járműveit.',
+        '[{"type":"heading","props":{"level":2},"content":"Általános szabályok"},{"type":"paragraph","content":"Szolgálati járművet csak szolgálatban, a kulcs birtokosa vezethet."},{"type":"bulletListItem","content":"A járművet tisztán és tankolva kell leadni."},{"type":"bulletListItem","content":"A sérülést a logisztikán jelezni kell."},{"type":"heading","props":{"level":2},"content":"Üldözés"},{"type":"paragraph","content":"Üldözésben legfeljebb három egység vehet részt közvetlenül."}]',
+        1, true, 'published', 10, now() - interval '5 days', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001');
+insert into public.policy_versions (policy_id, version, title, summary, body, change_note, requires_ack, published_by, published_at)
+select id, 1, title, summary, body, 'Első kiadás', true, '00000000-0000-4000-8000-000000000001', published_at
+from public.policies where id = '34000000-0000-4000-8000-000000000001';
+insert into public.policy_acknowledgements (policy_id, user_id, version, acknowledged_at) values
+  ('34000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', 1, now() - interval '5 days'),
+  ('34000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 1, now() - interval '4 days'),
+  ('34000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000005', 1, now() - interval '3 days');
+insert into public.policies (title, category, summary, body, status, sort_order, created_by, updated_by)
+values ('Rádióforgalmazás', 'radio', 'A kódok használata és a rádiófegyelem.',
+        '[{"type":"paragraph","content":"Rövid, egyértelmű üzenetek; a kódokat a Kódtár szerint használjuk."}]', 'draft', 20,
+        '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001');
+
+-- Community: a live poll, an anonymous one, two suggestions and an anonymous feedback.
+insert into public.polls (id, title, description, audience, anonymous, max_choices, results, closes_at, created_by, created_at) values
+  ('35000000-0000-4000-8000-000000000001', 'Melyik estén legyen a havi állománygyűlés?',
+   'A legtöbb szavazatot kapott nap lesz a jövő havi gyűlés napja.', 'all', false, 1, 'live', now() + interval '3 days',
+   '00000000-0000-4000-8000-000000000001', now() - interval '1 day'),
+  ('35000000-0000-4000-8000-000000000002', 'Elégedett vagy a jelenlegi járőrbeosztással?', null, 'all', true, 1, 'after_close',
+   now() + interval '6 days', '00000000-0000-4000-8000-000000000005', now() - interval '2 hours');
+insert into public.poll_options (id, poll_id, label, sort_order) values
+  ('35100000-0000-4000-8000-000000000001', '35000000-0000-4000-8000-000000000001', 'Kedd', 0),
+  ('35100000-0000-4000-8000-000000000002', '35000000-0000-4000-8000-000000000001', 'Csütörtök', 1),
+  ('35100000-0000-4000-8000-000000000003', '35000000-0000-4000-8000-000000000001', 'Vasárnap', 2),
+  ('35100000-0000-4000-8000-000000000004', '35000000-0000-4000-8000-000000000002', 'Igen', 0),
+  ('35100000-0000-4000-8000-000000000005', '35000000-0000-4000-8000-000000000002', 'Részben', 1),
+  ('35100000-0000-4000-8000-000000000006', '35000000-0000-4000-8000-000000000002', 'Nem', 2);
+insert into public.poll_voters (poll_id, user_id) values
+  ('35000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002'),
+  ('35000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000005'),
+  ('35000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000002');
+insert into public.poll_votes (poll_id, option_id, user_id) values
+  ('35000000-0000-4000-8000-000000000001', '35100000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000002'),
+  ('35000000-0000-4000-8000-000000000001', '35100000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000005'),
+  ('35000000-0000-4000-8000-000000000002', '35100000-0000-4000-8000-000000000005', null);
+insert into public.suggestions (id, title, body, category, author_id, status, response, responded_by, responded_at, created_at) values
+  ('36000000-0000-4000-8000-000000000001', 'Közös lőtéri edzés minden hónapban',
+   'Jó lenne havonta egy közös lőtéri edzés, ahol a felügyelők értékelnek is.', 'training',
+   '00000000-0000-4000-8000-000000000003', 'planned', 'Novembertől havonta egyszer lesz, az első időpont már a naptárban.',
+   '00000000-0000-4000-8000-000000000001', now() - interval '1 day', now() - interval '6 days'),
+  ('36000000-0000-4000-8000-000000000002', 'Jelentéssablon a közlekedési balesetekhez',
+   'A jelentésgenerátorban legyen külön sablon a közlekedési balesetekhez, mert most mindig kézzel írjuk át.', 'website',
+   '00000000-0000-4000-8000-000000000006', 'new', null, null, null, now() - interval '2 days');
+insert into public.suggestion_votes (suggestion_id, user_id) values
+  ('36000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002'),
+  ('36000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000006'),
+  ('36000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000007'),
+  ('36000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003');
+insert into public.feedback_reports (id, reporter_hash, recipient, category, body, status, created_at, updated_at)
+values ('37000000-0000-4000-8000-000000000001', private.reporter_hash('00000000-0000-4000-8000-000000000003'), 'command', 'idea',
+        'A heti gyűlések túl későn kezdődnek, sokan ilyenkor már nem tudnak ott lenni. Lehetne fél órával korábban?', 'new',
+        date_trunc('hour', now() - interval '5 hours'), date_trunc('hour', now() - interval '5 hours'));
+
+-- Practice: the sample scenarios are published here, a four-day streak, leaderboard opt-ins and
+-- the certificates of the seeded qualifications.
+update public.practice_scenarios set published = true;
+insert into public.practice_days (user_id, day, answered, correct)
+select '00000000-0000-4000-8000-000000000003', current_date - g, 20 + g * 3, 15 + g * 2 from generate_series(0, 3) g;
+insert into public.practice_days (user_id, day, answered, correct) values
+  ('00000000-0000-4000-8000-000000000002', current_date - 1, 30, 27),
+  ('00000000-0000-4000-8000-000000000006', current_date, 12, 9);
+-- The deck totals match those days (save_practice_session() writes both).
+insert into public.practice_progress (user_id, deck, answered, correct, sessions)
+select user_id, 'radio', sum(answered), sum(correct), count(*) from public.practice_days group by user_id;
+insert into public.member_settings (user_id, leaderboard_visible) values
+  ('00000000-0000-4000-8000-000000000001', true), ('00000000-0000-4000-8000-000000000002', true),
+  ('00000000-0000-4000-8000-000000000003', true), ('00000000-0000-4000-8000-000000000006', true),
+  ('00000000-0000-4000-8000-000000000007', true);
+select private.issue_certificate(p.id, 'qualification', q, q || ' képesítés', 'Képesítési okirat', p.created_at + interval '20 days')
+from public.profiles p cross join lateral unnest(p.qualifications) q where p.system_role <> 'pending';
+select private.issue_certificate('00000000-0000-4000-8000-000000000002', 'rank', 'Sergeant I.', 'Sergeant I.', 'Kinevezési okirat',
+                                 now() - interval '30 days');

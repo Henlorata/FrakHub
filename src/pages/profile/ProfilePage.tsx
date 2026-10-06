@@ -2,8 +2,8 @@ import * as React from "react";
 import {Link, useNavigate, useSearchParams} from "react-router";
 import {toast} from "sonner";
 import {
-  AlertTriangle, BellRing, Briefcase, CalendarClock, CalendarOff, CalendarPlus, Camera, Car, CheckCircle2, Clock, FlaskConical, History,
-  Hourglass, Key, Landmark, Loader2, Medal, NotebookPen, RefreshCw, Save, ShieldCheck, ThumbsUp, TrendingUp, UploadCloud, UserCog, X,
+  AlertTriangle, Award, BellRing, Briefcase, CalendarClock, CalendarOff, CalendarPlus, Camera, Car, CheckCircle2, Clock, FlaskConical, History,
+  Hourglass, Key, Landmark, Loader2, Medal, NotebookPen, Printer, RefreshCw, Save, ShieldCheck, Sparkles, ThumbsUp, TrendingUp, UploadCloud, UserCog, X,
 } from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
@@ -31,11 +31,13 @@ import type {
 } from "@/types/supabase";
 import {IdCard} from "./IdCard";
 import {TrainingCenter} from "./TrainingCenter";
+import {CertificatesTab} from "./CertificatesTab";
+import {MonthlyRecapDialog} from "@/components/recap/MonthlyRecapDialog";
 import {StrikeDots} from "@/components/hr/StrikeDots";
 import {RegistrationDialog} from "@/components/fleet/RegistrationDialog";
 import {LicensePlate} from "@/components/fleet/LicensePlate";
 import {fetchFleetVehicle} from "@/lib/fleet-store";
-import {addMonths, todayKey} from "@/lib/datetime";
+import {addMonths, monthKey, todayKey} from "@/lib/datetime";
 
 interface AwardedRibbon extends Ribbon {
   awarded_at: string;
@@ -84,6 +86,7 @@ export function ProfilePage() {
     if (tabParam) setTab(tabParam);
   }
   const [leaveOpen, setLeaveOpen] = React.useState(!!searchParams.get("leave"));
+  const [recapOpen, setRecapOpen] = React.useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
 
   const profileId = profile?.id;
@@ -182,6 +185,7 @@ export function ProfilePage() {
 
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-6">
+      <MonthlyRecapDialog month={addMonths(monthKey(), -1)} open={recapOpen} onOpenChange={setRecapOpen}/>
       <LeaveRequestDialog open={leaveOpen} onOpenChange={closeLeaveDialog} onCreated={(record) => {
         setRecords((prev) => [record, ...(prev ?? [])]);
         changeTab("records");
@@ -239,6 +243,11 @@ export function ProfilePage() {
           <div className="flex shrink-0 flex-wrap justify-center gap-2 md:flex-col">
             <Button onClick={() => setLeaveOpen(true)}><CalendarPlus/> Szabadság igénylése</Button>
             <Button variant="outline" onClick={() => navigate("/notifications?view=settings")}><BellRing/> Értesítések</Button>
+            <Button variant="outline" onClick={() => navigate(`/hr/record/${profile.id}`)}><Printer/> Szolgálati lapom</Button>
+            {/* Last month's recap, for those who were members then (like the dashboard's offer). */}
+            {(joinedOn ?? profile.created_at).slice(0, 10) < monthKey() && (
+              <Button variant="ghost" onClick={() => setRecapOpen(true)}><Sparkles/> Havi összefoglaló</Button>
+            )}
           </div>
         </div>
       </section>
@@ -261,6 +270,7 @@ export function ProfilePage() {
             {activeWarnings.length > 0 && <span className="rounded-full bg-red-500/20 px-1.5 text-[11px] text-red-300">{activeWarnings.length}</span>}
           </TabsTrigger>
           <TabsTrigger value="trainings"><FlaskConical className="size-4"/> Képzések</TabsTrigger>
+          <TabsTrigger value="certificates"><Award className="size-4"/> Okleveleim</TabsTrigger>
           <TabsTrigger value="settings"><UserCog className="size-4"/> Fiók</TabsTrigger>
         </TabsList>
 
@@ -327,6 +337,10 @@ export function ProfilePage() {
 
         <TabsContent value="trainings" className="mt-0">
           <TrainingCenter/>
+        </TabsContent>
+
+        <TabsContent value="certificates" className="mt-0">
+          {tab === "certificates" && <CertificatesTab/>}
         </TabsContent>
 
         <TabsContent value="awards" className="mt-0">

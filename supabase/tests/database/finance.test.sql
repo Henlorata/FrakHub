@@ -42,8 +42,8 @@ select deputy_id, month + 3, 'Gyorshajtás – John Doe', 'https://forum.hl-rpg.
 from ids;
 insert into public.report_logs (user_id, occurred_on, title, forum_url)
 select deputy_id, month + 4, 'Rablás – Jane Roe', 'https://forum.hl-rpg.eu/posts/5002/' from ids;
-select is((select count(*)::int from public.report_logs), 2, 'members log their own reports');
-select is((select created_by from public.report_logs limit 1), (select deputy_id from ids), 'the author is recorded');
+select is((select count(*)::int from public.report_logs r, ids where r.month = ids.month), 2, 'members log their own reports');
+select is((select created_by from public.report_logs r, ids where r.month = ids.month limit 1), (select deputy_id from ids), 'the author is recorded');
 select throws_ok(format($$insert into public.report_logs (user_id, occurred_on, title, forum_url) values (%L, %L, 'Másolat', 'https://forum.hl-rpg.eu/posts/5001/')$$,
                         (select deputy_id from ids), (select month + 5 from ids)),
   '23505', null, 'the same forum post counts once, whatever the link form');
@@ -54,12 +54,14 @@ select throws_ok($$insert into public.report_logs (user_id, occurred_on, title, 
                   values ('00000000-0000-4000-8000-000000000003', current_date, 'Rossz link', 'https://example.com/x')$$,
   '23514', null, 'only forum links are accepted');
 update public.report_logs set forum_url = 'https://forum.hl-rpg.eu/posts/5003/' where forum_url like '%5002%';
-select is((select forum_post_id from public.report_logs where title like 'Rablás%'), 5003::bigint, 'the link can be added later');
+select is((select forum_post_id from public.report_logs where title like 'Rablás%' and month = (select month from ids)), 5003::bigint, 'the link can be added later');
 
 select pg_temp.act_as((select corporal_id from ids));
-select is((select count(*)::int from public.report_logs), 0, 'members do not see the reports of others');
+select is((select count(*)::int from public.report_logs where user_id <> (select corporal_id from ids)), 0,
+  'members do not see the reports of others');
 select pg_temp.act_as((select sergeant_id from ids));
-select is((select count(*)::int from public.report_logs), 2, 'staff see every report');
+select is((select count(*)::int from public.report_logs r, ids where r.user_id = ids.deputy_id and r.month = ids.month), 2,
+  'staff see every report');
 
 -- --- Payroll: access -------------------------------------------------------------
 select pg_temp.act_as((select deputy_id from ids));

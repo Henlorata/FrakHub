@@ -243,6 +243,13 @@ export interface CaseWarrant {
   closed_at?: string | null;
   closed_by?: string | null;
   closing_note?: string | null;
+  /** End of the validity (null: no expiry, e.g. approved before validity existed). */
+  expires_at?: string | null;
+  renewals?: number;
+  renewal_requested_at?: string | null;
+  renewal_requested_by?: string | null;
+  renewal_note?: string | null;
+  renewal_requester_name?: string | null;
   requester?: {full_name: string; badge_number: string; faction_rank?: string} | null;
   approver?: {full_name: string; badge_number: string; faction_rank?: string} | null;
   closer?: {full_name: string; badge_number: string} | null;

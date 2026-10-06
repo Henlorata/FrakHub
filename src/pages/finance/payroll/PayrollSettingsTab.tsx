@@ -10,6 +10,7 @@ import {financeApi} from "@/lib/finance";
 import {cn, errorMessage} from "@/lib/utils";
 import type {PayrollSettings} from "@/types/finance";
 import {MoneyField} from "../components/MoneyField";
+import {WhatIfPanel} from "./WhatIfPanel";
 
 const COLUMNS = "rank_pay, unit_pay, duty_tiers, min_duty_hours, min_reports, top_duty_pay, top_report_pay, report_pay, picture_pay, training_pay, "
   + "tax_percent, executive_unit, updated_at, updated_by";
@@ -203,6 +204,8 @@ export function PayrollSettingsTab({canEdit}: {canEdit: boolean}) {
         </div>
       </div>
 
+      {dirty && <WhatIfPanel saved={saved} draft={draft}/>}
+
       {canEdit && dirty && (
         <div className="panel animate-rise sticky bottom-4 z-30 flex flex-wrap items-center gap-3 px-4 py-3 ring-1 ring-emerald-500/30">
           <p className="text-sm text-slate-200">Mentetlen módosítások a fizetési táblában.</p>
@@ -237,8 +240,9 @@ function Row({label, hint, children}: {label: string; hint?: string; children: R
   return (
     <label className={cn("grid grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] items-center gap-3 py-0.5")}>
       <span className="min-w-0">
-        <span className="block truncate text-sm text-slate-300">{label}</span>
-        {hint && <span className="block truncate text-[10px] text-slate-500">{hint}</span>}
+        {/* Wraps instead of cutting: "Deputy Sheriff III." and "Deputy Sheriff Trainee" must stay apart. */}
+        <span className="block text-sm leading-tight wrap-break-word text-slate-300">{label}</span>
+        {hint && <span className="block truncate text-[10px] text-slate-500" title={hint}>{hint}</span>}
       </span>
       {children}
     </label>

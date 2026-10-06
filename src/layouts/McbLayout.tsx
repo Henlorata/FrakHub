@@ -1,6 +1,6 @@
 import {Suspense} from "react";
 import {Link, Navigate, Outlet, useLocation} from "react-router";
-import {FolderKanban, Gavel, LayoutTemplate, LineChart, UserSearch} from "lucide-react";
+import {FolderKanban, Gavel, LayoutTemplate, LineChart, ShieldQuestion, UserSearch} from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {SuspectCacheProvider} from "@/context/SuspectCacheContext";
 import {canViewCaseList, cn} from "@/lib/utils";
@@ -24,6 +24,8 @@ export function McbLayout() {
     {path: "/mcb/warrants", label: "Parancsok", icon: Gavel},
     ...(canViewMcbOverview(profile) ? [{path: "/mcb/admin", label: "Vezetés", icon: LineChart}] : []),
     ...(isMcbLead(profile) ? [{path: "/mcb/templates", label: "Sablonok", icon: LayoutTemplate}] : []),
+    // Leads see every informant, handlers (MCB members) their own.
+    ...(isMcbLead(profile) || profile.division === "MCB" ? [{path: "/mcb/informants", label: "Informátorok", icon: ShieldQuestion}] : []),
   ];
 
   return (

@@ -1,8 +1,8 @@
 import {useEffect, useState} from "react";
 import type {LucideIcon} from "lucide-react";
 import {
-  ArrowRightLeft, FilePen, FilePlus2, FolderArchive, Gavel, History, ImageMinus, ImagePlus, Loader2, Lock, Pencil, ShieldPlus,
-  ShieldX, Tag, TriangleAlert, Unlock, UserMinus, UserPlus, Users,
+  ArrowRightLeft, Boxes, FilePen, FilePlus2, FolderArchive, Gavel, History, Hourglass, ImageMinus, ImagePlus, ListChecks, ListTodo, ListX,
+  Loader2, Lock, PackageCheck, Pencil, ShieldPlus, ShieldX, Tag, TriangleAlert, Unlock, UserMinus, UserPlus, Users,
 } from "lucide-react";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {formatAgo, formatDateTime} from "@/lib/datetime";
@@ -74,6 +74,28 @@ export function describeCaseEvent(event: Pick<CaseEvent, "kind" | "details" | "a
         : "text-sky-300 bg-sky-500/10";
       return {icon: Gavel, tone, text: `${verb} a(z) ${warrant}t: ${str(d.target)}${d.note ? ` – „${str(d.note)}”` : ""}`};
     }
+    case "warrant_renewal_requested":
+      return {icon: Hourglass, tone: "text-amber-300 bg-amber-500/10", text: `a(z) ${warrant} megújítását kérte: ${str(d.target)}`};
+    case "warrant_renewed":
+      return {icon: Hourglass, tone: "text-emerald-300 bg-emerald-500/10", text: `megújította a(z) ${warrant}t: ${str(d.target)}`};
+    case "task_added":
+      return {icon: ListTodo, tone: "text-sky-300 bg-sky-500/10",
+        text: `teendőt vett fel: „${str(d.title)}”${d.assignee ? ` (felelős: ${str(d.assignee)})` : ""}`};
+    case "task_done":
+      return {icon: ListChecks, tone: "text-emerald-300 bg-emerald-500/10", text: `késznek jelölte: „${str(d.title)}”`};
+    case "task_reopened":
+      return {icon: ListTodo, tone: "text-slate-300 bg-white/5", text: `újranyitotta a teendőt: „${str(d.title)}”`};
+    case "task_removed":
+      return {icon: ListX, tone: "text-slate-300 bg-white/5", text: `törölte a teendőt: „${str(d.title)}”`};
+    case "item_added":
+      return {icon: PackageCheck, tone: "text-amber-300 bg-amber-500/10", text: `lefoglalt tárgyat rögzített: ${str(d.label)}`};
+    case "item_custody": {
+      const verb = ({moved: "áthelyezte", checked_out: "kiadta", checked_in: "visszavette", returned: "visszaadta a tulajdonosnak",
+        destroyed: "megsemmisítette"} as Record<string, string>)[str(d.action)] ?? "módosította";
+      return {icon: Boxes, tone: "text-amber-300 bg-amber-500/10", text: `${verb}: ${str(d.label)}`};
+    }
+    case "item_removed":
+      return {icon: Boxes, tone: "text-red-300 bg-red-500/10", text: `törölte a tárgyat: ${str(d.label)}`};
     default:
       return {icon: History, tone: "text-slate-300 bg-white/5", text: "módosította az aktát"};
   }

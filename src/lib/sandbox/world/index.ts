@@ -12,6 +12,8 @@ import {examViewRows, examsRpc, seedExams} from "./exams";
 import {financeRpc, seedFinance} from "./finance";
 import {academyRpc, seedAcademy} from "./academy";
 import {eventsRpc, seedEvents} from "./events";
+import {progressionRpc, seedProgression} from "./progression";
+import {extrasRpc, seedExtras} from "./extras";
 
 /** Foreign keys the app embeds (`owner:owner_id(...)`, `profiles!x_user_id_fkey(...)`, `holders:fleet_assignments(...)`). */
 const RELATIONS: Schema["relations"] = {
@@ -201,8 +203,11 @@ export function createSandbox(profile: Profile): SandboxBackend {
   seedFinance(world);
   seedAcademy(world);
   seedEvents(world);
+  seedProgression(world);
+  seedExtras(world);
 
-  const rpc: Record<string, RpcHandler> = {...peopleRpc, ...dashboardRpc, ...mcbRpc, ...examsRpc, ...fleetRpc, ...financeRpc, ...academyRpc, ...eventsRpc};
+  const rpc: Record<string, RpcHandler> = {...peopleRpc, ...dashboardRpc, ...mcbRpc, ...examsRpc, ...fleetRpc, ...financeRpc, ...academyRpc, ...eventsRpc,
+    ...progressionRpc, ...extrasRpc};
   const api: Record<string, (body: Row, world: World) => unknown> = {...peopleApi, ...mcbApi, "/api/delete-image": () => ({deleted: 0})};
   const virtual: Record<string, () => Row[]> = {exam_submissions_view: () => examViewRows(world)};
   const visible = visibility(profile);

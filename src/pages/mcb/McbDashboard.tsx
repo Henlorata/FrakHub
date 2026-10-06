@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
 import {Link, useNavigate} from "react-router";
 import {
-  ArrowDownWideNarrow, Check, ChevronRight, FilePlus2, FileText, FolderLock, FolderOpen, Fingerprint, Gavel, LayoutGrid, Lock,
+  ArrowDownWideNarrow, CalendarClock, Check, ChevronRight, FilePlus2, FileText, FolderLock, FolderOpen, Fingerprint, Gavel, LayoutGrid, ListTodo, Lock,
   Paperclip, Rows3, Search, Siren, Sparkles, Users, X,
 } from "lucide-react";
 import {toast} from "sonner";
@@ -15,7 +15,7 @@ import {useDialogParam} from "@/lib/use-dialog-param";
 import {formatAgo, formatDate} from "@/lib/datetime";
 import {
   CATEGORIES, CATEGORY, PRIORITIES, PRIORITY, WARRANT_SELECT, WARRANT_TYPE, canApproveWarrants, mcbApi, warrantTarget,
-  type CaseListItem, type CaseSearchHit,
+  type CaseListItem, type CaseSearchHit, type MyCaseTask,
 } from "@/lib/mcb";
 import {cn, errorMessage} from "@/lib/utils";
 import type {CaseCategory, CasePriority, CaseWarrant} from "@/types/supabase";
@@ -37,6 +37,7 @@ export function McbDashboard() {
   const [archived, setArchived] = useState<CaseListItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<CaseWarrant[]>([]);
+  const [myTasks, setMyTasks] = useState<MyCaseTask[]>([]);
   const [status, setStatus] = useState<StatusFilter>("open");
   const [priority, setPriority] = useState<CasePriority | null>(null);
   const [category, setCategory] = useState<CaseCategory | "">("");
@@ -73,6 +74,15 @@ export function McbDashboard() {
   useEffect(() => {
     void loadPending();
   }, [loadPending]);
+
+  // The caller's open tasks across the cases (one small call).
+  useEffect(() => {
+    let active = true;
+    mcbApi.myTasks().then((list) => active && setMyTasks(list)).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Archived cases only when asked for.
   useEffect(() => {
@@ -177,6 +187,35 @@ export function McbDashboard() {
         <StatCard index={4} label="Körözött személyek" value={wanted} icon={Fingerprint} tone="violet" className="col-span-2 lg:col-span-1"
                   onClick={() => navigate("/mcb/suspects?status=wanted")}/>
       </div>
+
+      {myTasks.length > 0 && (
+        <section className="panel animate-rise p-4" style={{"--i": 1} as CSSProperties} data-tour="mcb-my-tasks">
+          <header className="mb-3 flex items-center gap-2">
+            <ListTodo className="size-4 text-emerald-300"/>
+            <h2 className="text-sm font-semibold text-white">Saját teendőim</h2>
+            <span className="text-xs text-slate-500">
+              · {myTasks.length} nyitott{myTasks.some((task) => task.overdue) ? `, ${myTasks.filter((task) => task.overdue).length} lejárt` : ""}
+            </span>
+          </header>
+          <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">
+            {myTasks.slice(0, 9).map((task) => (
+              <li key={task.id}>
+                <Link to={`/mcb/case/${task.case.id}`}
+                      className="flex min-w-0 items-start gap-3 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10 transition-colors hover:bg-white/[0.06]">
+                  <CalendarClock className={cn("mt-0.5 size-4 shrink-0", task.overdue ? "text-red-300" : "text-slate-500")}/>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm wrap-anywhere text-slate-100">{task.title}</span>
+                    <span className="mt-0.5 block truncate text-[11px] text-slate-500">
+                      <span className="font-mono text-sky-300/80">{task.case.case_number}</span> · {task.case.title}
+                      {task.due_on && <span className={cn(task.overdue && "text-red-300")}> · {task.overdue ? "lejárt: " : "határidő: "}{formatDate(task.due_on)}</span>}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {(myOpen.length > 0 || (canApprove && pending.length > 0)) && (
         <div className={cn("grid grid-cols-1 gap-4", canApprove && pending.length > 0 && myOpen.length > 0 && "xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]")}>

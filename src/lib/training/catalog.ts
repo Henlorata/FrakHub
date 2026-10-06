@@ -30,17 +30,17 @@ const leadsDivision = (profile: Profile) => !!profile.is_bureau_commander || (pr
 export const TRAININGS: readonly TrainingInfo[] = [
   {
     id: "basic", title: "Alapképzés", icon: Compass, tone: "gold", minutes: 7, version: 1,
-    summary: "Körbevezet az oldalon: menü, kereső, értesítések, kalkulátor, jelentések, járművek, pénzügy, akadémia, vizsgák, események és kódtár.",
+    summary: "Körbevezet az oldalon: menü, kereső, értesítések, kalkulátor, jelentések, járművek, pénzügy, akadémia, vizsgák, gyakorlás, események, kódtár és szabályzatok.",
     requirement: "Minden tagnak", eligible: () => true,
   },
   {
     id: "mcb", title: "Nyomozó Iroda", icon: Fingerprint, tone: "blue", minutes: 5, version: 1,
-    summary: "Akták, dokumentumszerkesztő, bizonyítékok, személyek, körözések és parancsok az MCB felületén.",
+    summary: "Akták, dokumentumszerkesztő, bizonyítékok, személyek, körözések, parancsok és teendők az MCB felületén.",
     requirement: "MCB-tagoknak és a felügyelői rangtól", eligible: (profile) => canViewCaseList(profile),
   },
   {
     id: "supervisor", title: "Felügyelői képzés", icon: ShieldCheck, tone: "violet", minutes: 5, version: 1,
-    summary: "Állomány kezelése, figyelmeztetések, kérelmek elbírálása, vizsgajavítás és a havi összesítők.",
+    summary: "Állomány kezelése, előléptetés, újoncok, figyelmeztetések, kérelmek, vizsgajavítás és a havi összesítők.",
     requirement: "Sergeant I. rangtól", eligible: (profile) => isStaff(profile),
   },
   {

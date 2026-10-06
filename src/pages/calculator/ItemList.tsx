@@ -4,6 +4,10 @@ import {formatCurrency, formatJailTime} from "@/lib/penalcode-processor";
 import {cn} from "@/lib/utils";
 import type {PenalCodeItem} from "@/types/penalcode";
 import type {ListCategory, ListGroup} from "./penal-data";
+import {PENAL_CHANGE_BADGE, recentPenalChanges} from "./PenalChangesBanner";
+
+/** Offences added or changed in the last month (static data: computed once). */
+const RECENT_CHANGES = recentPenalChanges();
 
 interface ItemListProps {
   categories: ListCategory[];
@@ -53,12 +57,12 @@ export function ItemList({categories, search, filtering, open, onToggle, quantit
                               onToggle={() => onToggle(entry.id)}>
                     {entry.alpontok.map((item) => (
                       <ItemRow key={item.id} item={item} search={search} quantity={quantities.get(item.id) ?? 0} favorite={favorites.has(item.id)}
-                               onAdd={onAdd} onChange={onChange} onFavorite={onFavorite} nested/>
+                               changed={RECENT_CHANGES.get(item.id)} onAdd={onAdd} onChange={onChange} onFavorite={onFavorite} nested/>
                     ))}
                   </GroupBlock>
                 ) : (
                   <ItemRow key={entry.id} item={entry} search={search} quantity={quantities.get(entry.id) ?? 0} favorite={favorites.has(entry.id)}
-                           onAdd={onAdd} onChange={onChange} onFavorite={onFavorite}/>
+                           changed={RECENT_CHANGES.get(entry.id)} onAdd={onAdd} onChange={onChange} onFavorite={onFavorite}/>
                 ))}
               </div>
             )}
@@ -89,11 +93,13 @@ function GroupBlock({group, search, open, onToggle, children}: {group: ListGroup
   );
 }
 
-const ItemRow = memo(function ItemRow({item, search, quantity, favorite, onAdd, onChange, onFavorite, nested}: {
+const ItemRow = memo(function ItemRow({item, search, quantity, favorite, changed, onAdd, onChange, onFavorite, nested}: {
   item: PenalCodeItem;
   search: string;
   quantity: number;
   favorite: boolean;
+  /** Added or changed in a recent penal code release. */
+  changed?: "added" | "changed" | "removed";
   onAdd: (id: string) => void;
   onChange: (id: string, delta: number) => void;
   onFavorite: (id: string) => void;
@@ -113,6 +119,11 @@ const ItemRow = memo(function ItemRow({item, search, quantity, favorite, onAdd, 
           <span className="text-sm font-medium text-white wrap-anywhere"><Highlight text={item.megnevezes} search={search}/></span>
           <span className="rounded bg-white/[0.06] px-1.5 font-mono text-[11px] text-slate-300"><Highlight text={item.rovidites} search={search}/></span>
           {item.isWarning && <AlertTriangle className="size-3.5 shrink-0 self-center text-amber-400" aria-label="Figyelmeztetés"/>}
+          {changed && changed !== "removed" && (
+            <span className={cn("self-center rounded-full px-1.5 py-px text-[10px] font-semibold ring-1", PENAL_CHANGE_BADGE[changed].tone)}>
+              {PENAL_CHANGE_BADGE[changed].label}
+            </span>
+          )}
         </div>
         <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
           {hasFine && (

@@ -59,7 +59,7 @@ export function WarrantsPage() {
   const groups = useMemo(() => {
     const list = warrants ?? [];
     return {
-      pending: list.filter((item) => item.status === "pending"),
+      pending: list.filter((item) => item.status === "pending" || (item.status === "approved" && !!item.renewal_requested_at)),
       active: list.filter((item) => item.status === "approved"),
       closed: list.filter((item) => item.status === "executed" || item.status === "rejected" || item.status === "expired"),
       mine: list.filter((item) => item.requested_by === profile?.id),

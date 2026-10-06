@@ -72,7 +72,7 @@ test.describe("trainings", () => {
     const sent = mock.requests.length;
 
     const seen: string[] = [];
-    for (let guard = 0; guard < 40; guard += 1) {
+    for (let guard = 0; guard < 60; guard += 1) {
       const title = (await stepTitle(page).textContent()) ?? "";
       seen.push(title);
       if (title === "Ennyi volt!") break;
@@ -115,7 +115,7 @@ test.describe("trainings", () => {
       await cards.nth(index).getByRole("button", {name: /játszás/}).click();
       await overlay(page).getByRole("button", {name: "Kezdjük"}).click();
       await expect(overlay(page).getByText("Gyakorló mód", {exact: true})).toBeVisible();
-      for (let guard = 0; guard < 40; guard += 1) {
+      for (let guard = 0; guard < 60; guard += 1) {
         const button = overlay(page).getByRole("button", {name: /^(Tovább|Befejezés|Lépés átugrása)/}).first();
         const label = (await button.textContent()) ?? "";
         await button.click();

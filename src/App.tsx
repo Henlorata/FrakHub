@@ -25,10 +25,15 @@ function lazyPage<M extends Record<string, unknown>>(loader: () => Promise<M>, e
 const RegisterPage = lazyPage(() => import("@/pages/auth/RegisterPage"), "RegisterPage");
 const OnboardingPage = lazyPage(() => import("@/pages/auth/OnboardingPage"), "OnboardingPage");
 const PublicExamPage = lazyPage(() => import("@/pages/exams/PublicExamPage"), "PublicExamPage");
+const CertificatePage = lazyPage(() => import("@/pages/certificates/CertificatePage"), "CertificatePage");
+const PracticePage = lazyPage(() => import("@/pages/practice/PracticePage"), "PracticePage");
+const LeaderboardPage = lazyPage(() => import("@/pages/leaderboard/LeaderboardPage"), "LeaderboardPage");
+const PermissionsPage = lazyPage(() => import("@/pages/permissions/PermissionsPage"), "PermissionsPage");
 const DashboardPage = lazyPage(() => import("@/pages/dashboard/DashboardPage"), "DashboardPage");
 const NotificationsPage = lazyPage(() => import("@/pages/notifications/NotificationsPage"), "NotificationsPage");
 const ReportsPage = lazyPage(() => import("@/pages/reports/ReportsPage"), "ReportsPage");
 const HrPage = lazyPage(() => import("@/pages/hr/HrPage"), "HrPage");
+const ServiceRecordPage = lazyPage(() => import("@/pages/hr/ServiceRecordPage"), "ServiceRecordPage");
 const McbLayout = lazyPage(() => import("@/layouts/McbLayout"), "McbLayout");
 const McbDashboard = lazyPage(() => import("@/pages/mcb/McbDashboard"), "McbDashboard");
 const CaseDetailPage = lazyPage(() => import("@/pages/mcb/CaseDetailPage"), "CaseDetailPage");
@@ -37,6 +42,7 @@ const SuspectsPage = lazyPage(() => import("@/pages/mcb/SuspectsPage"), "Suspect
 const WarrantsPage = lazyPage(() => import("@/pages/mcb/WarrantsPage"), "WarrantsPage");
 const CasePrintPage = lazyPage(() => import("@/pages/mcb/CasePrintPage"), "CasePrintPage");
 const TemplatesPage = lazyPage(() => import("@/pages/mcb/TemplatesPage"), "TemplatesPage");
+const InformantsPage = lazyPage(() => import("@/pages/mcb/InformantsPage"), "InformantsPage");
 const ExamHub = lazyPage(() => import("@/pages/exams/ExamHub"), "ExamHub");
 const ExamEditor = lazyPage(() => import("@/pages/exams/ExamEditor"), "ExamEditor");
 const ExamGradingPage = lazyPage(() => import("@/pages/exams/grading/ExamGradingPage"), "ExamGradingPage");
@@ -49,6 +55,8 @@ const AcademyPage = lazyPage(() => import("@/pages/academy/AcademyPage"), "defau
 const EventsPage = lazyPage(() => import("@/pages/events/EventsPage"), "EventsPage");
 const CodesPage = lazyPage(() => import("@/pages/codes/CodesPage"), "CodesPage");
 const ChangelogPage = lazyPage(() => import("@/pages/changelog/ChangelogPage"), "ChangelogPage");
+const PoliciesPage = lazyPage(() => import("@/pages/community/PoliciesPage"), "PoliciesPage");
+const CommunityPage = lazyPage(() => import("@/pages/community/CommunityPage"), "CommunityPage");
 
 function AppRoutes() {
   return (
@@ -57,6 +65,8 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage/>}/>
         <Route path="/register" element={<RegisterPage/>}/>
         <Route path="/exam/public/:examId" element={<PublicExamPage/>}/>
+        <Route path="/certificates" element={<CertificatePage/>}/>
+        <Route path="/certificates/:code" element={<CertificatePage/>}/>
 
         <Route element={<AppLayout/>}>
           <Route path="/dashboard" element={<DashboardPage/>}/>
@@ -64,6 +74,7 @@ function AppRoutes() {
           <Route path="/notifications" element={<NotificationsPage/>}/>
           <Route path="/reports" element={<ReportsPage/>}/>
           <Route path="/hr" element={<HrPage/>}/>
+          <Route path="/hr/record/:userId" element={<ServiceRecordPage/>}/>
 
           <Route path="/mcb" element={<McbLayout/>}>
             <Route index element={<McbDashboard/>}/>
@@ -73,6 +84,7 @@ function AppRoutes() {
             <Route path="suspects" element={<SuspectsPage/>}/>
             <Route path="warrants" element={<WarrantsPage/>}/>
             <Route path="templates" element={<TemplatesPage/>}/>
+            <Route path="informants" element={<InformantsPage/>}/>
           </Route>
 
           <Route path="/exams" element={<ExamHub/>}/>
@@ -88,6 +100,11 @@ function AppRoutes() {
           <Route path="/events" element={<EventsPage/>}/>
           <Route path="/codes" element={<CodesPage/>}/>
           <Route path="/changelog" element={<ChangelogPage/>}/>
+          <Route path="/policies" element={<PoliciesPage/>}/>
+          <Route path="/community" element={<CommunityPage/>}/>
+          <Route path="/practice" element={<PracticePage/>}/>
+          <Route path="/leaderboard" element={<LeaderboardPage/>}/>
+          <Route path="/permissions" element={<PermissionsPage/>}/>
         </Route>
 
         <Route path="/" element={<Navigate to="/dashboard" replace/>}/>

@@ -1,6 +1,6 @@
 import {useState} from "react";
 import {Link} from "react-router";
-import {Check, FileSignature, Gavel, Loader2, MapPin, Undo2, X} from "lucide-react";
+import {Check, FileSignature, Gavel, Hourglass, Loader2, MapPin, RefreshCw, Undo2, X} from "lucide-react";
 import {toast} from "sonner";
 import {Button} from "@/components/ui/button";
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
@@ -11,7 +11,8 @@ import {cn, errorMessage} from "@/lib/utils";
 import type {CaseWarrant} from "@/types/supabase";
 import {Mugshot, WarrantStatusChip} from "./McbBadges";
 
-export type WarrantAction = "approved" | "rejected" | "executed" | "expired";
+/** decide_warrant() statuses, plus asking for and granting a renewal of the validity. */
+export type WarrantAction = "approved" | "rejected" | "executed" | "expired" | "renewal" | "renew";
 
 export interface WarrantPermissions {
   myId: string | undefined;
@@ -31,6 +32,12 @@ export function warrantActions(warrant: CaseWarrant, perms: WarrantPermissions):
   } else if (warrant.status === "approved") {
     if (perms.canEditCase(warrant.case_id) || perms.canApprove) actions.push("executed");
     if (perms.canApprove || perms.canManageCase(warrant.case_id)) actions.push("expired");
+    if (warrant.expires_at) {
+      if (perms.canEditCase(warrant.case_id) && !warrant.renewal_requested_at) actions.push("renewal");
+      // Approvers renew a request of someone else, or a warrant that runs out within three days.
+      if (perms.canApprove && warrant.renewal_requested_by !== perms.myId
+          && (!!warrant.renewal_requested_at || Date.parse(warrant.expires_at) - Date.now() < 3 * 86_400_000)) actions.push("renew");
+    }
   }
   return actions;
 }
@@ -44,6 +51,10 @@ const ACTION_TEXT: Record<WarrantAction, {title: string; button: string; placeho
     done: "Végrehajtás rögzítve.", className: "bg-sky-600 text-white hover:bg-sky-500"},
   expired: {title: "Parancs visszavonása", button: "Visszavonás", placeholder: "A visszavonás oka (nem kötelező)",
     done: "Parancs visszavonva.", className: "bg-slate-600 text-white hover:bg-slate-500"},
+  renewal: {title: "Megújítás kérése", button: "Megújítást kérek", placeholder: "Miért kell még (pl. a gyanúsított még szökésben)",
+    done: "Megújítás kérve: a jóváhagyók értesítést kaptak.", className: "bg-amber-600 text-white hover:bg-amber-500"},
+  renew: {title: "Parancs megújítása", button: "Megújítás", placeholder: "Megjegyzés a megújításhoz (nem kötelező)",
+    done: "Parancs megújítva.", className: "bg-emerald-600 text-white hover:bg-emerald-500"},
 };
 
 /** Asks for the note of a warrant decision, then calls decide_warrant(). */
@@ -59,7 +70,9 @@ export function WarrantActionDialog({warrant, action, onClose, onDone}: {warrant
     if (action === "rejected" && !note.trim()) return toast.error("Írd le röviden az elutasítás okát.");
     setBusy(true);
     try {
-      const updated = await mcbApi.decideWarrant(warrant.id, action, note.trim() || undefined);
+      const updated = action === "renewal" ? await mcbApi.requestRenewal(warrant.id, note.trim() || null)
+        : action === "renew" ? await mcbApi.renewWarrant(warrant.id, note.trim() || null)
+          : await mcbApi.decideWarrant(warrant.id, action, note.trim() || undefined);
       toast.success(withdrawing ? "Kérelem visszavonva." : text!.done);
       setNote("");
       onDone(updated);
@@ -139,6 +152,7 @@ export function WarrantCard({warrant, perms, showCase, onAction, onOpenDocument,
             Kérte: {warrant.requester?.full_name ?? "–"}{own && " (te)"} · <span title={formatDateTime(warrant.created_at)}>{formatAgo(warrant.created_at)}</span>
             {warrant.approver && warrant.status !== "pending" && warrant.status !== "expired" && <> · {warrant.status === "rejected" ? "Elutasította" : "Jóváhagyta"}: {warrant.approver.full_name}</>}
           </p>
+          {warrant.status === "approved" && <Validity warrant={warrant}/>}
           {(warrant.decision_note || warrant.closing_note) && (
             <p className="mt-1 text-[11px] text-slate-400 italic wrap-anywhere">„{warrant.closing_note ?? warrant.decision_note}”</p>
           )}
@@ -164,6 +178,16 @@ export function WarrantCard({warrant, perms, showCase, onAction, onOpenDocument,
             <Check className="size-3.5"/> Jóváhagyás
           </Button>
         )}
+        {actions.includes("renewal") && (
+          <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2 text-xs text-amber-200 hover:bg-amber-500/10" onClick={() => onAction(warrant, "renewal")}>
+            <Hourglass className="size-3.5"/> Megújítás kérése
+          </Button>
+        )}
+        {actions.includes("renew") && (
+          <Button size="sm" className="h-7 gap-1.5 bg-emerald-600 px-2.5 text-xs text-white hover:bg-emerald-500" onClick={() => onAction(warrant, "renew")}>
+            <RefreshCw className="size-3.5"/> Megújítás
+          </Button>
+        )}
         {actions.includes("executed") && (
           <Button size="sm" className="h-7 gap-1.5 bg-sky-600 px-2.5 text-xs text-white hover:bg-sky-500" onClick={() => onAction(warrant, "executed")}>
             <Gavel className="size-3.5"/> Végrehajtva
@@ -174,5 +198,33 @@ export function WarrantCard({warrant, perms, showCase, onAction, onOpenDocument,
         )}
       </div>
     </article>
+  );
+}
+
+/** The validity of an approved warrant and an open renewal request. */
+function Validity({warrant}: {warrant: CaseWarrant}) {
+  if (!warrant.expires_at) return <p className="mt-1 text-[11px] text-slate-500">Visszavonásig érvényes</p>;
+  const left = Date.parse(warrant.expires_at) - Date.now();
+  const soon = left < 2 * 86_400_000;
+  // Rounded, so a warrant approved just now for 14 days reads "még 14 nap", not 13.
+  const remaining = left <= 0 ? "lejárt"
+    : left >= 86_400_000 ? `még ${Math.round(left / 86_400_000)} nap`
+      : left >= 3_600_000 ? `még ${Math.round(left / 3_600_000)} óra`
+        : `még ${Math.max(1, Math.round(left / 60_000))} perc`;
+  return (
+    <div className="mt-1.5 space-y-1">
+      <p className={cn("inline-flex flex-wrap items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] ring-1",
+        soon ? "bg-amber-500/10 text-amber-200 ring-amber-500/25" : "bg-white/[0.04] text-slate-300 ring-white/10")}>
+        <Hourglass className="size-3"/> Érvényes: {formatDateTime(warrant.expires_at)}
+        <span className="text-slate-400">({remaining})</span>
+        {!!warrant.renewals && <span className="text-slate-500">· {warrant.renewals}× megújítva</span>}
+      </p>
+      {warrant.renewal_requested_at && (
+        <p className="text-[11px] wrap-anywhere text-amber-200/90">
+          Megújítást kért{warrant.renewal_requester_name ? `: ${warrant.renewal_requester_name}` : "ek"} · {formatAgo(warrant.renewal_requested_at)}
+          {warrant.renewal_note ? ` – „${warrant.renewal_note}”` : ""}
+        </p>
+      )}
+    </div>
   );
 }

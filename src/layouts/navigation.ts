@@ -1,5 +1,6 @@
 import {
-  Banknote, Bell, Calculator, CalendarDays, ClipboardList, FileText, Fingerprint, GraduationCap, LayoutDashboard, Radio, Sparkles, Truck, User, Users,
+  Award, Banknote, Bell, BookCheck, BrainCircuit, Calculator, CalendarDays, ClipboardList, FileText, Fingerprint, GraduationCap, KeyRound,
+  LayoutDashboard, Radio, Sparkles, Trophy, Truck, User, Users, UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import {canViewCaseList} from "@/lib/utils";
@@ -41,6 +42,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       {label: "Akadémia", path: "/academy", icon: GraduationCap, keywords: "tananyag képzés"},
       {label: "Vizsgaközpont", path: "/exams", icon: ClipboardList, keywords: "vizsga teszt javítás"},
+      {label: "Gyakorlás", path: "/practice", icon: BrainCircuit, keywords: "gyakorlás kártya rádiókód btk szituáció sorozat ismétlés kvíz"},
     ],
   },
   {
@@ -52,9 +54,18 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    label: "Közösség",
+    items: [
+      {label: "Szabályzatok", path: "/policies", icon: BookCheck, keywords: "szabályzat szabály sop elolvastam kötelező"},
+      {label: "Közösség", path: "/community", icon: UsersRound, keywords: "szavazás ötlet ötletláda javaslat névtelen visszajelzés panasz"},
+      {label: "Ranglista", path: "/leaderboard", icon: Trophy, keywords: "ranglista toplista verseny legjobbak"},
+    ],
+  },
+  {
     label: "Adminisztráció",
     items: [
-      {label: "Személyügy", path: "/hr", icon: Users, keywords: "hr állomány előléptetés rang"},
+      {label: "Személyügy", path: "/hr", icon: Users, keywords: "hr állomány előléptetés rang újonc mentor aktivitás"},
+      {label: "Ki mit tehet?", path: "/permissions", icon: KeyRound, keywords: "jogosultság jog engedély szerepkör"},
     ],
   },
 ];
@@ -63,6 +74,8 @@ export const NAV_SECTIONS: NavSection[] = [
 export const EXTRA_PAGES: NavItem[] = [
   {label: "Profilom", path: "/profile", icon: User, keywords: "profil adataim szabadság képzések jelszó"},
   {label: "Újdonságok", path: "/changelog", icon: Sparkles, keywords: "újdonság változás frissítés hírek változásnapló"},
+  {label: "Okleveleim", path: "/profile?tab=certificates", icon: Award, keywords: "oklevél bizonyítvány képesítés igazolás"},
+  {label: "Oklevél ellenőrzése", path: "/certificates", icon: Award, keywords: "oklevél ellenőrzés kód hiteles"},
 ];
 
 export const visibleSections = (profile: Profile): NavSection[] =>
@@ -80,8 +93,11 @@ export const pageTitleFor = (pathname: string): string => {
   if (pathname.startsWith("/mcb/warrants")) return "Parancsok";
   if (pathname.startsWith("/mcb/admin")) return "Az iroda vezetése";
   if (pathname.startsWith("/mcb/templates")) return "Aktasablonok";
+  if (pathname.startsWith("/mcb/informants")) return "Informátorok";
   if (pathname.startsWith("/logistics/fleet/")) return "Jármű";
   if (pathname.startsWith("/changelog")) return "Újdonságok";
+  if (pathname.startsWith("/hr/record")) return "Szolgálati lap";
+  if (pathname.startsWith("/permissions")) return "Ki mit tehet?";
   const match = NAV_SECTIONS.flatMap((section) => section.items)
     .filter((item) => pathname.startsWith(item.path))
     .sort((a, b) => b.path.length - a.path.length)[0];

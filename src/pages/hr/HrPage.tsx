@@ -1,7 +1,7 @@
 import {useCallback, useMemo, useState} from "react";
 import {useSearchParams} from "react-router";
 import {toast} from "sonner";
-import {BarChart3, CalendarOff, Clock, DoorOpen, Download, History, Inbox, List, Network, RefreshCw, UserPlus, Users} from "lucide-react";
+import {BarChart3, CalendarOff, Clock, DoorOpen, Download, GraduationCap, History, Inbox, List, Medal, Network, RefreshCw, UserPlus, Users} from "lucide-react";
 import {PageHeader} from "@/components/layout/PageHeader";
 import {StatCard} from "@/components/layout/StatCard";
 import {Button} from "@/components/ui/button";
@@ -20,11 +20,14 @@ import {HistoryFeed} from "./components/HistoryFeed";
 import {StatsPanel} from "./components/StatsPanel";
 import {DutyPanel} from "./components/DutyPanel";
 import {FormerMembersPanel} from "./components/FormerMembersPanel";
+import {PromotionsPanel} from "./components/PromotionsPanel";
+import {TraineesPanel} from "./components/TraineesPanel";
+import {ActivityWatchPanel} from "./components/ActivityWatchPanel";
 import type {Departure} from "./components/MemberRegistryTab";
 import {todayKey} from "@/lib/datetime";
 
-type Tab = "roster" | "duty" | "requests" | "former" | "history" | "stats";
-const TABS: Tab[] = ["roster", "duty", "requests", "former", "history", "stats"];
+type Tab = "roster" | "duty" | "promotions" | "trainees" | "requests" | "former" | "history" | "stats";
+const TABS: Tab[] = ["roster", "duty", "promotions", "trainees", "requests", "former", "history", "stats"];
 
 export function HrPage() {
   const {profile} = useAuth();
@@ -137,6 +140,8 @@ export function HrPage() {
   const tabs: {id: Tab; label: string; icon: typeof Users; count?: number; visible: boolean}[] = [
     {id: "roster", label: "Állomány", icon: Users, visible: true},
     {id: "duty", label: "Szolgálati idő", icon: Clock, visible: true},
+    {id: "promotions", label: "Előléptetés", icon: Medal, visible: isStaff(profile)},
+    {id: "trainees", label: "Újoncok", icon: GraduationCap, visible: true},
     {id: "requests", label: "Kérelmek", icon: Inbox, count: requestCount, visible: isStaff(profile)},
     {id: "former", label: "Kilépettek", icon: DoorOpen, visible: isStaff(profile)},
     {id: "history", label: "Változások", icon: History, visible: true},
@@ -203,12 +208,19 @@ export function HrPage() {
                          onSaveDetails={saveDetails}/>
         ) : tab === "former" && isStaff(profile) ? (
           <FormerMembersPanel viewer={profile}/>
+        ) : tab === "promotions" && isStaff(profile) ? (
+          <PromotionsPanel viewer={profile} members={members} onPromote={changeRank} onOpenMember={(id) => setParam("member", id)}/>
+        ) : tab === "trainees" ? (
+          <TraineesPanel viewer={profile} members={members} onPromote={changeRank} onOpenMember={(id) => setParam("member", id)}/>
         ) : tab === "duty" ? (
-          <DutyPanel members={members} editable={isStaff(profile)} onSave={saveDuty}/>
+          <>
+            {isStaff(profile) && <ActivityWatchPanel viewer={profile} members={members} onOpenMember={(id) => setParam("member", id)}/>}
+            <DutyPanel members={members} editable={isStaff(profile)} onSave={saveDuty}/>
+          </>
         ) : tab === "history" ? (
           <HistoryFeed members={allMembers} onOpenMember={(member) => setParam("member", member.id)}/>
         ) : tab === "stats" ? (
-          <StatsPanel members={members}/>
+          <StatsPanel members={members} staff={isStaff(profile)}/>
         ) : (
           <div className="space-y-4">
             <div className="inline-flex rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10" role="tablist" aria-label="Nézet" data-tour="hr-view">

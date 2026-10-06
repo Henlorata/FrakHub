@@ -145,6 +145,9 @@ export interface Payslip {
   row: PayrollRow;
   paid: boolean;
   paid_at: string | null;
+  /** The duty tiers the month was closed with (the "next tier" hint). */
+  duty_tiers?: DutyTier[] | null;
+  min_duty_hours?: number | null;
 }
 
 // --- Overview ------------------------------------------------------------------

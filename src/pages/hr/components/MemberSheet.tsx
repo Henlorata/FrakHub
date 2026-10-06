@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
+import {Link} from "react-router";
 import {toast} from "sonner";
 import {
-  AlertTriangle, Award, CalendarCheck, CalendarOff, Check, ClipboardList, Crown, History, KeyRound, Loader2, Medal, NotebookPen, Plus, Save,
+  AlertTriangle, Award, CalendarCheck, CalendarOff, Check, ClipboardList, Crown, History, KeyRound, Loader2, Medal, NotebookPen, Plus, Printer, Save,
   ShieldCheck, ThumbsUp, Trash2, UserMinus, X,
 } from "lucide-react";
 import {Sheet, SheetContent, SheetDescription, SheetTitle} from "@/components/ui/sheet";
@@ -81,7 +82,15 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
             <SheetTitle className="flex items-center gap-2 text-xl">
               <span className="truncate">{member.full_name}</span>
             </SheetTitle>
-            <SheetDescription className="mt-0.5 font-mono">#{member.badge_number}</SheetDescription>
+            <SheetDescription className="mt-0.5 flex items-center gap-2 font-mono">
+              #{member.badge_number}
+              {(isStaff(viewer) || viewer.id === member.id) && (
+                <Link to={`/hr/record/${member.id}`} title="Szolgálati lap (nyomtatható)"
+                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-sans text-[11px] text-slate-400 ring-1 ring-white/10 transition-colors hover:bg-white/5 hover:text-white">
+                  <Printer className="size-3"/> Szolgálati lap
+                </Link>
+              )}
+            </SheetDescription>
             <LeadershipBadges member={member} size="md" className="mt-2"/>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className={cn("inline-flex h-6 items-center rounded-md px-2 text-xs font-semibold ring-1", division.pill)}>

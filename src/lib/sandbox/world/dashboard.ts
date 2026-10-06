@@ -111,6 +111,19 @@ export const dashboardRpc: Record<string, RpcHandler> = {
         && String(row.starts_on) <= world.day() && String(row.ends_on) >= world.day()),
       my_month: myMonth(world),
       upcoming_events: upcomingEvents(world),
+      my_case_tasks: {
+        open: count(tables.case_tasks, (row) => row.assignee_id === me.id && !row.done_at),
+        overdue: count(tables.case_tasks, (row) => row.assignee_id === me.id && !row.done_at && !!row.due_on && String(row.due_on) < world.day()),
+      },
+      policies_to_acknowledge: count(tables.policies, (row) => !!row.requires_ack && !row.acked),
+      open_polls: count(tables.polls, (row) => !row.closed_at && !row.voted),
+      nominations_pending: highCommand ? count(tables.promotion_nominations, (row) => row.status === "pending") : null,
+      trainees_ready: null,
+      trainees_without_mentor: null,
+      mentees: count(tables.trainee_mentors, (row) => row.mentor_id === me.id && !row.completed_at),
+      feedback_new: null,
+      // No end-of-month recap in practice mode (it would cover the tour).
+      recap_month: null,
     };
   },
 

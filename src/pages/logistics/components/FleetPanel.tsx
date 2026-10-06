@@ -208,7 +208,7 @@ export function FleetPanel({requests = null}: {requests?: VehicleRequest[] | nul
                 </SelectContent>
               </Select>
               <Select value={station} onValueChange={setStation}>
-                <SelectTrigger className="lg:w-44"><MapPin className="size-3.5 text-slate-500"/><SelectValue/></SelectTrigger>
+                <SelectTrigger className="lg:w-56"><MapPin className="size-3.5 text-slate-500"/><SelectValue/></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>Minden kirendeltség</SelectItem>
                   {FLEET_STATIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}

@@ -10,7 +10,9 @@ import {StatCard} from "@/components/layout/StatCard";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {useAuth} from "@/context/AuthContext";
 import {formatAgo, formatDateTime} from "@/lib/datetime";
-import {CATEGORY, canViewMcbOverview, mcbApi, type McbOverview, type McbOverviewMember} from "@/lib/mcb";
+import {CATEGORY, canViewMcbOverview, isMcbLead, mcbApi, type McbOverview, type McbOverviewMember, type McbSettings} from "@/lib/mcb";
+import {Input} from "@/components/ui/input";
+import {Label} from "@/components/ui/label";
 import {cn, errorMessage, getRankPriority} from "@/lib/utils";
 import {describeCaseEvent} from "./components/CaseTimeline";
 import {MemberAvatar, PriorityChip} from "./components/McbBadges";
@@ -87,6 +89,8 @@ export function AdminPage() {
                   hint={`${totals.warrants_active} érvényes`}/>
         <StatCard index={5} label="Körözött személy" value={totals.wanted} icon={UserX} tone="gold" hint={`${totals.suspects} nyilvántartott`}/>
       </div>
+
+      <WarrantValidityCard editable={isMcbLead(profile)}/>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <section className="panel animate-rise p-5" style={{"--i": 2} as CSSProperties}>
@@ -331,3 +335,69 @@ function CategoryBars({categories}: {categories: McbOverview["categories"]}) {
   );
 }
 
+
+/**
+ * How long an approved warrant is valid (0: until revoked) and how early the requester and the
+ * owner are reminded. A warrant past its time lapses in the daily job; editors may ask for a
+ * renewal before that.
+ */
+function WarrantValidityCard({editable}: {editable: boolean}) {
+  const [settings, setSettings] = useState<McbSettings | null>(null);
+  const [draft, setDraft] = useState({arrest_days: "", search_days: "", reminder_days: ""});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    mcbApi.settings().then((value) => {
+      if (!value) return;
+      setSettings(value);
+      setDraft({arrest_days: String(value.arrest_days), search_days: String(value.search_days), reminder_days: String(value.reminder_days)});
+    }).catch(() => undefined);
+  }, []);
+
+  if (!settings) return null;
+  const dirty = draft.arrest_days !== String(settings.arrest_days) || draft.search_days !== String(settings.search_days)
+    || draft.reminder_days !== String(settings.reminder_days);
+  const save = async () => {
+    setSaving(true);
+    try {
+      const saved = await mcbApi.saveSettings({arrest_days: Number(draft.arrest_days || 0), search_days: Number(draft.search_days || 0),
+        reminder_days: Number(draft.reminder_days || 0)});
+      setSettings(saved);
+      setDraft({arrest_days: String(saved.arrest_days), search_days: String(saved.search_days), reminder_days: String(saved.reminder_days)});
+      toast.success("A parancsok érvényessége mentve.", {description: "Az új idő a következő jóváhagyásoktól és megújításoktól számít."});
+    } catch (reason) {
+      toast.error(errorMessage(reason, "A mentés nem sikerült."));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const field = (key: keyof typeof draft, label: string, hint: string, max: number) => (
+    <div className="space-y-1">
+      <Label htmlFor={`validity-${key}`} className="text-xs">{label}</Label>
+      <Input id={`validity-${key}`} inputMode="numeric" disabled={!editable} value={draft[key]}
+             onChange={(event) => setDraft((prev) => ({...prev, [key]: String(Math.min(max, Number(event.target.value.replace(/\D/g, "") || 0)))}))}/>
+      <p className="text-[11px] text-slate-500">{hint}</p>
+    </div>
+  );
+  return (
+    <section className="panel animate-rise p-5" data-tour="mcb-validity">
+      <header className="mb-4 flex flex-wrap items-center gap-2">
+        <Gavel className="size-4 text-amber-300"/>
+        <h2 className="text-sm font-semibold text-white">Parancsok érvényessége</h2>
+        <span className="text-xs text-slate-500">· a lejárt parancs magától megszűnik, előtte megújítás kérhető</span>
+      </header>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {field("arrest_days", "Elfogatóparancs (nap)", "0: visszavonásig érvényes", 90)}
+        {field("search_days", "Házkutatási parancs (nap)", "0: visszavonásig érvényes", 90)}
+        {field("reminder_days", "Emlékeztető a lejárat előtt (nap)", "A kérelmező és az akta tulajdonosa kapja", 14)}
+      </div>
+      {editable && dirty && (
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setDraft({arrest_days: String(settings.arrest_days), search_days: String(settings.search_days),
+            reminder_days: String(settings.reminder_days)})}>Elvetés</Button>
+          <Button disabled={saving} onClick={() => void save()}>Mentés</Button>
+        </div>
+      )}
+    </section>
+  );
+}

@@ -91,7 +91,7 @@ export function SummaryCard({detail, canEdit, onSaveDescription}: {
             {formatAgo(item.updated_at)}{item.body_updated_by_name ? ` · ${item.body_updated_by_name}` : ""}
           </dd>
           <dt className="text-slate-500">Dokumentum</dt>
-          <dd className="text-right text-slate-300">{item.body_version > 0 ? `${item.body_version}. mentés` : "korábbi változat"}</dd>
+          <dd className="text-right text-slate-300">{item.body_version > 0 ? `${item.body_version}. mentés` : "eredeti változat"}</dd>
         </dl>
       </div>
     </RailCard>

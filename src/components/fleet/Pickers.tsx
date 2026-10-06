@@ -81,7 +81,7 @@ export function PersonPicker({people, selected, onToggle, blocker, detail, place
  * The stock grouped by category, with who holds each vehicle, free keys and special
  * features. `blocker` explains why a vehicle cannot be picked for the chosen person.
  */
-export function VehiclePicker({vehicles, categories, people, selected, onToggle, blocker, autoFocus, freeOnlyDefault = true}: {
+export function VehiclePicker({vehicles, categories, people, selected, onToggle, blocker, autoFocus, freeOnlyDefault = true, preferModel}: {
   vehicles: FleetVehicle[];
   categories: FleetCategory[];
   people: Map<string, DirectoryProfile>;
@@ -90,6 +90,8 @@ export function VehiclePicker({vehicles, categories, people, selected, onToggle,
   blocker?: (vehicle: FleetVehicle, category: FleetCategory | null) => string | null;
   autoFocus?: boolean;
   freeOnlyDefault?: boolean;
+  /** The requested model (vehicle requests): its vehicles and their category come first. */
+  preferModel?: string | null;
 }) {
   const [search, setSearch] = useState("");
   const [freeOnly, setFreeOnly] = useState(freeOnlyDefault);
@@ -97,6 +99,11 @@ export function VehiclePicker({vehicles, categories, people, selected, onToggle,
 
   const groups = useMemo(() => {
     const term = search.trim().toLowerCase();
+    const prefer = preferModel?.trim().toLowerCase() || null;
+    const fits = (vehicle: FleetVehicle) => {
+      const model = vehicle.model.trim().toLowerCase();
+      return !!prefer && !!model && (model.includes(prefer) || prefer.includes(model));
+    };
     const visible = vehicles.filter((vehicle) => {
       if (selected.includes(vehicle.id)) return true;
       if (freeOnly && freeKeys(vehicle) === 0) return false;
@@ -104,12 +111,15 @@ export function VehiclePicker({vehicles, categories, people, selected, onToggle,
       const holders = vehicle.holders.map((holder) => people.get(holder.user_id)?.full_name);
       return matches(term, vehicle.plate, vehicle.model, vehicle.callsign, vehicle.game_id, vehicle.station, ...holders);
     });
-    return [...categories, null].map((category) => ({
+    const list = [...categories, null].map((category) => ({
       category,
       vehicles: visible.filter((vehicle) => (category ? vehicle.category_id === category.id
-        : !vehicle.category_id || !categoryById.has(vehicle.category_id))),
+        : !vehicle.category_id || !categoryById.has(vehicle.category_id)))
+        // Stable: the matching models first, the rest in the stock's order.
+        .sort((a, b) => Number(fits(b)) - Number(fits(a))),
     })).filter((group) => group.vehicles.length > 0);
-  }, [vehicles, categories, categoryById, people, search, freeOnly, selected]);
+    return prefer ? list.sort((a, b) => Number(b.vehicles.some(fits)) - Number(a.vehicles.some(fits))) : list;
+  }, [vehicles, categories, categoryById, people, search, freeOnly, selected, preferModel]);
 
   return (
     <div className="space-y-2">

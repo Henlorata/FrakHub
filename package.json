@@ -19,6 +19,7 @@
     "check": "tsc -b && eslint . && vite build",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --only-shell chromium",
+    "penal:changelog": "bun tooling/penal-changelog.ts",
     "db:types": "bunx supabase@latest gen types typescript --local --schema public > src/types/database.types.ts"
   },
   "dependencies": {

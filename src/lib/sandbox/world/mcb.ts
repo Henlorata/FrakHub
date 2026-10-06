@@ -4,6 +4,7 @@ import {canViewCaseList} from "@/lib/utils";
 import type {Row} from "../postgrest";
 import {DAY, DEMO, SandboxError, type RpcHandler, type World} from "./context";
 import {person} from "./people";
+import {caseExtras} from "./extras";
 
 export const DEMO_CASE = DEMO.case(1);
 
@@ -269,6 +270,7 @@ export const mcbRpc: Record<string, RpcHandler> = {
         .map((row) => ({...row, suspect: (world.tables.suspects ?? []).find((suspect) => suspect.id === row.suspect_id) ?? null})),
       warrants: (world.tables.case_warrants ?? []).filter((row) => row.case_id === item.id)
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).map((row) => warrantJson(world, row)),
+      ...caseExtras(world, item.id),
       viewer: {
         role,
         can_edit: (role === "owner" || role === "editor") && item.status === "open",

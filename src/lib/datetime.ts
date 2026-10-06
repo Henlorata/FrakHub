@@ -157,3 +157,15 @@ export function formatAgo(value: DateInput, now: Date = new Date()): string {
   if (months < 12) return `${months} hónapja`;
   return `${Math.round(days / 365)} éve`;
 }
+
+/** The future counterpart of formatAgo: "most", "5 perc múlva", "3 óra múlva", "2 nap múlva". */
+export function formatUntil(value: DateInput, now: Date = new Date()): string {
+  const date = toDate(value);
+  if (!date) return "–";
+  const minutes = Math.max(0, Math.round((date.getTime() - now.getTime()) / 60_000));
+  if (minutes < 1) return "most";
+  if (minutes < 60) return `${minutes} perc múlva`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} óra múlva`;
+  return `${Math.round(hours / 24)} nap múlva`;
+}

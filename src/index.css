@@ -785,6 +785,32 @@
     }
 }
 
+/* Confetti of the monthly recap. */
+@keyframes recap-fall {
+    0% {
+        opacity: 0;
+        translate: 0 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        translate: 12px 520px;
+        rotate: 540deg;
+    }
+}
+
+/* Horizontal bars (rankings, funnels) grow from the left baseline. */
+@keyframes bar-grow-x {
+    from {
+        transform: scaleX(0);
+    }
+    to {
+        transform: scaleX(1);
+    }
+}
+
 /* --- AUTH PAGES --- */
 .auth-shake {
     animation: auth-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;

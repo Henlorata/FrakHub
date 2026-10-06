@@ -242,6 +242,7 @@ export function LogisticsPage() {
                 Válassz járművet a járműparkból: látod, kinél van már kulcs, és hogy {requester?.full_name ?? "a kérelmező"} megkaphatja-e.
               </p>
               <VehiclePicker vehicles={vehicles ?? []} categories={categories} people={people} autoFocus
+                             preferModel={selectedRequest?.vehicle_type}
                              selected={pickedVehicle ? [pickedVehicle] : []}
                              onToggle={(vehicle) => {
                                setPickedVehicle((prev) => (prev === vehicle.id ? null : vehicle.id));

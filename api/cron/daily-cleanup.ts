@@ -2,6 +2,7 @@ import {createHash, timingSafeEqual} from "node:crypto";
 import {serverEnv} from "../_lib/env.js";
 import {getBearerToken, handle, HttpError, json} from "../_lib/http.js";
 import {getSupabaseAdmin} from "../_lib/supabase.js";
+import {PENAL_CODE_RELEASE} from "../../shared/penal-changelog.js";
 
 const RETENTION_DAYS = {closedRequests: 40, actionLogs: 1, readNotifications: 30, notifications: 120};
 
@@ -31,6 +32,7 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
   const results = {
     financeProofsCleared: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0,
     registrationReminders: 0, registrationFilesDeleted: 0, registrationReviewsExpired: 0, examAttemptsClosed: 0, eventReminders: 0,
+    warrantsLapsed: 0, mcbReminders: 0, penalCodeAnnounced: false,
     errors: [] as string[],
   };
   const fail = (step: string, error: unknown) => {
@@ -141,6 +143,32 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
     results.eventReminders = typeof data === "number" ? data : 0;
   } catch (error) {
     fail("event_reminders", error);
+  }
+
+  // 9. MCB: warrants past their validity lapse, reminders before they do, the overdue task digest
+  //    (first day, then weekly) and items kept past their retention date.
+  try {
+    const {data, error} = await supabase.rpc("mcb_daily");
+    if (error) throw error;
+    const daily = (data ?? {}) as {lapsed?: number; reminded?: number; task_digests?: number; retention?: number};
+    results.warrantsLapsed = daily.lapsed ?? 0;
+    results.mcbReminders = (daily.reminded ?? 0) + (daily.task_digests ?? 0) + (daily.retention ?? 0);
+  } catch (error) {
+    fail("mcb_daily", error);
+  }
+
+  // 10. A new penal code release (shared/penal-changelog.ts) is announced to every member once;
+  //     the database remembers the last announced version (the very first run only records it).
+  try {
+    if (PENAL_CODE_RELEASE) {
+      const {data, error} = await supabase.rpc("announce_penal_code", {
+        _version: PENAL_CODE_RELEASE.version, _title: PENAL_CODE_RELEASE.title, _summary: PENAL_CODE_RELEASE.summary,
+      });
+      if (error) throw error;
+      results.penalCodeAnnounced = data === true;
+    }
+  } catch (error) {
+    fail("penal_code", error);
   }
 
   console.log("[api/cron/daily-cleanup] done", results);

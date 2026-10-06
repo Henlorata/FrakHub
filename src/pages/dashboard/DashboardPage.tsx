@@ -7,8 +7,12 @@ import {
   Activity, AlertOctagon, AlertTriangle, ArrowRight, Banknote, CalendarDays, CalendarOff, CalendarPlus, Car, Check, CheckCircle2,
   ChevronDown, ChevronRight, ClipboardCheck, Clock, EyeOff, FileSearch, FileText, Fingerprint, Gavel, GraduationCap, Handshake,
   HelpCircle, Info, MapPin, Megaphone, Pin, Plus, Radio, Receipt, RefreshCw, ScrollText, Shield, Target, Ticket, Trash2, Truck,
-  UserPlus, Users, X,
+  UserPlus, Users, X, BookCheck, BrainCircuit, HeartHandshake, ListTodo, Medal, MessageSquareLock, UsersRound, Vote,
 } from "lucide-react";
+import {MonthlyRecapDialog} from "@/components/recap/MonthlyRecapDialog";
+import {progressionApi, type Trainee} from "@/lib/progression";
+import {TRAINEE_RANK} from "@shared/ranks";
+import {RECAP_SEEN_KEY} from "@/lib/recognition";
 import {useAuth} from "@/context/AuthContext";
 import {useSystemStatus} from "@/context/SystemStatusContext";
 import {Button} from "@/components/ui/button";
@@ -49,6 +53,19 @@ interface DashboardSummary {
   members_on_leave: number;
   my_month?: MonthProgress;
   upcoming_events?: UpcomingEvent[];
+  /** The caller's open case tasks (assignee) and the overdue ones. */
+  my_case_tasks?: {open: number; overdue: number};
+  policies_to_acknowledge?: number;
+  open_polls?: number;
+  nominations_pending?: number | null;
+  trainees_ready?: number | null;
+  trainees_without_mentor?: number | null;
+  mentees?: number;
+  feedback_new?: number | null;
+  /** The month the end-of-month recap is about (null: not yet). */
+  recap_month?: string | null;
+  /** The member's joining day in the HR registry (null: not recorded, the account's creation counts). */
+  joined_on?: string | null;
 }
 
 /** The member's month against the requirements (duty time is recorded by staff at the meetings). */
@@ -59,6 +76,8 @@ interface MonthProgress {
   duty_updated_at: string | null;
   min_reports: number | null;
   min_duty_hours: number | null;
+  /** The next duty pay tier above the recorded time: its hours and the extra pay. */
+  next_tier?: {hours: number; gain: number} | null;
 }
 
 interface FeedAnnouncement {
@@ -92,6 +111,19 @@ export function DashboardPage() {
   const [summaryLoaded, setSummaryLoaded] = useState(false);
   const [announcements, setAnnouncements] = useState<FeedAnnouncement[] | null>(null);
   const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
+
+  // The end-of-month recap opens once per month (remembered in the browser).
+  useEffect(() => {
+    const month = summary?.recap_month;
+    if (!month || localStorage.getItem(RECAP_SEEN_KEY) === month) return;
+    const timer = setTimeout(() => setRecapOpen(true), 900);
+    return () => clearTimeout(timer);
+  }, [summary?.recap_month]);
+  const closeRecap = (open: boolean) => {
+    setRecapOpen(open);
+    if (!open && summary?.recap_month) localStorage.setItem(RECAP_SEEN_KEY, summary.recap_month);
+  };
 
   const loadAnnouncements = useCallback(async () => {
     const {data, error} = await supabase.rpc("get_announcements", {_limit: 12});
@@ -132,7 +164,7 @@ export function DashboardPage() {
   // Only what needs attention right now; zero counters stay hidden.
   const tasks: {label: string; value: number | null | undefined; icon: typeof Info; tone: Tone; to: string}[] = [
     {label: "Javítandó vizsgalap", value: summary?.pending_exam_sheets, icon: ClipboardCheck, tone: "violet", to: "/exams?tab=grading"},
-    {label: "Jóváhagyásra váró parancs", value: summary?.pending_warrants, icon: Gavel, tone: "red", to: "/mcb"},
+    {label: "Jóváhagyásra váró parancs", value: summary?.pending_warrants, icon: Gavel, tone: "red", to: "/mcb/warrants"},
     {label: "Új regisztráció", value: summary?.pending_registrations, icon: UserPlus, tone: "emerald", to: "/hr?tab=requests"},
     {label: "Szabadságkérelem", value: summary?.pending_leave_requests, icon: CalendarOff, tone: "blue", to: "/hr?tab=requests"},
     {label: "Járműigénylés", value: summary?.pending_vehicle_requests, icon: Truck, tone: "orange", to: "/logistics"},
@@ -141,6 +173,15 @@ export function DashboardPage() {
     {label: "Lejáró forgalmi a flottában", value: summary?.fleet_registration_due, icon: Car, tone: "orange", to: "/logistics?tab=fleet"},
     {label: "Nyitott aktám", value: summary?.my_open_cases, icon: Fingerprint, tone: "blue", to: "/mcb"},
     {label: "Járművem forgalmija", value: summary?.my_vehicles_due, icon: Car, tone: "gold", to: "/logistics?tab=fleet"},
+    {label: "Lejárt teendőm egy aktában", value: summary?.my_case_tasks?.overdue, icon: ListTodo, tone: "red", to: "/mcb"},
+    {label: "Nyitott teendőm egy aktában", value: (summary?.my_case_tasks?.open ?? 0) - (summary?.my_case_tasks?.overdue ?? 0), icon: ListTodo, tone: "blue", to: "/mcb"},
+    {label: "Elolvasandó szabályzat", value: summary?.policies_to_acknowledge, icon: BookCheck, tone: "emerald", to: "/policies"},
+    {label: "Szavazás vár rád", value: summary?.open_polls, icon: Vote, tone: "violet", to: "/community"},
+    {label: "Előléptetési javaslat", value: summary?.nominations_pending, icon: Medal, tone: "gold", to: "/hr?tab=promotions"},
+    {label: "Felavatásra kész újonc", value: summary?.trainees_ready, icon: GraduationCap, tone: "emerald", to: "/hr?tab=trainees"},
+    {label: "Mentor nélküli újonc", value: summary?.trainees_without_mentor, icon: HeartHandshake, tone: "orange", to: "/hr?tab=trainees"},
+    {label: "Mentorált újoncom", value: summary?.mentees, icon: HeartHandshake, tone: "cyan", to: "/hr?tab=trainees"},
+    {label: "Új névtelen visszajelzés", value: summary?.feedback_new, icon: MessageSquareLock, tone: "violet", to: "/community?tab=feedback&box=inbox"},
   ];
   const openTasks = tasks.filter((task) => (task.value ?? 0) > 0);
 
@@ -148,6 +189,7 @@ export function DashboardPage() {
     // Few blocks: kept to a readable width on large screens instead of being stretched apart.
     <div className="mx-auto w-full max-w-[1440px] space-y-6">
       <NewAnnouncementDialog open={isAnnouncementOpen} onOpenChange={setIsAnnouncementOpen} onCreated={loadAnnouncements}/>
+      <MonthlyRecapDialog month={summary?.recap_month ?? null} open={recapOpen} onOpenChange={closeRecap}/>
 
       <Hero summary={summary} openTasks={openTasks.length}/>
 
@@ -182,6 +224,7 @@ export function DashboardPage() {
         <div className="order-first flex min-w-0 flex-col gap-6 xl:order-none">
           <Announcements items={announcements} canPost={canPost} onNew={() => setIsAnnouncementOpen(true)}
                          onDelete={(item) => void deleteAnnouncement(item)}/>
+          {profile.faction_rank === TRAINEE_RANK && profile.onboarding_completed && <TraineeWeek/>}
           <MyMonth month={summary?.my_month} loading={!summaryLoaded}/>
           <UpcomingEvents events={summary?.upcoming_events} loading={!summaryLoaded} canOrganise={organisableAudiences(profile).length > 0}/>
         </div>
@@ -222,9 +265,12 @@ function Hero({summary, openTasks}: {summary: DashboardSummary | null; openTasks
             <span className={cn("rounded-full px-2.5 py-1 font-medium ring-1", rankPillClass(profile.faction_rank))}>{profile.faction_rank}</span>
             <span className="rounded-full bg-white/5 px-2.5 py-1 font-mono text-slate-200 ring-1 ring-white/10">#{profile.badge_number}</span>
             <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-300 ring-1 ring-white/10">{profile.division}</span>
-            <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
-              {formatSpan(daysSince(profile.created_at))} szolgálatban
-            </span>
+            {/* The joining day of the HR registry (the account may be younger than the membership). */}
+            {summary && (
+              <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+                {formatSpan(daysSince(summary.joined_on ?? profile.created_at))} szolgálatban
+              </span>
+            )}
           </div>
 
           <div className="mt-6 flex flex-wrap items-end gap-x-8 gap-y-4">
@@ -232,7 +278,7 @@ function Hero({summary, openTasks}: {summary: DashboardSummary | null; openTasks
               <div className="font-mono text-3xl font-semibold tabular-nums tracking-tight text-white">{formatTime(now)}
                 <span className="text-lg text-slate-500">:{hungarianParts(now).second}</span>
               </div>
-              <div className="text-xs capitalize text-slate-400">{formatLongDate(now)}</div>
+              <div className="text-xs text-slate-400">{formatLongDate(now)}</div>
             </div>
             <div className={cn("flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium ring-1", level.badge)}>
               <span className={cn("relative flex size-2.5", level.text)}>
@@ -401,6 +447,8 @@ function MyMonth({month, loading}: {month: MonthProgress | undefined; loading: b
         : month.duty_updated_at ? `Utoljára rögzítve: ${formatDate(month.duty_updated_at)}` : "A gyűlésen rögzítik",
     },
   ];
+  const tier = month.next_tier;
+  const tierHours = tier ? Math.max(0, tier.hours - (month.duty_minutes ?? 0) / 60) : 0;
   const complete = rows.every((row) => row.done >= row.goal);
 
   return (
@@ -439,6 +487,12 @@ function MyMonth({month, loading}: {month: MonthProgress | undefined; loading: b
           );
         })}
       </ul>
+      {tier && tier.gain > 0 && (month.duty_minutes ?? 0) >= minMinutes && (
+        <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/5 pt-2.5 text-[11px] text-emerald-200/90">
+          <Target className="size-3.5 shrink-0 text-emerald-300"/>
+          Még {String(Math.round(tierHours * 10) / 10).replace(".", ",")} óra a(z) {tier.hours} órás sávig: +{new Intl.NumberFormat("hu-HU").format(tier.gain)} $
+        </p>
+      )}
       {!complete && (
         <p className="mt-2.5 border-t border-white/5 pt-2.5 text-[11px] text-slate-500">
           A duty-minimum alatt nem jár alapfizetés és rangfelvétel.
@@ -457,6 +511,43 @@ const STATUS_CHIP = {
 const weekdayShort = new Intl.DateTimeFormat("hu-HU", {timeZone: "Europe/Budapest", weekday: "short"});
 
 /** The next events (two weeks) the member sees, with their answer. */
+/** A trainee's own week: the checklist towards Deputy Sheriff I. and the mentor (one call, trainees only). */
+function TraineeWeek() {
+  const [me, setMe] = useState<Trainee | null>(null);
+  useEffect(() => {
+    let active = true;
+    progressionApi.trainees().then((list) => active && setMe(list[0] ?? null)).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+  if (!me) return null;
+  const done = me.checks.filter((check) => check.ok).length;
+  return (
+    <section className="panel animate-rise p-4" style={{"--i": 3} as CSSProperties} data-tour="dashboard-trainee">
+      <header className="mb-3 flex items-center gap-3">
+        <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/25"><GraduationCap className="size-4"/></div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-white">Az újonchetem</h2>
+          <p className="text-xs text-slate-500">{Math.min(me.days + 1, 99)}. nap · {done}/{me.checks.length} kész</p>
+        </div>
+      </header>
+      <ul className="space-y-1.5">
+        {me.checks.map((check) => (
+          <li key={check.key} className="flex items-center gap-2 text-xs">
+            {check.ok ? <CheckCircle2 className="size-4 shrink-0 text-emerald-400"/> : <span className="size-4 shrink-0 rounded-full ring-1 ring-slate-600"/>}
+            <span className={cn("min-w-0 flex-1 truncate", check.ok ? "text-slate-400" : "text-slate-200")}>{check.label}</span>
+            {check.target !== undefined && <span className="font-mono text-[11px] text-slate-500 tabular-nums">{Math.min(check.value ?? 0, check.target)}/{check.target}</span>}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 border-t border-white/5 pt-2.5 text-[11px] text-slate-500">
+        {me.mentor ? <>Mentorod: <span className="text-slate-300">{me.mentor.full_name}</span>. Kérdezz bátran!</> : "Hamarosan kapsz egy mentort az első hétre."}
+      </p>
+    </section>
+  );
+}
+
 function UpcomingEvents({events, loading, canOrganise}: {events: UpcomingEvent[] | undefined; loading: boolean; canOrganise: boolean}) {
   if (!events) return loading ? <div className="skeleton h-40"/> : null;
   return (
@@ -525,6 +616,9 @@ function ModuleGrid() {
     {label: "Események", hint: "Gyűlések, képzések", icon: CalendarDays, to: "/events", tone: "gold" as Tone, show: true},
     {label: "Kódtár", hint: "Rádiókódok, hívójel", icon: Radio, to: "/codes", tone: "cyan" as Tone, show: true},
     {label: "Személyügy", hint: "Állomány, duty idő", icon: Users, to: "/hr", tone: "gold" as Tone, show: true},
+    {label: "Gyakorlás", hint: "Kódok, Btk., szituációk", icon: BrainCircuit, to: "/practice", tone: "cyan" as Tone, show: true},
+    {label: "Szabályzatok", hint: "Szabályok, kötelező olvasmány", icon: BookCheck, to: "/policies", tone: "emerald" as Tone, show: true},
+    {label: "Közösség", hint: "Szavazás, ötletek", icon: UsersRound, to: "/community", tone: "violet" as Tone, show: true},
   ].filter((module) => module.show);
 
   return (

@@ -3,6 +3,7 @@ import {
   Banknote, Car, CheckCircle2, CircleDot, Crosshair, Eye, FileSearch, FolderArchive, FolderOpen, Gavel, Handshake, HelpCircle,
   Home, Lock, Network, Pill, Scale, ScrollText, ShieldAlert, Siren, Skull, Swords, UserX, XCircle,
 } from "lucide-react";
+import {todayKey} from "@/lib/datetime";
 import {supabase} from "@/lib/supabaseClient";
 import {createCachedLoader} from "@/lib/cache";
 import {isHighCommand, isSupervisory, type RankSubject} from "@shared/ranks";
@@ -73,7 +74,117 @@ export interface CaseDetail {
   evidence: CaseEvidence[];
   people: CaseSuspect[];
   warrants: CaseWarrant[];
+  /** Older practice worlds and cached replies may lack the newer lists. */
+  tasks?: CaseTask[];
+  items?: CaseItem[];
+  suggestions?: CaseSuggestion[];
   viewer: CaseViewer;
+}
+
+/** A to-do inside a case (the case's editors assign it; the assignee may tick it off). */
+export interface CaseTask {
+  id: string;
+  case_id: string;
+  title: string;
+  assignee_id: string | null;
+  due_on: string | null;
+  done_at: string | null;
+  created_at: string;
+  created_by: string | null;
+  overdue: boolean;
+  assignee: {full_name: string; badge_number: string; avatar_url: string | null} | null;
+  done_by_name: string | null;
+  created_by_name: string | null;
+}
+
+/** The caller's open tasks across the cases (MCB dashboard). */
+export interface MyCaseTask {
+  id: string;
+  title: string;
+  due_on: string | null;
+  created_at: string;
+  overdue: boolean;
+  case: {id: string; case_number: string; title: string; status: CaseStatus};
+}
+
+export type CaseItemStatus = "held" | "checked_out" | "returned" | "destroyed";
+export type CaseItemAction = "seized" | "moved" | "checked_out" | "checked_in" | "returned" | "destroyed" | "note";
+
+export interface CaseItemEvent {
+  id: number;
+  action: CaseItemAction;
+  location: string | null;
+  note: string | null;
+  created_at: string;
+  holder_name: string | null;
+  actor_name: string | null;
+}
+
+/** A seized item with its chain of custody (optional: cases may use the evidence pictures only). */
+export interface CaseItem {
+  id: string;
+  case_id: string;
+  label: string;
+  description: string | null;
+  quantity: string | null;
+  evidence_id: string | null;
+  status: CaseItemStatus;
+  location: string | null;
+  holder_id: string | null;
+  holder_name: string | null;
+  retain_until: string | null;
+  retention_over: boolean;
+  created_at: string;
+  created_by: string | null;
+  events: CaseItemEvent[];
+}
+
+/** Another case with the same person, plate or address (not linked in the document yet). */
+export interface CaseSuggestion {
+  id: string;
+  case_number: string;
+  title: string;
+  status: CaseStatus;
+  reasons: {kind: "person" | "vehicle" | "address"; label: string}[];
+  can_open: boolean;
+}
+
+export interface McbSettings {
+  arrest_days: number;
+  search_days: number;
+  reminder_days: number;
+  updated_at: string;
+}
+
+export type InformantStatus = "active" | "dormant" | "burned" | "closed";
+
+export interface InformantContact {
+  id: string;
+  met_on: string;
+  summary: string;
+  value: "none" | "low" | "medium" | "high";
+  payment: number | null;
+  created_at: string;
+  author_name: string | null;
+  case: {id: string; case_number: string; title: string} | null;
+}
+
+export interface Informant {
+  id: string;
+  codename: string;
+  real_name: string | null;
+  suspect_id: string | null;
+  handler_id: string | null;
+  reliability: number;
+  status: InformantStatus;
+  contact: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  handler: {full_name: string; badge_number: string; avatar_url: string | null} | null;
+  suspect: {full_name: string; alias: string | null; mugshot_url: string | null} | null;
+  contacts: InformantContact[];
+  can_manage: boolean;
 }
 
 export type SaveResult =
@@ -99,7 +210,9 @@ export type CaseEventKind =
   | "collaborator_added" | "collaborator_removed" | "collaborator_role"
   | "evidence_added" | "evidence_renamed" | "evidence_removed"
   | "person_linked" | "person_updated" | "person_unlinked"
-  | "warrant_requested" | "warrant_status";
+  | "warrant_requested" | "warrant_status" | "warrant_renewal_requested" | "warrant_renewed"
+  | "task_added" | "task_done" | "task_reopened" | "task_removed"
+  | "item_added" | "item_custody" | "item_removed";
 
 export interface CaseEvent {
   id: number;
@@ -218,6 +331,67 @@ export const mcbApi = {
   decideWarrant: (warrantId: string, status: "approved" | "rejected" | "executed" | "expired", note?: string) =>
     rpc<CaseWarrant>("decide_warrant", {_warrant_id: warrantId, _status: status, _note: note ?? null}),
   dossier: (suspectId: string) => rpc<SuspectDossier>("get_suspect_dossier", {_suspect_id: suspectId}),
+  saveTask: (caseId: string, taskId: string | null, title: string, assigneeId: string | null, dueOn: string | null) =>
+    rpc<CaseTask>("save_case_task", {_case_id: caseId, _task_id: taskId, _title: title, _assignee_id: assigneeId, _due_on: dueOn}),
+  setTaskDone: (taskId: string, done: boolean) => rpc<CaseTask>("set_case_task_done", {_task_id: taskId, _done: done}),
+  deleteTask: (taskId: string) => rpc<void>("delete_case_task", {_task_id: taskId}),
+  myTasks: async () => (await rpc<MyCaseTask[] | null>("get_my_case_tasks")) ?? [],
+  /** The case's tasks again (after a colleague's change; the detail call would bring the document too). */
+  tasks: async (caseId: string): Promise<CaseTask[]> => {
+    const {data, error} = await supabase.from("case_tasks")
+      .select("id, case_id, title, assignee_id, due_on, done_at, created_at, created_by, assignee:assignee_id(full_name, badge_number, avatar_url), "
+        + "doer:done_by(full_name), creator:created_by(full_name)")
+      .eq("case_id", caseId).order("created_at");
+    if (error) throw error;
+    const today = todayKey();
+    return ((data ?? []) as unknown as (Omit<CaseTask, "overdue" | "done_by_name" | "created_by_name">
+      & {doer: {full_name: string} | null; creator: {full_name: string} | null})[])
+      .map(({doer, creator, ...task}) => ({...task, overdue: !task.done_at && !!task.due_on && task.due_on < today,
+        done_by_name: doer?.full_name ?? null, created_by_name: creator?.full_name ?? null}));
+  },
+  items: async (caseId: string): Promise<CaseItem[]> => {
+    const {data, error} = await supabase.from("case_items")
+      .select("id, case_id, label, description, quantity, evidence_id, status, location, holder_id, holder_name, retain_until, created_at, created_by, "
+        + "holder:holder_id(full_name), events:case_item_events(id, action, location, note, created_at, holder_name, "
+        + "holder:holder_id(full_name), actor:actor_id(full_name))")
+      .eq("case_id", caseId).order("created_at");
+    if (error) throw error;
+    const today = todayKey();
+    type Row = Omit<CaseItem, "retention_over" | "events"> & {holder: {full_name: string} | null;
+      events: (Omit<CaseItemEvent, "actor_name"> & {holder: {full_name: string} | null; actor: {full_name: string} | null})[]};
+    return ((data ?? []) as unknown as Row[]).map(({holder, events, ...item}) => ({
+      ...item,
+      holder_name: holder?.full_name ?? item.holder_name,
+      retention_over: !!item.retain_until && item.retain_until < today && (item.status === "held" || item.status === "checked_out"),
+      events: [...events].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id)
+        .map(({holder: eventHolder, actor, ...event}) => ({...event, holder_name: eventHolder?.full_name ?? event.holder_name,
+          actor_name: actor?.full_name ?? null})),
+    }));
+  },
+  saveItem: (caseId: string, itemId: string | null, item: {label: string; description?: string | null; quantity?: string | null;
+    evidence_id?: string | null; location?: string | null; retain_until?: string | null; note?: string | null}) =>
+    rpc<CaseItem>("save_case_item", {_case_id: caseId, _item_id: itemId, _item: item}),
+  recordItem: (itemId: string, action: Exclude<CaseItemAction, "seized">, step: {location?: string | null; holderId?: string | null;
+    holderName?: string | null; note?: string | null}) =>
+    rpc<CaseItem>("record_case_item", {_item_id: itemId, _action: action, _location: step.location ?? null, _holder_id: step.holderId ?? null,
+      _holder_name: step.holderName ?? null, _note: step.note ?? null}),
+  deleteItem: (itemId: string) => rpc<void>("delete_case_item", {_item_id: itemId}),
+  settings: async () => {
+    const {data, error} = await supabase.from("mcb_settings").select("arrest_days, search_days, reminder_days, updated_at").maybeSingle();
+    if (error) throw error;
+    return data as McbSettings | null;
+  },
+  saveSettings: (settings: Pick<McbSettings, "arrest_days" | "search_days" | "reminder_days">) =>
+    rpc<McbSettings>("save_mcb_settings", {_arrest_days: settings.arrest_days, _search_days: settings.search_days,
+      _reminder_days: settings.reminder_days}),
+  requestRenewal: (warrantId: string, note?: string | null) => rpc<CaseWarrant>("request_warrant_renewal", {_warrant_id: warrantId, _note: note ?? null}),
+  renewWarrant: (warrantId: string, note?: string | null) => rpc<CaseWarrant>("renew_warrant", {_warrant_id: warrantId, _note: note ?? null}),
+  informants: () => rpc<{is_lead: boolean; informants: Informant[]}>("get_informants"),
+  saveInformant: (id: string | null, informant: Partial<Pick<Informant, "codename" | "real_name" | "suspect_id" | "handler_id" | "reliability"
+    | "status" | "contact" | "notes">>) => rpc<Informant>("save_informant", {_id: id, _informant: informant}),
+  addInformantContact: (informantId: string, contact: {met_on: string; summary: string; value: InformantContact["value"]; case_id?: string | null;
+    payment?: number | null}) => rpc<Informant>("add_informant_contact", {_informant_id: informantId, _contact: contact}),
+  deleteInformant: (id: string) => rpc<void>("delete_informant", {_id: id}),
   overview: () => rpc<McbOverview>("get_mcb_overview"),
   events: async (caseId: string, limit = 150) => {
     const {data, error} = await supabase.from("case_events")

@@ -152,7 +152,7 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
           <div className="space-y-2 relative z-10">
             <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Igényelhető
               Járművek</Label>
-            <div
+            <div role="radiogroup" aria-label="Igényelhető járművek"
               className="max-h-[220px] overflow-y-auto pr-2 custom-scrollbar border border-slate-700 bg-slate-950/80 rounded-sm">
               {VEHICLES.map(veh => {
                 const status = checkAvailability(veh);
@@ -160,10 +160,11 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
                 const isSelected = vehicleType === veh.name;
 
                 return (
-                  <div key={veh.name}
-                       onClick={() => !status.disabled && setVehicleType(veh.name)}
+                  // A real radio button: reachable with the keyboard and read out with its lock reason.
+                  <button key={veh.name} type="button" role="radio" aria-checked={isSelected} disabled={status.disabled}
+                       onClick={() => setVehicleType(veh.name)}
                        className={cn(
-                         "flex items-center justify-between p-2.5 cursor-pointer text-xs font-mono uppercase border-b border-slate-800 transition-all",
+                         "flex w-full items-center justify-between p-2.5 text-left cursor-pointer text-xs font-mono uppercase border-b border-slate-800 transition-all outline-none focus-visible:bg-orange-500/10 disabled:cursor-not-allowed",
                          status.disabled ? 'opacity-60 bg-slate-900/50' : 'hover:bg-orange-500/10 hover:text-orange-400',
                          isSelected && "bg-orange-500/20 text-orange-400 border-l-2 border-l-orange-500 pl-3"
                        )}
@@ -181,7 +182,7 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
                     ) : isSelected && (
                       <ChevronRight className="w-3 h-3"/>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>

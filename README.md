@@ -1,15 +1,22 @@
 # FrakHub
 
 Management hub ("MDT") for the San Fierro Sheriff's Department roleplay faction: MCB case
-management (with case templates kept by the MCB leadership), HR (roster with one-click
-promotions and an org chart, monthly duty time sheet, former members, the old Google Sheet's
-registry columns), logistics (requests, the vehicle fleet with key holders and a utilisation
-view, registration renewals read from a screenshot of the in-game licence, vehicle warnings and
-tuning) and finance (payroll, reimbursements, a treasury forecast), penal code calculator, report
-generator (with the person's data read from an in-game screenshot, in the browser), exams and
-academy training, an events calendar with attendance and absences, a radio code book, release
-notes, plus interactive guided trainings per rank that run on demo data. The user interface is
-Hungarian.
+management (case templates, tasks with due dates, an optional register of seized items with
+their chain of custody, warrants that lapse and can be renewed, related-case suggestions and an
+informant register for the leadership), HR (roster with one-click promotions and an org chart,
+promotion criteria and nominations, the trainee week with a mentor, an activity watch based on
+recorded duty time, workload and recruitment charts, printable service records, monthly duty
+time sheet, former members, the old Google Sheet's registry columns), logistics (requests, the
+vehicle fleet with key holders and a utilisation view, registration renewals read from a
+screenshot of the in-game licence, vehicle warnings and tuning) and finance (payroll with a
+what-if view, payslips with history, reimbursements, a treasury forecast), penal code calculator
+with a change log, report generator (with the person's data read from an in-game screenshot, in
+the browser), exams and academy training, practice (spaced-repetition decks, branching
+scenarios), certificates with a public verification code, an opt-in leaderboard and a monthly
+recap, a policy library with acknowledgements, polls, a suggestion board, anonymous feedback to
+the leadership, an events calendar with attendance and absences, a radio code book, a "who can
+do what" page, release notes, plus interactive guided trainings per rank that run on demo data.
+The user interface is Hungarian.
 
 **Stack:** React 19 · Vite 8 (Rolldown) · TypeScript 6 · Tailwind CSS 4 · shadcn/Radix ·
 BlockNote · Supabase (Postgres, Auth, Realtime, Storage) · Cloudinary · Vercel (static
@@ -67,6 +74,7 @@ the Vercel CLI.
 | `bun run test:e2e:install` | One-time download of the headless Chromium used by the tests        |
 | `bun run test:e2e`         | Playwright end-to-end suite (Supabase is mocked, no credentials)    |
 | `bun run db:types`         | Generate `src/types/database.types.ts` from the local Supabase DB   |
+| `bun run penal:changelog`  | Record a penal code release after editing `src/data/penalcode.json` |
 
 ## Project layout
 
@@ -74,17 +82,19 @@ the Vercel CLI.
 api/                 Vercel serverless functions (Web standard handlers: export POST/GET)
   _lib/              Shared helpers: env, HTTP, service-role client + caller auth, Cloudinary
 shared/ranks.ts      Rank hierarchy and HR permission rules, used by BOTH src/ and api/
+shared/penal-*.ts    Penal code diff and release list (calculator, daily announcement)
 src/
   context/           Auth (session + live profile), system status, MCB suspect cache, trainings
   layouts/           App shell (sidebar) and the MCB area shell
   lib/               Supabase client, API wrapper, Cloudinary helpers, caches, utilities
     training/        Training catalogue, tour scripts, progress
     sandbox/         Practice mode: in-memory PostgREST engine and the demo world
+    practice/        Spaced-repetition decks and the scenario graph checks
   pages/<feature>/   One folder per domain (mcb, hr, logistics, exams, academy, ...)
   components/ui/     shadcn/Radix primitives
 e2e/                 Playwright tests and the network-level Supabase mock
 supabase/            Supabase CLI project (config, migrations, local seed)
-tooling/             Build tooling (dev-server middleware for api/)
+tooling/             Build tooling (dev-server middleware for api/, penal code change log)
 ```
 
 ## Architecture notes
@@ -116,7 +126,28 @@ tooling/             Build tooling (dev-server middleware for api/)
   member list for the monthly duty time (several screenshots at once, doubtful values marked). The report's picture is
   never uploaded; the member is always told to check the result.
 - **New trainees** finish an onboarding page first (link the admission exam with its code,
-  first-day rules, a small practice corner) and then get the basic training.
+  first-day rules, a small practice corner) and then get the basic training. During their first
+  week a mentor follows them with a checklist and internal notes and says when they are ready;
+  the promotion itself stays a manual HR decision.
+- **Promotions**: the leadership sets criteria per rank (time in rank, recorded duty time,
+  reports, active warnings, passed exams); the HR page shows who meets them, supervisors nominate, command decides by
+  promoting. The activity watch only looks at recorded duty time (being on duty does not need
+  the website, and not every member writes reports), excuses approved leave and never contacts
+  anyone by itself.
+- **Practice and recognition**: spaced-repetition decks (radio codes, penal code) run in the
+  browser and save once per session; branching scenarios are scored on the server.
+  Certificates (passed exams, qualifications, ranks, scenarios) get a code that anyone can check
+  on `/certificates`. The leaderboard lists only members who opted in; everyone gets a monthly
+  recap.
+- **The members' voice**: a versioned policy library with "read and understood"
+  acknowledgements, polls (optionally anonymous: the ballot is stored without the voter), a
+  suggestion board, and anonymous feedback to the leadership (the sender is stored as a salted
+  hash only, times to the hour, three per week, answerable, abusers can be blocked without being
+  identified).
+- **Penal code change log**: after editing `src/data/penalcode.json`, `bun run penal:changelog`
+  records what changed; the calculator highlights it and the daily job notifies every member once.
+- **"Ki mit tehet?"** (`/permissions`) evaluates the same permission helpers the pages use on
+  sample members, so the table follows the rules.
 - **Images** are resized and converted to WebP in the browser before upload
   (`src/lib/image-compression.ts`) and delivered through Cloudinary transformations
   (`f_auto,q_auto`, bounded sizes). Files that are no longer referenced are deleted through
@@ -246,6 +277,27 @@ it. Before applying a migration, replay the deployed client's queries against it
   `set_event_attendance()` (`event_attendance`); members see whether they were there, staff a
   member's record with `get_member_attendance()`. `get_absences()` lists approved leave (dates
   only) for the calendar and the planning dialog.
+- MCB tasks and items: `case_tasks` (assignee, due date; the daily job sends an overdue digest to
+  the assignee and the case owner) and the optional `case_items` register with its chain of
+  custody (`case_item_events`), both written by the case's editors through RPCs. Approved
+  warrants lapse after the days in `mcb_settings` (`expires_at`, reminder before, renewal
+  through `request_warrant_renewal()` / `renew_warrant()`). `informants` and their contacts are
+  readable by the MCB leadership and each informant's handler only. `get_case_detail()` also
+  suggests related cases (same person, plate or address).
+- HR progression: `promotion_criteria`, `promotion_nominations` (closed by the promotion
+  itself), `trainee_mentors` and `trainee_notes`, `activity_reviews`; staff read them with
+  `get_promotion_board()`, `get_trainees()`, `get_activity_watch()`, `get_workload()` and
+  `get_recruitment_funnel()`. `get_service_record()` builds the printable service record (the
+  member and staff; no internal notes).
+- Community: `policies` / `policy_versions` / `policy_acknowledgements`, `polls` (who voted in
+  `poll_voters`, the ballots in `poll_votes`), `suggestions`, `feedback_reports` /
+  `feedback_messages` (reporter hash only; the salt lives in the `private` schema). All writes go
+  through RPCs that check the rules.
+- Practice and recognition: `practice_progress` / `practice_days` (saved per session),
+  `practice_scenarios` (graph checked on save: no cycles, no dead ends) / `scenario_results`
+  (scored by `submit_scenario_run()`), `certificates` (issued by triggers, public
+  `verify_certificate()`), `member_settings` (leaderboard opt-in), `get_leaderboard()`,
+  `get_monthly_recap()`.
 - Trainings: `training_progress` holds one row per member and training (completed or
   skipped, with the training's version); members read, insert and update only their own rows.
 - Dates: the database stays in UTC; the UI formats in Europe/Budapest (`src/lib/datetime.ts`)
@@ -278,8 +330,8 @@ burn free-tier quota.
 
 - Supabase: no polling; Realtime only for signed-in users; list queries select only needed
   columns; member and ribbon lists are cached in memory; pages with several data sources load
-  through one RPC (dashboard, exams, payroll, academy); rich text never stores embedded
-  images; the daily cron prunes old proofs, closed vehicle requests and old activity logs
+  through one RPC (dashboard, exams, payroll, academy, practice, HR boards); practice sessions
+  are saved once at the end, not per answer; rich text never stores embedded images; the daily cron prunes old proofs, closed vehicle requests and old activity logs
   (and keeps the free project from pausing).
 - Cloudinary: client-side compression, transformation-based delivery, server-side cleanup of
   replaced and deleted assets. Recommended upload preset settings are in `.env.example`.
