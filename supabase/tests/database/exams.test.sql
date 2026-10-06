@@ -194,14 +194,14 @@ select is((select count(*) from public.exam_questions where id = '21000000-0000-
 select is(json_array_length(public.get_exam_sheet(pg_temp.attempt('deputy')) -> 'questions'), 1,
   'the graded sheet still shows the question it was given');
 
--- --- The deployed frontend keeps working until the post-deploy lockdown ------------
+-- --- Old direct writes (refused since the post-deploy lockdown) ------------
 select pg_temp.act_as((select operator_id from ids));
-select lives_ok($$insert into public.exam_submissions (exam_id, user_id, applicant_name, status, max_score)
+select throws_ok($$insert into public.exam_submissions (exam_id, user_id, applicant_name, status, max_score)
   values ('20000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000007', 'Operátor Olga', 'pending', 1)$$,
-  'the old exam page can still hand in a sheet directly');
+  '42501', null, 'sheets are handed in through the attempt RPCs only');
 select pg_temp.act_as((select admin_id from ids));
-insert into public.exam_options (question_id, option_text) values ('21000000-0000-4000-8000-000000000004', 'Oszlop');
-select is((select order_index from public.exam_options where option_text = 'Oszlop'), 2, 'options added by the old editor go to the end');
+select throws_ok($$insert into public.exam_options (question_id, option_text, order_index) values ('21000000-0000-4000-8000-000000000004', 'Oszlop', 2)$$,
+  '42501', null, 'questions and options are written by save_exam() only');
 
 select * from finish();
 rollback;

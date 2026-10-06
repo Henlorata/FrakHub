@@ -1,7 +1,7 @@
 -- Fleet categories managed on the site, and the rank rule for bureau commanders.
 -- Run with: bunx supabase test db
 begin;
-select plan(17);
+select plan(15);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,        -- Commander, bureau manager
@@ -48,21 +48,8 @@ select is((select count(*) from public.fleet_vehicles where plate like 'TST-%'),
 select is((select count(*) from public.fleet_categories where id in ('test-a', 'test-b')), 0::bigint, 'the categories are gone');
 
 -- Bureau commanders ------------------------------------------------------------------------
-select pg_temp.act_db();
-update public.profiles set is_bureau_commander = true where id = (select investigator_id from ids);
-
-select pg_temp.act_as((select captain_id from ids));
-select lives_ok($$select public.hr_update_user_profile_v2(p.id, p.full_name, p.badge_number, 'Sergeant I.', p.division, p.division_rank, p.qualifications)
-                  from public.profiles p where p.id = (select investigator_id from ids)$$,
-  'command staff change the rank of a bureau commander');
-select throws_ok($$select public.hr_update_user_profile_v2(p.id, p.full_name, p.badge_number, p.faction_rank, 'TSB', null, p.qualifications)
-                   from public.profiles p where p.id = (select investigator_id from ids)$$,
-  '42501', null, 'the division of a bureau commander stays with the bureau manager');
-
-select pg_temp.act_as((select supervisor_id from ids));
-select throws_ok($$select public.hr_update_user_profile_v2(p.id, p.full_name, '9999', p.faction_rank, p.division, p.division_rank, p.qualifications)
-                   from public.profiles p where p.id = (select admin_id from ids)$$,
-  '42501', null, 'the bureau manager is changed by bureau managers only');
+-- Their rank rules live in /api/admin/update-role (shared/ranks.ts); the legacy RPC that also had them is gone.
+select hasnt_function('public', 'hr_update_user_profile_v2', 'the legacy HR RPC is gone (HR changes go through the API)');
 
 -- Duty time notifications ----------------------------------------------------------------
 select pg_temp.act_as((select supervisor_id from ids));

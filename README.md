@@ -203,7 +203,7 @@ it. Before applying a migration, replay the deployed client's queries against it
   `avatar_url` directly (names through `change_user_name()`). Ranks, roles and divisions are
   changed through `/api/admin/update-role`, which calls `hr_apply_member_update()`, a
   `service_role`-only function that also records the member history. (The legacy
-  `hr_update_user_profile_v2()` RPC stays until the post-deploy step removes it.)
+  `hr_update_user_profile_v2()` RPC was removed by the post-deploy lockdown.)
 - Notifications are created by database triggers (cases, warrants, requests, exams, HR,
   ribbons, announcements), with categories, actor and de-duplication; clients cannot insert
   them. Users can mute categories (`notification_preferences`).
@@ -215,7 +215,7 @@ it. Before applying a migration, replay the deployed client's queries against it
   editor autosaves and keeps a local draft. Status, hand-over and warrant decisions go through
   `set_case_status()`, `transfer_case()` and `decide_warrant()` (no approval of one's own
   request); `case_events` keeps the history of every case. The direct table updates of the
-  old frontend are removed by the post-deploy step. New cases start from `case_templates`
+  old frontend were removed by the post-deploy lockdown (the table API keeps only the list columns of `cases`). New cases start from `case_templates`
   (starting documents and the editor's "/" snippets, no pictures), which everyone in the case
   area reads and the MCB leadership edits on `/mcb/templates` (`reorder_case_templates()` for
   the order).

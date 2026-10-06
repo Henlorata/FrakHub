@@ -71,11 +71,11 @@ insert into public.exam_questions (id, exam_id, question_text, question_type, po
   ('21000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', 'Miért szeretnél csatlakozni?', 'text', 3, 2, true, 2),
   ('21000000-0000-4000-8000-000000000004', '20000000-0000-4000-8000-000000000002', 'Melyik a helyes formáció?', 'single_choice', 1, 0, true, 1);
 
-insert into public.exam_options (id, question_id, option_text, is_correct) values
-  ('22000000-0000-4000-8000-000000000001', '21000000-0000-4000-8000-000000000002', 'Megkülönböztető jelzés használatával', true),
-  ('22000000-0000-4000-8000-000000000002', '21000000-0000-4000-8000-000000000002', 'Járőrözés', false),
-  ('22000000-0000-4000-8000-000000000003', '21000000-0000-4000-8000-000000000004', 'Ék', true),
-  ('22000000-0000-4000-8000-000000000004', '21000000-0000-4000-8000-000000000004', 'Kör', false);
+insert into public.exam_options (id, question_id, option_text, is_correct, order_index) values
+  ('22000000-0000-4000-8000-000000000001', '21000000-0000-4000-8000-000000000002', 'Megkülönböztető jelzés használatával', true, 0),
+  ('22000000-0000-4000-8000-000000000002', '21000000-0000-4000-8000-000000000002', 'Járőrözés', false, 1),
+  ('22000000-0000-4000-8000-000000000003', '21000000-0000-4000-8000-000000000004', 'Ék', true, 0),
+  ('22000000-0000-4000-8000-000000000004', '21000000-0000-4000-8000-000000000004', 'Kör', false, 1);
 
 -- Page titles and a grading guide for the recruitment exam.
 insert into public.exam_pages (exam_id, page_number, title, description) values
@@ -212,6 +212,9 @@ insert into public.academy_materials (title, day_number, page_order, category, t
    '[{"type":"paragraph","content":"Az előállítás menete és a fórum-jelentés megírása."}]');
 update public.academy_courses set is_open = true, required_rank = 'Deputy Sheriff II.' where id = 'qual_AB';
 update public.academy_courses set is_open = true where id = 'qual_SAHP';
+-- The AB intro page keeps an image embedded the old way (before the upload rule): the editors
+-- upload it on the next save. New content with embedded images is refused by the trigger.
+alter table public.academy_division_materials disable trigger reject_inline_images;
 insert into public.academy_division_materials (id, course_id, title, page_order, theme, content) values
   ('31000000-0000-4000-8000-000000000001', 'qual_AB', 'AB bevezető', 1, 'paper',
    '[{"type":"heading","props":{"level":2},"content":"Aero Bureau"},{"type":"paragraph","content":"A légi egység feladatai és a helikopter alapjai."},{"type":"image","props":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9QzwAEjDAGNzIwAAAZ8QH/0VwBYwAAAABJRU5ErkJggg==","caption":"Beillesztett kép"}}]'),
@@ -221,6 +224,7 @@ insert into public.academy_division_materials (id, course_id, title, page_order,
    '[{"type":"paragraph","content":"Kommunikáció a földi egységekkel."}]'),
   ('31000000-0000-4000-8000-000000000004', 'mcb', 'MCB kézikönyv', 1, 'default',
    '[{"type":"paragraph","content":"Zárt tananyag: csak az oktatók látják."}]');
+alter table public.academy_division_materials enable trigger reject_inline_images;
 insert into public.academy_progress (user_id, material_id) values
   ('00000000-0000-4000-8000-000000000003', '31000000-0000-4000-8000-000000000001');
 
