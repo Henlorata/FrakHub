@@ -12,6 +12,7 @@ import {cn, errorMessage, getRankPriority, getStaffCategory, isStaff} from "@/li
 import {CATEGORY_META, downloadCsv, formatDate} from "./hr-utils";
 import {useHrData, type HrMember} from "./useHrData";
 import {RosterTable} from "./components/RosterTable";
+import {LeadershipPanel} from "./components/LeadershipPanel";
 import {MemberSheet} from "./components/MemberSheet";
 import {RequestsPanel} from "./components/RequestsPanel";
 import {HistoryFeed} from "./components/HistoryFeed";
@@ -207,9 +208,12 @@ export function HrPage() {
         ) : tab === "stats" ? (
           <StatsPanel members={members}/>
         ) : (
-          <RosterTable members={members} viewer={profile} staff={staff} busyId={busyId}
-                       onRankChange={(member, rank) => void changeRank(member, rank)}
-                       onOpen={(member) => setParam("member", member.id)}/>
+          <div className="space-y-4">
+            <LeadershipPanel members={members} onOpen={(member) => setParam("member", member.id)}/>
+            <RosterTable members={members} viewer={profile} staff={staff} busyId={busyId}
+                         onRankChange={(member, rank) => void changeRank(member, rank)}
+                         onOpen={(member) => setParam("member", member.id)}/>
+          </div>
         )}
       </div>
 

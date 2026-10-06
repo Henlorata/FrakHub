@@ -2,9 +2,10 @@ import {useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
 import {toast} from "sonner";
 import {
   AlertTriangle, Award, CalendarOff, Check, ClipboardList, Crown, History, KeyRound, Loader2, Medal, NotebookPen, Plus, Save,
-  ShieldCheck, Star, ThumbsUp, Trash2, UserMinus, X,
+  ShieldCheck, ThumbsUp, Trash2, UserMinus, X,
 } from "lucide-react";
 import {Sheet, SheetContent, SheetDescription, SheetTitle} from "@/components/ui/sheet";
+import {LeadershipBadges} from "@/components/hr/LeadershipBadges";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {Button} from "@/components/ui/button";
@@ -78,10 +79,9 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
           <div className="min-w-0 flex-1">
             <SheetTitle className="flex items-center gap-2 text-xl">
               <span className="truncate">{member.full_name}</span>
-              {member.is_bureau_manager && <Crown className="size-4 text-violet-400"/>}
-              {member.is_bureau_commander && <Star className="size-4 text-sky-400"/>}
             </SheetTitle>
             <SheetDescription className="mt-0.5 font-mono">#{member.badge_number}</SheetDescription>
+            <LeadershipBadges member={member} size="md" className="mt-2"/>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className={cn("inline-flex h-6 items-center rounded-md px-2 text-xs font-semibold ring-1", division.pill)}>
                 {division.label}{member.division_rank ? ` · ${member.division_rank}` : ""}

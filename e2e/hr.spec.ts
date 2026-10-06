@@ -81,4 +81,32 @@ test.describe("HR", () => {
     await panel.getByRole("tab", {name: /Feljegyzések/}).click();
     await expect(panel.getByRole("button", {name: /Rögzítés/})).toBeVisible();
   });
+
+  test("leaders are marked on the roster and listed for everyone", async ({page}) => {
+    const commander = testProfile({
+      id: "44444444-4444-4444-8444-444444444444", full_name: "Parancsnok Péter", badge_number: "2002", faction_rank: "Sergeant I.",
+      system_role: "supervisor", division: "SEB", is_bureau_commander: true, commanded_divisions: ["MU"],
+    });
+    const manager = testProfile({
+      id: "55555555-5555-4555-8555-555555555555", full_name: "Vezető Vera", badge_number: "2003", faction_rank: "Commander",
+      system_role: "admin", is_bureau_manager: true,
+    });
+    // A member, not staff: the leaders are for everyone to see.
+    await mockSupabase(page, {tables: {profiles: [testProfile({faction_rank: "Deputy Sheriff II.", system_role: "user"}), commander, manager, deputy]}});
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/hr");
+
+    const row = page.locator("tr", {hasText: "Parancsnok Péter"});
+    await expect(row.getByText("SEB parancsnok")).toBeVisible();
+    await expect(row.getByText("MU vezető")).toBeVisible();
+    await expect(page.locator("tr", {hasText: "Vezető Vera"}).getByText("Bureau Manager")).toBeVisible();
+
+    const leaders = page.locator("[data-tour=hr-leaders]");
+    await expect(leaders.locator("li", {hasText: "Divízió parancsnoka"}).filter({hasText: "SEB"})).toContainText("Parancsnok Péter");
+    await expect(leaders.locator("li", {hasText: "Divízió parancsnoka"}).filter({hasText: "MCB"})).toContainText("Nincs kinevezve");
+    await expect(leaders.locator("li", {hasText: "Irodavezető"})).toContainText("Vezető Vera");
+    await leaders.getByRole("button", {name: /Parancsnok Péter/}).first().click();
+    await expect(page).toHaveURL(/member=44444444/);
+  });
 });

@@ -1,6 +1,6 @@
 import {Fragment, useMemo, useState, type KeyboardEvent} from "react";
 import {toast} from "sonner";
-import {Clock, Info, Loader2, Save, Search, Undo2, Users} from "lucide-react";
+import {Clock, Eraser, Info, Loader2, Save, ScanLine, Search, Undo2, Users} from "lucide-react";
 import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
@@ -10,6 +10,7 @@ import {autoFormatDuty, formatDuty, monthLabel, parseDuty, recentMonths} from "@
 import {cn, errorMessage, getStaffCategory, type StaffCategory} from "@/lib/utils";
 import {CATEGORY_META} from "../hr-utils";
 import type {HrMember} from "../useHrData";
+import {DutyScanDialog, type ScannedDuty} from "./DutyScanDialog";
 
 const CATEGORY_ORDER: StaffCategory[] = ["executive", "command", "supervisory", "field"];
 /** Less than this in a closed month is highlighted. */
@@ -42,6 +43,9 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  // Cells filled from screenshots: "doubtful" readings to check, "missing" ones to type by hand.
+  const [flags, setFlags] = useState<Record<string, ScannedDuty["status"]>>({});
 
   const memberById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
 
@@ -89,13 +93,41 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
     target?.select();
   };
 
+  const missingFlags = Object.values(flags).filter((flag) => flag === "missing").length;
+  const doubtfulFlags = Object.values(flags).filter((flag) => flag === "doubtful").length;
+
+  const editCell = (key: string, value: string) => {
+    setDrafts((prev) => ({...prev, [key]: autoFormatDuty(value)}));
+    // A value typed by hand is checked.
+    setFlags((prev) => {
+      if (!(key in prev)) return prev;
+      const next = {...prev};
+      delete next[key];
+      return next;
+    });
+  };
+
+  const applyScan = (month: string, values: ScannedDuty[]) => {
+    const nextDrafts: Record<string, string> = {};
+    const nextFlags: Record<string, ScannedDuty["status"]> = {};
+    for (const value of values) {
+      const key = cellKey(value.userId, month);
+      if (value.minutes !== null) nextDrafts[key] = formatDuty(value.minutes, true);
+      if (value.status !== "ok") nextFlags[key] = value.status;
+    }
+    setDrafts((prev) => ({...prev, ...nextDrafts}));
+    setFlags((prev) => ({...prev, ...nextFlags}));
+  };
+
   const save = async () => {
     if (invalid.size > 0) return toast.error("Javítsd a pirossal jelölt cellákat (pl. 95:48).");
+    if (missingFlags > 0) return toast.error(`${missingFlags} cellát kézzel kell kitöltened (pirossal jelölve), vagy töröld a jelölést.`);
     if (changes.length === 0) return;
     setSaving(true);
     try {
       await onSave(changes);
       setDrafts({});
+      setFlags({});
       toast.success(`${changes.length} duty idő mentve.`);
     } catch (error) {
       toast.error(errorMessage(error, "A mentés nem sikerült."));
@@ -111,6 +143,11 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
           <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
           <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Név vagy jelvényszám…" className="pl-9"/>
         </div>
+        {editable && (
+          <Button variant="outline" size="sm" onClick={() => setScanning(true)} data-tour="duty-scan" className="lg:order-last">
+            <ScanLine/> Képekből
+          </Button>
+        )}
         <p className="flex items-center gap-2 text-xs text-slate-400 lg:ml-auto">
           <Info className="size-3.5 shrink-0 text-primary"/>
           {editable
@@ -168,6 +205,7 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
                           const draft = drafts[key];
                           const changed = draft !== undefined && changes.some((change) => cellKey(change.user_id, change.month) === key);
                           const low = month !== currentMonth && stored !== null && stored < LOW_DUTY_MINUTES;
+                          const flag = flags[key];
                           return (
                             <td key={month} className={cn("border-b border-white/[0.04] px-1.5 py-1.5 text-center group-hover:bg-white/[0.02]",
                               month === currentMonth && "bg-primary/[0.03]")}>
@@ -175,8 +213,9 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
                                 <input
                                   data-duty-cell={`${row}:${column}`}
                                   value={draft ?? (stored === null ? "" : formatDuty(stored, true))}
-                                  placeholder="–"
-                                  onChange={(event) => setDrafts((prev) => ({...prev, [key]: autoFormatDuty(event.target.value)}))}
+                                  placeholder={flag === "missing" ? "Írd be!" : "–"}
+                                  title={flag === "missing" ? "Képről nem olvasható: írd be kézzel" : flag === "doubtful" ? "Képről beolvasva, bizonytalan: ellenőrizd" : undefined}
+                                  onChange={(event) => editCell(key, event.target.value)}
                                   onKeyDown={(event) => moveFocus(event, row, column)}
                                   onFocus={(event) => event.target.select()}
                                   aria-label={`${member.full_name} – ${monthLabel(month)}`}
@@ -184,6 +223,8 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
                                     "h-8 w-[78px] rounded-md bg-white/[0.03] text-center font-mono text-[13px] tabular-nums text-slate-100 ring-1 ring-white/10 outline-none transition-colors placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-primary/60",
                                     low && !changed && "text-amber-300",
                                     changed && "bg-primary/10 ring-primary/50",
+                                    flag === "doubtful" && "bg-amber-500/10 ring-2 ring-amber-400/70",
+                                    flag === "missing" && "bg-red-500/15 ring-2 ring-red-500/80 placeholder:text-red-300",
                                     invalid.has(key) && "bg-red-500/10 text-red-200 ring-red-500/60",
                                   )}
                                 />
@@ -219,19 +260,31 @@ export function DutyPanel({members, editable, onSave}: DutyPanelProps) {
         </div>
       )}
 
-      {editable && (changes.length > 0 || invalid.size > 0) && (
+      {editable && (changes.length > 0 || invalid.size > 0 || missingFlags + doubtfulFlags > 0) && (
         <div className="animate-rise flex flex-wrap items-center gap-3 border-t bg-primary/[0.06] px-4 py-3">
           <p className="text-sm text-slate-200">
             <span className="font-semibold text-white">{changes.length}</span> módosítás
             {invalid.size > 0 && <span className="ml-2 text-red-300">· {invalid.size} hibás cella</span>}
+            {doubtfulFlags > 0 && <span className="ml-2 text-amber-300">· {doubtfulFlags} ellenőrizendő (sárga)</span>}
+            {missingFlags > 0 && <span className="ml-2 font-semibold text-red-300">· {missingFlags} kézzel kitöltendő (piros)</span>}
           </p>
           <div className="ml-auto flex gap-2">
-            <Button variant="ghost" onClick={() => setDrafts({})} disabled={saving}><Undo2/> Elvetés</Button>
+            {missingFlags + doubtfulFlags > 0 && (
+              <Button variant="ghost" onClick={() => setFlags({})} disabled={saving} title="A jelölt cellák értéke marad"><Eraser/> Jelölések törlése</Button>
+            )}
+            <Button variant="ghost" onClick={() => {
+              setDrafts({});
+              setFlags({});
+            }} disabled={saving}><Undo2/> Elvetés</Button>
             <Button onClick={() => void save()} disabled={saving || changes.length === 0}>
               {saving ? <Loader2 className="animate-spin"/> : <Save/>} Mentés
             </Button>
           </div>
         </div>
+      )}
+      {scanning && (
+        <DutyScanDialog open onOpenChange={setScanning} members={members} months={months} defaultMonth={currentMonth}
+                        storedMinutes={storedMinutes} onApply={applyScan}/>
       )}
     </div>
   );

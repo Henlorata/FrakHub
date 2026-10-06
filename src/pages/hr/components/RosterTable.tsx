@@ -1,5 +1,5 @@
 import {useMemo, useState, type ReactNode} from "react";
-import {ArrowDownUp, Award, CalendarOff, Car, Crown, Search, Star, Users, X} from "lucide-react";
+import {ArrowDownUp, Award, CalendarOff, Car, Search, Users, X} from "lucide-react";
 import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
@@ -10,6 +10,7 @@ import {cn, getRankPriority, getStaffCategory, type StaffCategory} from "@/lib/u
 import {QUALIFICATIONS, type Profile} from "@/types/supabase";
 import {CATEGORY_META, daysSince, DIVISION_META, formatDate, formatSpan} from "../hr-utils";
 import {StrikeDots} from "@/components/hr/StrikeDots";
+import {LeadershipBadges} from "@/components/hr/LeadershipBadges";
 import {ACTIVITY_META, formatDuty, recentMonths, registrationStatus} from "@/lib/registry";
 import {RankStepper} from "./RankControls";
 import type {HrMember} from "../useHrData";
@@ -238,8 +239,6 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="truncate font-medium text-white group-hover:text-primary">{member.full_name}</span>
-              {member.is_bureau_manager && <Crown className="size-3.5 shrink-0 text-violet-400" aria-label="Bureau Manager"/>}
-              {member.is_bureau_commander && <Star className="size-3.5 shrink-0 text-sky-400" aria-label="Bureau Commander"/>}
               {member.awards.length > 0 && (
                 <span title={member.awards.map((award) => award.name).join(", ")}
                       className="inline-flex items-center gap-0.5 text-[11px] text-amber-400">
@@ -247,7 +246,10 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
                 </span>
               )}
             </div>
-            <span className="font-mono text-xs text-slate-500" title={`Szolgálatban: ${formatSpan(serviceDays)}`}>#{member.badge_number}</span>
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span className="font-mono text-xs text-slate-500" title={`Szolgálatban: ${formatSpan(serviceDays)}`}>#{member.badge_number}</span>
+              <LeadershipBadges member={member}/>
+            </span>
           </div>
         </div>
       </td>

@@ -82,6 +82,24 @@ const findVehicle = (world: World, id: unknown) => {
 };
 
 export const fleetRpc: Record<string, RpcHandler> = {
+  fleet_delete_category: (args, world) => {
+    const categories = world.tables.fleet_categories ?? [];
+    const id = String(args._category_id);
+    const target = args._move_to ? String(args._move_to) : null;
+    if (!categories.some((row) => row.id === id)) throw new SandboxError("A kategória nem található.", "P0002");
+    if (target === id) throw new SandboxError("Másik kategóriát válassz.");
+    if (target && !categories.some((row) => row.id === target)) throw new SandboxError("A cél kategória nem található.", "P0002");
+    const vehicles = world.tables.fleet_vehicles ?? [];
+    const affected = vehicles.filter((row) => row.category_id === id);
+    if (target) affected.forEach((row) => Object.assign(row, {category_id: target, updated_at: world.stamp()}));
+    else {
+      const gone = new Set(affected.map((row) => row.id));
+      world.tables.fleet_vehicles = vehicles.filter((row) => !gone.has(row.id));
+      world.tables.fleet_assignments = (world.tables.fleet_assignments ?? []).filter((row) => !gone.has(row.vehicle_id));
+    }
+    world.tables.fleet_categories = categories.filter((row) => row.id !== id);
+    return {moved: target ? affected.length : 0, deleted: target ? 0 : affected.length};
+  },
   fleet_registration_apply: (args, world) => {
     const vehicle = findVehicle(world, args._vehicle_id);
     vehicle.registration_expires_on = args._expires_on;

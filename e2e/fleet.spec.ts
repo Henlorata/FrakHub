@@ -116,6 +116,34 @@ test.describe("fleet", () => {
     ]);
   });
 
+  test("categories are added and deleted; a deleted category's vehicles move or go with it", async ({page}) => {
+    const mock = await mockSupabase(page, {
+      tables: {profiles: [viewer, deputy], fleet_vehicles: fleet, fleet_categories: categories},
+      rpc: {fleet_delete_category: (args: {_move_to: string | null}) => ({moved: args._move_to ? 2 : 0, deleted: args._move_to ? 0 : 2})},
+    });
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/logistics?tab=fleet");
+    await page.getByRole("button", {name: "Kategóriák"}).click();
+    const dialog = page.getByRole("dialog");
+
+    await dialog.getByRole("button", {name: "Új kategória"}).click();
+    await dialog.getByLabel("Név").fill("Különleges Járművek");
+    await dialog.getByRole("button", {name: "Mentés"}).click();
+    await expect(page.getByText("„Különleges Járművek” kategória létrehozva.")).toBeVisible();
+    const insert = mock.requests.find((request) => request.kind === "rest" && request.name === "fleet_categories" && request.method === "POST");
+    expect(insert?.body).toMatchObject({id: "kulonleges-jarmuvek", name: "Különleges Járművek", unit: null, tone: "orange"});
+
+    // Two vehicles in "Marked Ford Explorer": they move to the chosen category.
+    await dialog.getByRole("button", {name: "Marked Ford Explorer törlése"}).click();
+    await expect(dialog.getByText("2 jármű", {exact: false}).first()).toBeVisible();
+    await dialog.getByRole("button", {name: "Kategória törlése"}).click();
+    await page.getByRole("alertdialog").getByRole("button", {name: "Törlés"}).click();
+    await expect(page.getByText("Kategória törölve.")).toBeVisible();
+    expect(mock.requests.find((request) => request.name === "fleet_delete_category")?.body)
+      .toEqual({_category_id: "explorer", _move_to: "seb"});
+  });
+
   test("assigning shows who holds each vehicle and which ones cannot be given", async ({page}) => {
     const mock = await mockSupabase(page, {tables: {profiles: [viewer, deputy, trainee], fleet_vehicles: fleet, fleet_categories: categories}});
     const bodies: unknown[] = [];

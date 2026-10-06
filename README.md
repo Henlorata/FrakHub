@@ -110,7 +110,8 @@ tooling/             Build tooling (dev-server middleware for api/)
   audience is notified, those who come get a reminder on the day. The dashboard shows the next
   three and the member's monthly requirement (reports and recorded duty time).
 - **Screenshots are read in the browser** (Tesseract.js): the vehicle licence for registration
-  renewals and the in-game tablet's person page for the report form. The report's picture is
+  renewals, the in-game tablet's person page for the report form, and the game control panel's
+  member list for the monthly duty time (several screenshots at once, doubtful values marked). The report's picture is
   never uploaded; the member is always told to check the result.
 - **New trainees** finish an onboarding page first (link the admission exam with its code,
   first-day rules, a small practice corner) and then get the basic training.
@@ -196,7 +197,7 @@ it. Before applying a migration, replay the deployed client's queries against it
   The HR page and the profile read all of it with one `get_hr_registry()` call
   (`SECURITY INVOKER`, so RLS decides what each caller gets).
 - Fleet (the old "Car Database" sheets): the stock in `fleet_vehicles` grouped by
-  `fleet_categories` (a bureau/unit category is reserved for its members, a vehicle can
+  `fleet_categories` (managed on the site; deleting one moves its vehicles or deletes them with it) (a bureau/unit category is reserved for its members, a vehicle can
   override it with `allowed_units`/`min_rank`), key holders in `fleet_assignments` (capacity
   per vehicle, null = unlimited; shared pools via `shared_label`). Supervisory staff manage
   every vehicle, a bureau's leaders the vehicles of their bureau. Approving a vehicle request

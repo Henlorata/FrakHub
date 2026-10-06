@@ -2,7 +2,7 @@ import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "rea
 import {Link, useSearchParams} from "react-router";
 import {toast} from "sonner";
 import {
-  AlertTriangle, Car, ChevronDown, FileSearch, Gauge, KeyRound, MapPin, Plus, Search, ShieldAlert, Ship,
+  AlertTriangle, Car, ChevronDown, FileSearch, FolderTree, Gauge, KeyRound, MapPin, Plus, Search, ShieldAlert, Ship,
 } from "lucide-react";
 import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
@@ -27,6 +27,7 @@ import {RegistrationReviews} from "./RegistrationReviews";
 import {WarningsList} from "./WarningsList";
 import {TuningPanel} from "./TuningPanel";
 import {VehicleEditorDialog} from "./VehicleEditorDialog";
+import {CategoriesDialog} from "./CategoriesDialog";
 
 type StatusFilter = "all" | "attention" | RegistrationState;
 type View = "vehicles" | "reviews" | "warnings" | "tuning";
@@ -68,6 +69,7 @@ export function FleetPanel() {
   const [editing, setEditing] = useState<"new" | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [issuing, setIssuing] = useState(false);
+  const [managingCategories, setManagingCategories] = useState(false);
   const [warnings, setWarnings] = useState<VehicleWarning[] | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
 
@@ -162,6 +164,7 @@ export function FleetPanel() {
         <div className="ml-auto flex flex-wrap gap-2" data-tour="fleet-manage">
           {staff && <Button size="sm" variant="outline" className="text-amber-200" onClick={() => setIssuing(true)}><ShieldAlert/> Hibapont</Button>}
           {canAssign && <Button size="sm" variant="outline" onClick={() => setAssigning(true)}><KeyRound/> Kiosztás</Button>}
+          {staff && <Button size="sm" variant="outline" onClick={() => setManagingCategories(true)} data-tour="fleet-categories"><FolderTree/> Kategóriák</Button>}
           {staff && <Button size="sm" onClick={() => setEditing("new")}><Plus/> Új jármű</Button>}
         </div>
       </div>
@@ -240,6 +243,9 @@ export function FleetPanel() {
       {assigning && (
         <AssignVehiclesDialog open vehicles={vehicles ?? []} categories={categories} people={profiles} viewer={viewer}
                               onOpenChange={setAssigning}/>
+      )}
+      {managingCategories && (
+        <CategoriesDialog open onOpenChange={setManagingCategories} categories={categories} vehicles={vehicles ?? []}/>
       )}
       {issuing && (
         <IssueWarningDialog open vehicles={vehicles ?? []} categories={categories} people={profiles} activePoints={activePoints}

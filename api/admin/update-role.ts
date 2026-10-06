@@ -41,9 +41,11 @@ export const POST = handle("admin/update-role", async (request) => {
   if (caller.id === target.id && !isManager) {
     throw new HttpError(403, "A saját rendfokozatodat és jogosultságaidat nem módosíthatod.");
   }
-  if ((target.is_bureau_manager || target.is_bureau_commander) && !isManager &&
-      Object.keys(body).some((key) => key !== "userId")) {
-    throw new HttpError(403, "A Bureau vezetőségét csak a Bureau Manager módosíthatja.");
+  // The bureau manager is changed by bureau managers only. A bureau commander's rank, name and
+  // badge follow the normal rank rules; their division, the units they lead and the leadership
+  // flags stay with the bureau manager (checked per field below).
+  if (target.is_bureau_manager && !isManager && Object.keys(body).some((key) => key !== "userId")) {
+    throw new HttpError(403, "A Bureau Managert csak Bureau Manager módosíthatja.");
   }
 
   const changes: Record<string, unknown> = {};

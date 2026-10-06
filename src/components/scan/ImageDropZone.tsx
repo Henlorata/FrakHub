@@ -18,16 +18,16 @@ export function pastedImage(event: ClipboardEvent): File | null {
   return pasted ? new File([pasted], pasted.name || "kepernyokep.png", {type: pasted.type}) : null;
 }
 
-/** Click, drop or paste (the paste is handled by the dialog) a screenshot. */
-export function ImageDropZone({title, hint, onFile}: {title: string; hint: ReactNode; onFile: (file: File) => void}) {
+/** Click, drop or paste (the paste is handled by the dialog) a screenshot; with `multiple` several at once. */
+export function ImageDropZone({title, hint, onFile, multiple = false}: {title: string; hint: ReactNode; onFile: (file: File) => void; multiple?: boolean}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
     setDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) onFile(file);
+    const files = [...(event.dataTransfer.files ?? [])];
+    (multiple ? files : files.slice(0, 1)).forEach(onFile);
   };
 
   return (
@@ -51,11 +51,11 @@ export function ImageDropZone({title, hint, onFile}: {title: string; hint: React
           <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 ring-1 ring-white/10"><ClipboardPaste className="size-3"/> Beillesztés</span>
         </span>
       </button>
-      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" multiple={multiple}
              onChange={(event) => {
-               const file = event.target.files?.[0];
+               const files = [...(event.target.files ?? [])];
                event.target.value = "";
-               if (file) onFile(file);
+               (multiple ? files : files.slice(0, 1)).forEach(onFile);
              }}/>
     </>
   );
