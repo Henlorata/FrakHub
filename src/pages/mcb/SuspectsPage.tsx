@@ -1,409 +1,234 @@
-import * as React from "react";
-import {useAuth} from "@/context/AuthContext";
-import {useSuspects} from "@/context/SuspectCacheContext";
+import {useEffect, useMemo, useState, type CSSProperties} from "react";
+import {useSearchParams} from "react-router";
+import {FolderOpen, Search, Siren, UserPlus, Users, X} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
-import {
-  Search, UserPlus, Lock, Skull, Eye,
-  FolderOpen, ChevronRight, Home, Trash2, FileText, User,
-  ArrowLeft, ShieldAlert, Fingerprint, Activity, Siren, Folder
-} from "lucide-react";
-import {toast} from "sonner";
-import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import type {Suspect} from "@/types/supabase";
-import {NewSuspectDialog} from "@/pages/mcb/components/NewSuspectDialog";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {PageHeader} from "@/components/layout/PageHeader";
+import {useAuth} from "@/context/AuthContext";
+import {useSuspects} from "@/context/SuspectCacheContext";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
+import {formatDate} from "@/lib/datetime";
+import {SUSPECT_STATUS, SUSPECT_STATUSES} from "@/lib/mcb";
 import {cn} from "@/lib/utils";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import type {Suspect, SuspectStatus} from "@/types/supabase";
+import {Mugshot, SuspectStatusChip} from "./components/McbBadges";
+import {NewSuspectDialog} from "./components/NewSuspectDialog";
 
-// Navigációs Típusok
-type FolderType = 'root' | 'status' | 'case' | 'creator';
+type SortKey = "name" | "recent" | "cases";
 
-interface FolderView {
-  type: FolderType;
-  id?: string;
-  label: string;
+const fold = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
+interface WantedNotice {
+  suspect_id: string;
+  reason: string;
+  created_at: string;
+  case: {case_number: string} | null;
 }
 
 export function SuspectsPage() {
   const {supabase} = useAuth();
-  const {
-    suspects,
-    caseMap,
-    cases,
-    creators,
-    loading,
-    refreshSuspects,
-    deleteSuspectFromCache,
-    openSuspectId
-  } = useSuspects();
+  const {suspects, caseMap, creators, loading, refreshSuspects, openSuspectId, activeSuspectId} = useSuspects();
+  const [params, setParams] = useSearchParams();
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<SuspectStatus | null>(() => {
+    const value = params.get("status");
+    return value && value in SUSPECT_STATUS ? (value as SuspectStatus) : null;
+  });
+  const [gang, setGang] = useState("");
+  const [sort, setSort] = useState<SortKey>("recent");
+  const [creating, setCreating] = useState(false);
+  const [notices, setNotices] = useState<WantedNotice[]>([]);
 
-  const [search, setSearch] = React.useState("");
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-
-  // Törlés state
-  const [suspectToDelete, setSuspectToDelete] = React.useState<Suspect | null>(null);
-  const [isDeleteLoading, setIsDeleteLoading] = React.useState(false);
-
-  // Navigáció
-  const [path, setPath] = React.useState<FolderView[]>([{type: 'root', label: 'Adatbázis'}]);
-  const currentFolder = path[path.length - 1];
-
-  // Navigációs függvények
-  const handleNavigate = (folder: FolderView) => {
-    setSearch("");
-    setPath(prev => [...prev, folder]);
-  };
-  const handleNavigateUp = (index: number) => setPath(prev => prev.slice(0, index + 1));
-  const goBack = () => {
-    if (path.length > 1) setPath(prev => prev.slice(0, -1));
-  };
-
-  // Törlés logika
-  const handleDelete = async () => {
-    if (!suspectToDelete) return;
-    setIsDeleteLoading(true);
-    try {
-      const {data, error} = await supabase.rpc('delete_suspect_safely', {_suspect_id: suspectToDelete.id});
-      if (error) throw error;
-      if (data.success) {
-        toast.success(data.message);
-        deleteSuspectFromCache(suspectToDelete.id);
-        setSuspectToDelete(null);
-      } else {
-        toast.error(data.message);
-      }
-    } catch (e: any) {
-      toast.error("Hiba: " + e.message);
-    } finally {
-      setIsDeleteLoading(false);
+  // A person's file can be linked: /mcb/suspects?person=<id>.
+  const personParam = params.get("person");
+  useEffect(() => {
+    if (personParam) openSuspectId(personParam);
+  }, [openSuspectId, personParam]);
+  useEffect(() => {
+    if (!activeSuspectId && personParam) {
+      setParams((current) => {
+        const next = new URLSearchParams(current);
+        next.delete("person");
+        return next;
+      }, {replace: true});
     }
-  };
+  }, [activeSuspectId, personParam, setParams]);
 
-  // Tartalom szűrése
-  const getFolderContent = () => {
-    let items = suspects;
-    if (search) return items.filter(s => s.full_name.toLowerCase().includes(search.toLowerCase()) || s.alias?.toLowerCase().includes(search.toLowerCase()));
-
-    switch (currentFolder.type) {
-      case 'root':
-        return null;
-      case 'status':
-        if (currentFolder.id === 'wanted') return items.filter(s => s.status === 'wanted');
-        if (currentFolder.id === 'jailed') return items.filter(s => s.status === 'jailed');
-        if (currentFolder.id === 'deceased') return items.filter(s => s.status === 'deceased');
-        if (currentFolder.id === 'free') return items.filter(s => s.status === 'free' || !s.status);
-        return items;
-      case 'case':
-        return items.filter(s => caseMap[s.id]?.includes(currentFolder.id!));
-      case 'creator':
-        return items.filter(s => s.created_by === currentFolder.id);
-      default:
-        return items;
-    }
-  };
-  const displayedSuspects = getFolderContent();
-
-  // --- KOMPONENSEK ---
-
-  // 1. Mappa Ikon
-  const FolderItem = ({label, icon: Icon, count, onClick, color = "blue"}: any) => {
-    const colors: any = {
-      blue: "text-blue-500 border-blue-500/20 hover:border-blue-400 group-hover:text-blue-400 bg-blue-950/20",
-      red: "text-red-500 border-red-500/20 hover:border-red-400 group-hover:text-red-400 bg-red-950/20",
-      orange: "text-orange-500 border-orange-500/20 hover:border-orange-400 group-hover:text-orange-400 bg-orange-950/20",
-      purple: "text-purple-500 border-purple-500/20 hover:border-purple-400 group-hover:text-purple-400 bg-purple-950/20",
-      green: "text-green-500 border-green-500/20 hover:border-green-400 group-hover:text-green-400 bg-green-950/20",
-      slate: "text-slate-400 border-slate-700 hover:border-slate-500 group-hover:text-slate-300 bg-slate-900/40",
+  // Reasons on the wanted posters: the approved arrest warrants the reader may see.
+  useEffect(() => {
+    let active = true;
+    supabase.from("case_warrants").select("suspect_id, reason, created_at, case:case_id(case_number)")
+      .eq("type", "arrest").eq("status", "approved").not("suspect_id", "is", null).order("created_at", {ascending: false}).limit(50)
+      .then(({data}) => {
+        if (active) setNotices((data ?? []) as unknown as WantedNotice[]);
+      });
+    return () => {
+      active = false;
     };
+  }, [supabase]);
 
-    return (
-      <div onClick={onClick}
-           className={cn("group flex flex-col p-4 rounded-xl border transition-all cursor-pointer hover:shadow-lg hover:scale-[1.02] relative overflow-hidden", colors[color])}>
-        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Icon
-          className="w-16 h-16"/></div>
-        <div className="flex items-center gap-3 mb-2 relative z-10">
-          <div className={cn("p-2 rounded-lg bg-black/40 shadow-inner")}><Icon className="w-6 h-6"/></div>
-          <div className="font-black uppercase text-sm tracking-widest text-slate-200">{label}</div>
-        </div>
-        <div className="mt-auto relative z-10">
-          <div className="text-[10px] uppercase font-mono font-bold opacity-60 flex items-center gap-1">
-            <FolderOpen className="w-3 h-3"/> {count ?? 0} ADATLAP
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const counts = useMemo(() => {
+    const result = Object.fromEntries(SUSPECT_STATUSES.map((value) => [value, 0])) as Record<SuspectStatus, number>;
+    suspects.forEach((suspect) => {
+      result[(suspect.status ?? "free") as SuspectStatus] = (result[(suspect.status ?? "free") as SuspectStatus] ?? 0) + 1;
+    });
+    return result;
+  }, [suspects]);
 
-  // 2. High-Tech Suspect Card
-  const SuspectCard = ({suspect}: { suspect: Suspect }) => {
-    const statusColors = {
-      wanted: {
-        border: 'border-red-500',
-        text: 'text-red-500',
-        bg: 'bg-red-950/30',
-        shadow: 'shadow-red-900/20',
-        label: 'KÖRÖZÖTT',
-        icon: Siren
-      },
-      jailed: {
-        border: 'border-orange-500',
-        text: 'text-orange-500',
-        bg: 'bg-orange-950/30',
-        shadow: 'shadow-orange-900/20',
-        label: 'BÖRTÖNBEN',
-        icon: Lock
-      },
-      deceased: {
-        border: 'border-slate-600',
-        text: 'text-slate-400',
-        bg: 'bg-slate-900/50',
-        shadow: 'shadow-black/50',
-        label: 'ELHUNYT',
-        icon: Skull
-      },
-      free: {
-        border: 'border-green-500',
-        text: 'text-green-500',
-        bg: 'bg-green-950/30',
-        shadow: 'shadow-green-900/20',
-        label: 'SZABAD',
-        icon: Eye
-      },
-    };
-    const style = statusColors[suspect.status as keyof typeof statusColors] || statusColors.free;
-    const StatusIcon = style.icon;
+  const gangs = useMemo(() => [...new Set(suspects.map((suspect) => suspect.gang_affiliation?.trim()).filter(Boolean) as string[])]
+    .sort((a, b) => a.localeCompare(b, "hu")), [suspects]);
 
-    return (
-      <div className="group relative h-full">
-        {/* Kártya Keret */}
-        <div
-          onClick={() => openSuspectId(suspect.id)}
-          className={cn(
-            "relative h-full bg-[#080c14] border hover:border-opacity-100 border-opacity-40 rounded-xl overflow-hidden transition-all duration-300 cursor-pointer flex flex-col",
-            style.border, style.shadow, "hover:shadow-2xl hover:-translate-y-1"
-          )}
-        >
-          {/* Fejléc - Holografikus Csík */}
-          <div className={cn("h-1 w-full relative overflow-hidden", style.bg)}>
-            <div
-              className={cn("absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_2s_infinite]")}></div>
-          </div>
+  const visible = useMemo(() => {
+    const term = fold(query.trim());
+    const rows = suspects.filter((suspect) => (!status || suspect.status === status)
+      && (!gang || suspect.gang_affiliation?.trim() === gang)
+      && (!term || [suspect.full_name, suspect.alias ?? "", suspect.gang_affiliation ?? ""].some((value) => fold(value).includes(term))));
+    return rows.sort((a, b) => sort === "name" ? a.full_name.localeCompare(b.full_name, "hu")
+      : sort === "cases" ? (caseMap[b.id]?.length ?? 0) - (caseMap[a.id]?.length ?? 0) || a.full_name.localeCompare(b.full_name, "hu")
+        : (b.updated_at ?? b.created_at).localeCompare(a.updated_at ?? a.created_at));
+  }, [caseMap, gang, query, sort, status, suspects]);
 
-          {/* Tartalom */}
-          <div className="p-4 flex gap-4 flex-1">
-            {/* Mugshot + Status */}
-            <div className="relative shrink-0">
-              <Avatar className={cn("w-20 h-20 rounded-lg border-2", style.border)}>
-                <AvatarImage src={suspect.mugshot_url || undefined} className="object-cover sepia-[.2]"/>
-                <AvatarFallback
-                  className="bg-slate-900 text-slate-600 font-bold text-2xl rounded-lg">{suspect.full_name.charAt(0)}</AvatarFallback>
-              </Avatar>
-              <div
-                className={cn("absolute -bottom-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border shadow-lg whitespace-nowrap flex items-center gap-1 z-10 bg-[#080c14]", style.text, style.border)}>
-                <StatusIcon className="w-3 h-3"/> {style.label}
-              </div>
-            </div>
-
-            {/* Adatok */}
-            <div className="min-w-0 flex-1 flex flex-col">
-              <h3
-                className="font-black text-slate-100 text-base leading-tight truncate font-mono uppercase tracking-tight">{suspect.full_name}</h3>
-              {suspect.alias && <p className="text-xs text-sky-500 font-bold italic truncate">"{suspect.alias}"</p>}
-
-              <div className="mt-auto pt-4 space-y-1">
-                <div className="flex justify-between text-[10px] font-mono border-b border-slate-800 pb-1">
-                  <span className="text-slate-500">SZERVEZET</span>
-                  <span className="text-slate-300 font-bold">{suspect.gang_affiliation || "-"}</span>
-                </div>
-                <div className="flex justify-between text-[10px] font-mono">
-                  <span className="text-slate-500">ID</span>
-                  <span className="text-slate-600">#{suspect.id.slice(0, 4).toUpperCase()}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Törlés Gomb */}
-          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-            <Button
-              variant="ghost" size="icon"
-              className="h-6 w-6 rounded-full bg-black/60 hover:bg-red-600 text-slate-400 hover:text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSuspectToDelete(suspect);
-              }}
-            >
-              <Trash2 className="w-3.5 h-3.5"/>
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const wanted = suspects.filter((suspect) => suspect.status === "wanted");
+  const noticeFor = (id: string) => notices.find((notice) => notice.suspect_id === id);
+  const filtered = !!status || !!gang || !!query.trim();
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] animate-in fade-in duration-500">
-      <NewSuspectDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} onSuccess={() => refreshSuspects(true)}/>
+    <div className="flex flex-col gap-6">
+      <NewSuspectDialog open={creating} onOpenChange={setCreating} onCreated={(suspect) => {
+        void refreshSuspects(true);
+        openSuspectId(suspect.id);
+      }}/>
 
-      {/* Delete Alert */}
-      <AlertDialog open={!!suspectToDelete} onOpenChange={(o) => !o && setSuspectToDelete(null)}>
-        <AlertDialogContent className="bg-slate-950 border-red-900/50 text-white">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-red-500">VÉGLEGES TÖRLÉS</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
-              Biztosan törölni akarod <b>{suspectToDelete?.full_name}</b> személyt?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-slate-700 hover:bg-slate-800 text-slate-300">Mégse</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={isDeleteLoading}
-                               className="bg-red-600 hover:bg-red-700 font-bold">Törlés</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <PageHeader icon={Users} tone="red" eyebrow="Személyek, kapcsolatok, vagyon" title="Bűnügyi nyilvántartás"
+                  description={`${suspects.length} nyilvántartott személy · gyanúsítottak, tanúk, sértettek közös adatbázisa`}
+                  actions={<Button onClick={() => setCreating(true)} className="bg-red-600 text-white hover:bg-red-500"><UserPlus className="size-4"/> Új személy</Button>}/>
 
-      {/* HEADER */}
-      <div
-        className="flex items-center justify-between shrink-0 mb-6 bg-[#0a0f1c] p-4 rounded-xl border border-slate-800 shadow-xl">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-sky-500/10 rounded-lg border border-sky-500/20">
-            <Fingerprint className="w-6 h-6 text-sky-500"/>
+      {wanted.length > 0 && (
+        <section className="animate-rise" style={{"--i": 1} as CSSProperties} data-tour="suspects-wanted">
+          <header className="mb-3 flex items-center gap-2">
+            <Siren className="size-4 animate-pulse text-red-400"/>
+            <h2 className="text-sm font-semibold tracking-wide text-red-200 uppercase">Körözési lista</h2>
+            <span className="rounded-full bg-red-500/15 px-2 text-xs text-red-200">{wanted.length}</span>
+          </header>
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {wanted.map((suspect, index) => {
+              const notice = noticeFor(suspect.id);
+              return (
+                <button key={suspect.id} type="button" onClick={() => openSuspectId(suspect.id)} style={{"--i": index} as CSSProperties}
+                        className="wanted-poster animate-rise group relative w-52 shrink-0 rotate-[-0.6deg] rounded-sm p-3 pt-6 text-left text-[#2b2116] shadow-[0_18px_40px_-18px_rgb(0_0_0/0.9)] transition hover:rotate-0 hover:-translate-y-1 even:rotate-[0.8deg]">
+                  <span className="absolute top-1.5 left-1/2 size-3 -translate-x-1/2 rounded-full bg-red-700 shadow-[0_2px_3px_rgb(0_0_0/0.5)]"/>
+                  <p className="mt-2 text-center font-serif text-2xl leading-none font-black tracking-[0.2em] text-[#7f1d1d]">KÖRÖZÉS</p>
+                  <p className="mb-2 text-center text-[9px] font-semibold tracking-[0.25em] text-[#5b4630] uppercase">San Fierro Sheriff&apos;s Dept.</p>
+                  <div className="aspect-[4/5] overflow-hidden rounded-sm bg-[#cbb995] ring-1 ring-[#5b4630]/40">
+                    {suspect.mugshot_url ? (
+                      <img src={getOptimizedAvatarUrl(suspect.mugshot_url, 320)} alt="" className="size-full object-cover sepia-[0.45] contrast-110"/>
+                    ) : (
+                      <span className="grid size-full place-items-center font-serif text-5xl font-black text-[#5b4630]/50">?</span>
+                    )}
+                  </div>
+                  <p className="mt-2 truncate text-center font-serif text-base font-bold uppercase">{suspect.full_name}</p>
+                  {suspect.alias && <p className="truncate text-center text-xs italic">„{suspect.alias}”</p>}
+                  <p className="mt-1 line-clamp-2 min-h-8 text-center text-[11px] leading-snug text-[#3f3021]">{notice?.reason ?? suspect.gang_affiliation ?? "Elfogatóparancs van érvényben."}</p>
+                  {notice?.case && <p className="mt-1 text-center font-mono text-[10px] text-[#7f1d1d]">{notice.case.case_number}</p>}
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <h1 className="text-xl font-black text-white tracking-tight uppercase">Bűnügyi Nyilvántartás</h1>
-            <p className="text-sky-500/60 text-[10px] font-mono font-bold tracking-[0.2em]">CRIMINAL INTELLIGENCE
-              DATABASE</p>
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"/>
-            <Input placeholder="KERESÉS..."
-                   className="pl-9 bg-slate-900 border-slate-700 h-10 font-mono text-xs focus-visible:ring-sky-500"
-                   value={search} onChange={e => setSearch(e.target.value)}/>
-          </div>
-          <Button className="bg-sky-600 hover:bg-sky-500 text-white font-bold h-10"
-                  onClick={() => setIsDialogOpen(true)}>
-            <UserPlus className="w-4 h-4 mr-2"/> ÚJ SZEMÉLY
-          </Button>
-        </div>
-      </div>
+        </section>
+      )}
 
-      {/* BREADCRUMBS + BACK BUTTON */}
-      <div className="flex items-center gap-2 mb-6 bg-slate-950/50 p-2 rounded-lg border border-slate-800/50">
-        <Button variant="ghost" size="icon" onClick={goBack} disabled={path.length <= 1}
-                className="h-8 w-8 text-slate-400 hover:text-white disabled:opacity-30">
-          <ArrowLeft className="w-4 h-4"/>
-        </Button>
-        <div className="h-4 w-px bg-slate-800 mx-2"></div>
-        <div className="flex items-center gap-2 text-xs font-mono overflow-x-auto">
-          {path.map((folder, idx) => (
-            <React.Fragment key={folder.label + idx}>
-              <div
-                onClick={() => handleNavigateUp(idx)}
-                className={cn("flex items-center gap-2 cursor-pointer hover:text-white transition-colors uppercase font-bold select-none",
-                  idx === path.length - 1 ? "text-sky-400 pointer-events-none" : "text-slate-500"
-                )}>
-                {idx === 0 && <Home className="w-3.5 h-3.5"/>}
-                {folder.label}
-              </div>
-              {idx < path.length - 1 && <ChevronRight className="w-3 h-3 text-slate-700"/>}
-            </React.Fragment>
-          ))}
-        </div>
-      </div>
-
-      {/* --- TARTALOM --- */}
-      <div
-        className="flex-1 overflow-y-auto custom-scrollbar bg-[#050a14] rounded-xl border border-slate-800/50 p-6 relative min-h-[400px]">
-        {loading && <div
-          className="absolute inset-0 flex items-center justify-center bg-black/80 z-50 backdrop-blur-sm text-sky-500 font-bold font-mono">
-          <Activity className="w-6 h-6 animate-spin mr-3"/> ADATBÁZIS SZINKRONIZÁLÁSA...</div>}
-
-        {/* ROOT NÉZET: MAPPÁK */}
-        {currentFolder.type === 'root' && !search && (
-          <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-            <section>
-              <h3
-                className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
-                <ShieldAlert className="w-4 h-4"/> Státusz Szerint</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <FolderItem label="Körözött Személyek" icon={Siren} color="red"
-                            count={suspects.filter(s => s.status === 'wanted').length}
-                            onClick={() => handleNavigate({type: 'status', id: 'wanted', label: 'Körözött'})}/>
-                <FolderItem label="Börtönben" icon={Lock} color="orange"
-                            count={suspects.filter(s => s.status === 'jailed').length}
-                            onClick={() => handleNavigate({type: 'status', id: 'jailed', label: 'Börtönben'})}/>
-                <FolderItem label="Elhunyt" icon={Skull} color="slate"
-                            count={suspects.filter(s => s.status === 'deceased').length}
-                            onClick={() => handleNavigate({type: 'status', id: 'deceased', label: 'Elhunyt'})}/>
-                <FolderItem label="Szabadlábon" icon={Eye} color="green"
-                            count={suspects.filter(s => s.status === 'free').length}
-                            onClick={() => handleNavigate({type: 'status', id: 'free', label: 'Szabadlábon'})}/>
-              </div>
-            </section>
-            <section>
-              <h3
-                className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
-                <FolderOpen className="w-4 h-4"/> Rendszerezés</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <FolderItem label="Akták Szerint" icon={FileText} color="blue"
-                            onClick={() => handleNavigate({type: 'case', label: 'Akták'})}/>
-                <FolderItem label="Létrehozó Szerint" icon={User} color="purple"
-                            onClick={() => handleNavigate({type: 'creator', label: 'Létrehozók'})}/>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {/* AKTÁK LISTÁZÁSA (Ha az 'Akták' mappába léptünk) */}
-        {currentFolder.type === 'case' && !currentFolder.id && !search && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
-            {Object.entries(cases).map(([id, title]) => (
-              <div key={id} onClick={() => handleNavigate({type: 'case', id, label: title})}
-                   className="flex items-center gap-3 p-4 bg-slate-900/40 border border-slate-800 rounded-lg cursor-pointer hover:border-blue-500/50 hover:bg-slate-800 transition-all group">
-                <Folder className="w-8 h-8 text-blue-500 fill-blue-500/20 group-hover:scale-110 transition-transform"/>
-                <div
-                  className="font-mono text-sm font-bold text-slate-300 truncate group-hover:text-blue-400">{title}</div>
-              </div>
-            ))}
-            {Object.keys(cases).length === 0 &&
-              <div className="col-span-full text-center text-slate-500 opacity-50 font-mono">NINCSENEK ELÉRHETŐ
-                AKTÁK</div>}
-          </div>
-        )}
-
-        {/* LÉTREHOZÓK LISTÁZÁSA */}
-        {currentFolder.type === 'creator' && !currentFolder.id && !search && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
-            {Object.entries(creators).map(([id, name]) => (
-              <div key={id} onClick={() => handleNavigate({type: 'creator', id, label: name})}
-                   className="flex items-center gap-3 p-4 bg-slate-900/40 border border-slate-800 rounded-lg cursor-pointer hover:border-purple-500/50 hover:bg-slate-800 transition-all group">
-                <User
-                  className="w-8 h-8 text-purple-500 bg-purple-500/10 p-1.5 rounded-full group-hover:scale-110 transition-transform"/>
-                <div className="font-bold text-slate-300 group-hover:text-purple-400">{name}</div>
-              </div>
+      <section className="flex flex-col gap-3" data-tour="suspects-list">
+        <div className="flex flex-col gap-3">
+          <div className="flex w-full items-center gap-1 overflow-x-auto rounded-xl bg-white/[0.04] p-1 ring-1 ring-white/10 lg:w-fit">
+            <button type="button" onClick={() => setStatus(null)}
+                    className={cn("flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
+                      !status ? "bg-white/10 text-white" : "text-slate-400 hover:text-white")}>
+              Mind <span className="rounded-md bg-white/10 px-1.5 text-[11px] tabular-nums">{suspects.length}</span>
+            </button>
+            {SUSPECT_STATUSES.map((value) => (
+              <button key={value} type="button" onClick={() => setStatus(status === value ? null : value)}
+                      className={cn("flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
+                        status === value ? "bg-white/10 text-white" : "text-slate-400 hover:text-white")}>
+                <span className={cn("size-2 rounded-full", SUSPECT_STATUS[value].dot)}/>{SUSPECT_STATUS[value].label}
+                <span className="rounded-md bg-white/10 px-1.5 text-[11px] tabular-nums">{counts[value] ?? 0}</span>
+              </button>
             ))}
           </div>
-        )}
-
-        {/* GYANÚSÍTOTTAK MEGJELENÍTÉSE */}
-        {(displayedSuspects && (currentFolder.id || search)) && (
-          <div
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in zoom-in-95 duration-300">
-            {displayedSuspects.map(suspect => <SuspectCard key={suspect.id} suspect={suspect}/>)}
-            {displayedSuspects.length === 0 && (
-              <div className="col-span-full text-center py-20 text-slate-600 font-mono flex flex-col items-center">
-                <FolderOpen className="w-12 h-12 mb-4 opacity-50"/>
-                EB A MAPPA ÜRES
-              </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 pl-9" placeholder="Név, álnév vagy szervezet…"/>
+            {query && (
+              <button type="button" onClick={() => setQuery("")} aria-label="Keresés törlése"
+                      className="absolute top-1/2 right-2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-slate-400 hover:bg-white/10">
+                <X className="size-3.5"/>
+              </button>
             )}
           </div>
+          <div className="flex gap-2">
+            <select value={gang} onChange={(event) => setGang(event.target.value)} aria-label="Szervezet"
+                    className="h-10 max-w-52 rounded-lg border bg-white/[0.03] px-3 text-sm text-slate-200">
+              <option value="">Minden szervezet</option>
+              {gangs.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+            <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label="Rendezés"
+                    className="h-10 rounded-lg border bg-white/[0.03] px-3 text-sm text-slate-200">
+              <option value="recent">Legutóbb frissített</option>
+              <option value="name">Név szerint</option>
+              <option value="cases">Legtöbb akta</option>
+            </select>
+          </div>
+          </div>
+        </div>
+
+        {loading && suspects.length === 0 ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
+            {Array.from({length: 12}, (_, index) => <div key={index} className="skeleton aspect-[3/4] rounded-2xl"/>)}
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="panel">
+            <EmptyState icon={FolderOpen} title={filtered ? "Nincs a szűrésnek megfelelő személy" : "A nyilvántartás üres"}
+                        description={filtered ? "Próbálj más keresést vagy szűrőt." : "Az „Új személy” gombbal vehetsz fel adatlapot."}/>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
+            {visible.map((suspect, index) => (
+              <PersonCard key={suspect.id} suspect={suspect} index={index} cases={caseMap[suspect.id]?.length ?? 0}
+                          creator={suspect.created_by ? creators[suspect.created_by] : undefined} onOpen={() => openSuspectId(suspect.id)}/>
+            ))}
+          </div>
         )}
-      </div>
+      </section>
     </div>
+  );
+}
+
+function PersonCard({suspect, index, cases, creator, onOpen}: {suspect: Suspect; index: number; cases: number; creator?: string; onOpen: () => void}) {
+  return (
+    <button type="button" onClick={onOpen} style={{"--i": Math.min(index, 18)} as CSSProperties}
+            className="panel lift animate-rise group flex min-w-0 flex-col overflow-hidden p-0 text-left">
+      <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-b from-slate-800 to-slate-950">
+        {suspect.mugshot_url ? (
+          <img src={getOptimizedAvatarUrl(suspect.mugshot_url, 360)} alt="" loading="lazy"
+               className={cn("size-full object-cover transition duration-500 group-hover:scale-105", suspect.status === "deceased" && "grayscale")}/>
+        ) : (
+          <span className="grid size-full place-items-center">
+            <Mugshot url={null} name={suspect.full_name} size={72} className="ring-0"/>
+          </span>
+        )}
+        <span aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(transparent_calc(100%-1px),rgb(255_255_255/0.06)_1px)] bg-[size:100%_12px]"/>
+        <span className="absolute top-2 left-2"><SuspectStatusChip status={suspect.status} className="bg-black/60 backdrop-blur"/></span>
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 p-3">
+        <p className="truncate text-sm font-semibold text-white group-hover:text-red-100">{suspect.full_name}</p>
+        <p className="truncate text-xs text-slate-400">{suspect.alias ? `„${suspect.alias}”` : suspect.gang_affiliation || "Nincs álnév"}</p>
+        <p className="mt-auto flex items-center gap-2 pt-2 text-[11px] text-slate-500">
+          <span className="inline-flex items-center gap-1"><FolderOpen className="size-3"/>{cases}</span>
+          <span className="truncate">{creator ? `· ${creator}` : ""}</span>
+          <span className="ml-auto shrink-0">{formatDate(suspect.created_at)}</span>
+        </p>
+      </div>
+    </button>
   );
 }

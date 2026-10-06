@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <rect width="800" height="500" fill="#0b1220"/>
+  <rect y="300" width="800" height="200" fill="#111827"/>
+  <g stroke="#facc15" stroke-width="6" stroke-dasharray="46 34" opacity="0.7">
+    <line x1="0" y1="400" x2="800" y2="400"/>
+  </g>
+  <rect x="40" y="90" width="230" height="210" fill="#1e293b"/>
+  <g fill="#fbbf24" opacity="0.65">
+    <rect x="70" y="120" width="40" height="30"/><rect x="130" y="120" width="40" height="30"/><rect x="190" y="170" width="40" height="30"/>
+  </g>
+  <g>
+    <rect x="330" y="240" width="300" height="110" rx="10" fill="#f1f5f9"/>
+    <rect x="540" y="254" width="84" height="56" rx="8" fill="#cbd5e1"/>
+    <rect x="550" y="262" width="66" height="30" rx="4" fill="#0f172a"/>
+    <circle cx="390" cy="352" r="22" fill="#0f172a"/><circle cx="570" cy="352" r="22" fill="#0f172a"/>
+    <circle cx="390" cy="352" r="8" fill="#64748b"/><circle cx="570" cy="352" r="8" fill="#64748b"/>
+    <rect x="420" y="322" width="70" height="16" rx="3" fill="#fde047"/>
+    <text x="428" y="335" font-family="monospace" font-size="12" font-weight="700" fill="#111827">4KUF 2??</text>
+  </g>
+  <rect x="408" y="310" width="94" height="40" fill="none" stroke="#ef4444" stroke-width="3"/>
+  <text x="408" y="304" font-family="monospace" font-size="12" fill="#fca5a5">RENDSZÁM?</text>
+  <g opacity="0.08" fill="#e2e8f0">
+    <rect y="60" width="800" height="2"/><rect y="160" width="800" height="2"/><rect y="260" width="800" height="2"/><rect y="360" width="800" height="2"/>
+  </g>
+  <g font-family="monospace" font-size="14" fill="#f8fafc">
+    <rect x="16" y="458" width="300" height="28" fill="#000" opacity="0.6"/>
+    <text x="26" y="477">CAM-11 · DOCK RD · 02:51:40</text>
+  </g>
+</svg>

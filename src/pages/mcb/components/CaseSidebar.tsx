@@ -1,304 +1,348 @@
-import * as React from "react";
-import {Card, CardContent, CardHeader, CardTitle} from "@/components/ui/card";
-import {Badge} from "@/components/ui/badge";
+import {useState, type ReactNode} from "react";
+import type {LucideIcon} from "lucide-react";
+import {
+  ArrowRightLeft, AtSign, BadgeCheck, Check, ClipboardList, Crown, FolderOpen, Link2, LogOut, MoreHorizontal, Pencil, Plus,
+  ShieldAlert, Trash2, UserPlus, Users, X,
+} from "lucide-react";
 import {Button} from "@/components/ui/button";
-import {ScrollArea} from "@/components/ui/scroll-area";
-import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {Shield, Users, FileText, Plus, Paperclip, UserPlus, Fingerprint, X, Trash2} from "lucide-react";
-import type {Case} from "@/types/supabase";
+import {Textarea} from "@/components/ui/textarea";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {formatAgo, formatDate, formatDateTime} from "@/lib/datetime";
+import {COLLABORATOR_ROLE, INVOLVEMENT, INVOLVEMENTS, involvementLook, type CaseDetail, type DocumentReferences} from "@/lib/mcb";
 import {cn} from "@/lib/utils";
-import {useAuth} from "@/context/AuthContext";
+import type {CaseCollaborator, CaseSuspect} from "@/types/supabase";
+import {Mugshot, MemberAvatar} from "./McbBadges";
 
-// --- STÍLUS KONSTANSOK ---
-const TECH_CARD_BASE = "bg-slate-950/80 border border-sky-900/30 backdrop-blur-md shadow-lg overflow-hidden relative group";
-const TECH_HEADER = "pb-2 border-b border-sky-500/10 bg-sky-900/5";
-const TECH_TITLE = "text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold flex items-center gap-2";
-
-// --- INFO KÁRTYA (Bal oldal) ---
-export function CaseInfoCard({caseData}: { caseData: Case }) {
-  return (
-    <Card className={TECH_CARD_BASE}>
-      <div
-        className="absolute top-0 right-0 w-8 h-8 border-t border-r border-sky-500/30 rounded-tr-lg pointer-events-none"></div>
-
-      <CardHeader className={TECH_HEADER}>
-        <CardTitle className={TECH_TITLE}>
-          <Shield className="w-3.5 h-3.5"/> ÜGYIRAT ADATOK
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 pt-4 text-sm relative z-10">
-        <div className="flex justify-between items-center group/item">
-          <span className="text-slate-500 text-xs uppercase font-mono">Ügyszám</span>
-          <span
-            className="font-mono text-sky-400 font-bold bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20 group-hover/item:border-sky-400 transition-colors">
-            {caseData.case_number}
-           </span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-slate-500 text-xs uppercase font-mono">Státusz</span>
-          <Badge variant={caseData.status === 'open' ? 'default' : 'secondary'}
-                 className={cn("uppercase tracking-wider text-[10px]", caseData.status === 'open' ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 border-green-500/30' : '')}>
-            {caseData.status === 'open' ? 'NYITOTT' : caseData.status === 'closed' ? 'LEZÁRT' : 'ARCHIVÁLT'}
-          </Badge>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-slate-500 text-xs uppercase font-mono">Prioritás</span>
-          <Badge variant="outline" className={
-            caseData.priority === 'critical' ? 'text-red-500 border-red-500 bg-red-500/10 animate-pulse' :
-              caseData.priority === 'high' ? 'text-orange-400 border-orange-400 bg-orange-400/10' :
-                'text-slate-300 border-slate-700'
-          }>
-            {caseData.priority.toUpperCase()}
-          </Badge>
-        </div>
-        <div className="pt-3 border-t border-slate-800/50">
-          <span className="text-slate-500 text-[10px] uppercase font-mono block mb-2">Vezető Nyomozó</span>
-          <div className="flex items-center gap-3 bg-slate-900/50 p-2 rounded border border-slate-800">
-            <div
-              className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-sky-500 border border-slate-700">
-              {caseData.owner?.full_name.charAt(0)}
-            </div>
-            <div>
-              <p className="text-slate-200 text-xs font-bold">{caseData.owner?.full_name || "Ismeretlen"}</p>
-              <p className="text-[10px] text-slate-500 font-mono">ID: {caseData.owner_id?.slice(0, 8)}</p>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// --- ÉRINTETT SZEMÉLYEK ---
-export function SuspectsCard({suspects, onAdd, onView, onDelete}: {
-  suspects: any[],
-  onAdd?: () => void,
-  onView: (suspect: any) => void,
-  onDelete?: (id: string) => void
+export function RailCard({title, icon: Icon, count, action, children, className, tone = "text-sky-300"}: {
+  title: string;
+  icon: LucideIcon;
+  count?: number;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  tone?: string;
 }) {
   return (
-    <Card className={cn(TECH_CARD_BASE, "flex flex-col h-[320px] shrink-0")}>
-      <CardHeader className={cn(TECH_HEADER, "flex flex-row items-center justify-between space-y-0 shrink-0")}>
-        <CardTitle className={TECH_TITLE}>
-          <Fingerprint className="w-3.5 h-3.5 text-red-500"/> ÉRINTETTEK ({suspects.length})
-        </CardTitle>
-        {onAdd &&
-          <Button size="icon" variant="ghost"
-                  className="h-5 w-5 text-slate-400 hover:text-white hover:bg-white/10 -mr-2" onClick={onAdd}>
-            <Plus className="w-3.5 h-3.5"/>
-          </Button>}
-      </CardHeader>
-      <div className="flex-1 min-h-0 relative">
-        <ScrollArea className="h-full">
-          <div className="p-3 space-y-2">
-            {suspects.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full py-8 opacity-30">
-                <Fingerprint className="w-8 h-8 mb-2"/>
-                <p className="text-[10px] uppercase tracking-widest">Nincs adat</p>
-              </div>
-            ) : (
-              suspects.map((item) => (
-                <div key={item.id}
-                     className="flex items-center justify-between p-2 rounded-md bg-slate-900/50 border border-slate-800 hover:border-sky-500/30 hover:bg-slate-900 transition-all group cursor-pointer relative overflow-hidden"
-                >
-                  <div className={cn("absolute left-0 top-0 bottom-0 w-0.5",
-                    item.involvement_type === 'suspect' ? 'bg-red-500' :
-                      item.involvement_type === 'perpetrator' ? 'bg-red-700' :
-                        item.involvement_type === 'witness' ? 'bg-blue-500' : 'bg-yellow-500')}/>
-
-                  <div className="flex items-center gap-3 overflow-hidden flex-1 pl-2"
-                       onClick={() => onView(item.suspect)}>
-                    <Avatar className="h-9 w-9 border border-slate-700 rounded-md">
-                      <AvatarImage src={item.suspect?.mugshot_url} className="object-cover"/>
-                      <AvatarFallback className="text-[10px] bg-slate-800 text-slate-400 rounded-md">
-                        {item.suspect?.full_name?.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className="text-xs font-bold text-slate-200 truncate group-hover:text-sky-400 transition-colors">{item.suspect?.full_name}</p>
-                      <div className="flex items-center gap-2">
-                         <span className={cn("text-[9px] uppercase font-bold tracking-wider",
-                           item.involvement_type === 'suspect' ? "text-red-400" :
-                             item.involvement_type === 'perpetrator' ? "text-red-600" :
-                               item.involvement_type === 'witness' ? "text-blue-400" : "text-yellow-400"
-                         )}>
-                             {item.involvement_type === 'suspect' ? 'GYANÚSÍTOTT' :
-                               item.involvement_type === 'perpetrator' ? 'ELKÖVETŐ' :
-                                 item.involvement_type === 'witness' ? 'TANÚ' : 'ÁLDOZAT'}
-                         </span>
-                      </div>
-                    </div>
-                  </div>
-                  {onDelete && (
-                    <Button variant="ghost" size="icon"
-                            className="h-6 w-6 text-slate-600 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDelete(item.id);
-                            }}>
-                      <Trash2 className="w-3 h-3"/>
-                    </Button>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </ScrollArea>
-      </div>
-    </Card>
+    <section className={cn("panel overflow-hidden p-0", className)}>
+      <header className="flex items-center gap-2 border-b border-white/5 px-4 py-2.5">
+        <Icon className={cn("size-4", tone)}/>
+        <h3 className="text-xs font-semibold tracking-wider text-slate-300 uppercase">{title}</h3>
+        {count !== undefined && <span className="rounded-md bg-white/5 px-1.5 text-[11px] text-slate-400 tabular-nums">{count}</span>}
+        <span className="ml-auto"/>
+        {action}
+      </header>
+      {children}
+    </section>
   );
 }
 
-// --- SEGÉD KOMPONENS: EVIDENCE ITEM ---
-const EvidenceItem = React.memo(({file, onView, onDelete}: {
-  file: any,
-  onView: (f: any) => void,
-  onDelete?: (id: string) => void
-}) => {
-  const {supabase} = useAuth();
-  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+// --- Summary ---------------------------------------------------------------------
 
-  React.useEffect(() => {
-    let isMounted = true;
+export function SummaryCard({detail, canEdit, onSaveDescription}: {
+  detail: CaseDetail;
+  canEdit: boolean;
+  onSaveDescription: (text: string) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const item = detail.case;
 
-    if (file.file_type === 'image') {
-      // 1. Cloudinary / External URL ellenőrzés
-      if (file.file_path.startsWith('http')) {
-        setPreviewUrl(file.file_path);
-      }
-      // 2. Supabase Storage URL generálás
-      else {
-        supabase.storage.from('case_evidence').createSignedUrl(file.file_path, 3600).then(({data}) => {
-          if (isMounted && data) setPreviewUrl(data.signedUrl);
-        });
-      }
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [file.file_path, file.file_type, supabase]);
+  const save = async () => {
+    setBusy(true);
+    const ok = await onSaveDescription(text);
+    setBusy(false);
+    if (ok) setEditing(false);
+  };
 
   return (
-    <div
-      className="flex items-center gap-3 p-2 rounded-md bg-slate-900/50 border border-slate-800 hover:border-sky-500/30 transition-all group cursor-pointer"
-      onClick={() => onView(file)}>
-      <div
-        className="w-10 h-10 rounded bg-black/50 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0 relative">
-        {previewUrl ? (
-          <img src={previewUrl} alt=""
-               className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"/>
+    <RailCard title="Összefoglaló" icon={ClipboardList} action={canEdit && !editing ? (
+      <button type="button" onClick={() => {
+        setText(item.description ?? "");
+        setEditing(true);
+      }} className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Összefoglaló szerkesztése">
+        <Pencil className="size-3.5"/>
+      </button>
+    ) : undefined}>
+      <div className="px-4 py-3">
+        {editing ? (
+          <div className="space-y-2">
+            <Textarea value={text} autoFocus rows={5} maxLength={2000} onChange={(event) => setText(event.target.value)}
+                      placeholder="Mi történt, mi a nyomozás célja, hol tart az ügy?"/>
+            <div className="flex justify-end gap-1.5">
+              <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditing(false)} disabled={busy}><X className="size-3.5"/> Mégse</Button>
+              <Button size="sm" className="h-7 bg-sky-600 text-white hover:bg-sky-500" onClick={() => void save()} disabled={busy}>
+                <Check className="size-3.5"/> Mentés
+              </Button>
+            </div>
+          </div>
+        ) : item.description ? (
+          <p className="text-sm leading-relaxed whitespace-pre-wrap text-slate-300 wrap-anywhere">{item.description}</p>
         ) : (
-          <FileText className="w-5 h-5 text-slate-600 group-hover:text-sky-400"/>
+          <p className="text-xs text-slate-500 italic">Nincs összefoglaló.{canEdit && " A ceruzával írhatsz egyet."}</p>
         )}
-        {file.file_type === 'image' &&
-          <div className="absolute inset-0 bg-sky-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/>}
+        <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-t border-white/5 pt-3 text-xs">
+          <dt className="text-slate-500">Megnyitva</dt><dd className="text-right text-slate-300">{formatDate(item.created_at)}</dd>
+          {item.closed_at && (<><dt className="text-slate-500">Lezárva</dt><dd className="text-right text-slate-300">{formatDate(item.closed_at)}</dd></>)}
+          <dt className="text-slate-500">Utolsó mentés</dt>
+          <dd className="truncate text-right text-slate-300" title={formatDateTime(item.updated_at)}>
+            {formatAgo(item.updated_at)}{item.body_updated_by_name ? ` · ${item.body_updated_by_name}` : ""}
+          </dd>
+          <dt className="text-slate-500">Dokumentum</dt>
+          <dd className="text-right text-slate-300">{item.body_version > 0 ? `${item.body_version}. mentés` : "eredeti változat"}</dd>
+        </dl>
       </div>
-      <div className="min-w-0 flex-1">
-        <p
-          className="text-xs font-medium text-slate-300 truncate group-hover:text-sky-400 transition-colors">{file.file_name}</p>
-        <p className="text-[9px] text-slate-500 font-mono">{new Date(file.created_at).toLocaleDateString('hu-HU')}</p>
-      </div>
-      {onDelete && (
-        <Button variant="ghost" size="icon"
-                className="h-7 w-7 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(file.id);
-                }}>
-          <Trash2 className="w-3 h-3"/>
-        </Button>
-      )}
-    </div>
-  );
-});
-
-// --- BIZONYÍTÉKOK ---
-export function EvidenceCard({evidence, onUpload, onView, onDelete}: {
-  evidence: any[],
-  onUpload?: () => void,
-  onView: (file: any) => void,
-  onDelete?: (id: string) => void
-}) {
-  return (
-    <Card className={cn(TECH_CARD_BASE, "flex flex-col h-full min-h-0")}>
-      <CardHeader className={cn(TECH_HEADER, "flex flex-row items-center justify-between space-y-0 shrink-0")}>
-        <CardTitle className={TECH_TITLE}>
-          <Paperclip className="w-3.5 h-3.5 text-orange-500"/> BIZONYÍTÉKOK
-        </CardTitle>
-        {onUpload && (
-          <Button size="icon" variant="ghost"
-                  className="h-5 w-5 text-slate-400 hover:text-white hover:bg-white/10 -mr-2" onClick={onUpload}>
-            <Plus className="w-3.5 h-3.5"/>
-          </Button>
-        )}
-      </CardHeader>
-      <div className="flex-1 min-h-0 relative">
-        <ScrollArea className="h-full">
-          <div className="p-3 space-y-2">
-            {evidence.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 opacity-30">
-                <Paperclip className="w-8 h-8 mb-2"/>
-                <p className="text-[10px] uppercase tracking-widest">Üres mappa</p>
-              </div>
-            ) : (
-              evidence.map((file) => <EvidenceItem key={file.id} file={file} onView={onView} onDelete={onDelete}/>)
-            )}
-          </div>
-        </ScrollArea>
-      </div>
-    </Card>
+    </RailCard>
   );
 }
 
-// --- KÖZREMŰKÖDŐK ---
-export function CollaboratorsCard({collaborators, onAdd, onDelete}: {
-  collaborators: any[], onAdd?: () => void, onDelete?: (id: string) => void
+// --- People -----------------------------------------------------------------------
+
+export function PeopleCard({people, canEdit, onAdd, onOpen, onRole, onNotes, onRemove}: {
+  people: CaseSuspect[];
+  canEdit: boolean;
+  onAdd: () => void;
+  onOpen: (suspectId: string) => void;
+  onRole: (link: CaseSuspect, role: string) => void;
+  onNotes: (link: CaseSuspect, notes: string) => Promise<boolean>;
+  onRemove: (link: CaseSuspect) => void;
 }) {
+  const [noteFor, setNoteFor] = useState<{id: string; text: string} | null>(null);
+  const order = (value: string) => {
+    const index = INVOLVEMENTS.indexOf(value);
+    return index < 0 ? 99 : index;
+  };
+  const sorted = [...people].sort((a, b) => order(a.involvement_type) - order(b.involvement_type));
+
   return (
-    <Card className={cn(TECH_CARD_BASE, "flex flex-col h-[200px] shrink-0")}>
-      <CardHeader className={cn(TECH_HEADER, "flex flex-row items-center justify-between space-y-0 shrink-0")}>
-        <CardTitle className={TECH_TITLE}>
-          <Users className="w-3.5 h-3.5 text-blue-500"/> KÖZREMŰKÖDŐK
-        </CardTitle>
-        {onAdd &&
-          <Button size="icon" variant="ghost"
-                  className="h-5 w-5 text-slate-400 hover:text-white hover:bg-white/10 -mr-2" onClick={onAdd}>
-            <UserPlus className="w-3.5 h-3.5"/>
-          </Button>}
-      </CardHeader>
-      <div className="flex-1 min-h-0 relative">
-        <ScrollArea className="h-full">
-          <div className="p-3 space-y-2">
-            {collaborators.map((collab) => (
-              <div key={collab.id}
-                   className="flex items-center justify-between p-2 rounded bg-slate-900/30 border border-slate-800/60 group">
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <Avatar className="h-6 w-6 border border-slate-700">
-                    <AvatarImage src={collab.profile?.avatar_url}/>
-                    <AvatarFallback
-                      className="text-[9px] bg-slate-800">{collab.profile?.full_name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-slate-300 truncate">{collab.profile?.full_name}</p>
-                  </div>
+    <RailCard title="Érintett személyek" icon={ShieldAlert} tone="text-orange-300" count={people.length}
+              action={canEdit ? (
+                <button type="button" onClick={onAdd} className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Személy csatolása">
+                  <Plus className="size-4"/>
+                </button>
+              ) : undefined}>
+      {people.length === 0 ? (
+        <div className="px-4 py-5 text-center">
+          <p className="text-xs text-slate-500">Még senkit nem csatoltak az aktához.</p>
+          {canEdit && <Button size="sm" variant="outline" className="mt-2 h-7" onClick={onAdd}><Plus className="size-3.5"/> Személy csatolása</Button>}
+        </div>
+      ) : (
+        <ul className="divide-y divide-white/5">
+          {sorted.map((link) => {
+            const person = link.suspect;
+            const look = involvementLook(link.involvement_type);
+            return (
+              <li key={link.id} className="group relative flex gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
+                <span className={cn("absolute inset-y-2 left-0 w-0.5 rounded-full", look.bar)}/>
+                <button type="button" onClick={() => onOpen(link.suspect_id)} className="shrink-0">
+                  <Mugshot url={person?.mugshot_url} name={person?.full_name ?? "?"} status={person?.status} size={38}/>
+                </button>
+                <div className="min-w-0 flex-1">
+                  <button type="button" onClick={() => onOpen(link.suspect_id)} className="block max-w-full truncate text-left text-sm font-medium text-white hover:text-orange-200">
+                    {person?.full_name ?? "Törölt személy"}
+                  </button>
+                  <p className="truncate text-[11px] text-slate-500">
+                    <span className={cn("font-semibold", look.chip.split(" ").find((value) => value.startsWith("text-")))}>{look.label}</span>
+                    {person?.alias ? ` · „${person.alias}”` : ""}
+                  </p>
+                  {noteFor?.id === link.id ? (
+                    <form className="mt-1 flex items-center gap-1" onSubmit={async (event) => {
+                      event.preventDefault();
+                      if (await onNotes(link, noteFor.text)) setNoteFor(null);
+                    }}>
+                      <input value={noteFor.text} autoFocus maxLength={300} onChange={(event) => setNoteFor({...noteFor, text: event.target.value})}
+                             className="h-7 min-w-0 flex-1 rounded-md bg-white/5 px-2 text-xs text-white ring-1 ring-white/10 outline-none focus:ring-white/25"/>
+                      <button type="submit" className="rounded p-1 text-emerald-300 hover:bg-white/10" aria-label="Mentés"><Check className="size-3.5"/></button>
+                      <button type="button" onClick={() => setNoteFor(null)} className="rounded p-1 text-slate-400 hover:bg-white/10" aria-label="Mégse">
+                        <X className="size-3.5"/>
+                      </button>
+                    </form>
+                  ) : link.notes ? <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-400 italic wrap-anywhere">{link.notes}</p> : null}
                 </div>
-                {onDelete ? (
-                  <Button variant="ghost" size="icon"
-                          className="h-5 w-5 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100"
-                          onClick={() => onDelete(collab.id)}>
-                    <X className="w-3 h-3"/>
-                  </Button>
-                ) : (
-                  <Badge variant="outline"
-                         className="text-[9px] border-slate-800 text-slate-600 px-1">{collab.role === 'editor' ? 'EDIT' : 'READ'}</Badge>
+                {canEdit && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" aria-label="Műveletek"
+                              className="self-start rounded-md p-1 text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white focus:opacity-100 data-[state=open]:opacity-100">
+                        <MoreHorizontal className="size-4"/>
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuLabel>Szerep az ügyben</DropdownMenuLabel>
+                      {INVOLVEMENTS.map((value) => (
+                        <DropdownMenuItem key={value} onSelect={() => onRole(link, value)}>
+                          <span className={cn("size-2 rounded-full", INVOLVEMENT[value].bar)}/>{INVOLVEMENT[value].label}
+                          {link.involvement_type === value && <Check className="ml-auto size-3.5"/>}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator/>
+                      <DropdownMenuItem onSelect={() => setNoteFor({id: link.id, text: link.notes ?? ""})}><Pencil className="size-4"/> Megjegyzés</DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" onSelect={() => onRemove(link)}><Trash2 className="size-4"/> Eltávolítás az aktából</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
-              </div>
-            ))}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </RailCard>
+  );
+}
+
+// --- Team -------------------------------------------------------------------------
+
+export function TeamCard({detail, myId, onAdd, onRole, onRemove, onLeave, onTransfer, onOpenMember}: {
+  detail: CaseDetail;
+  myId: string | undefined;
+  onAdd: () => void;
+  onRole: (collaborator: CaseCollaborator, role: "editor" | "viewer") => void;
+  onRemove: (collaborator: CaseCollaborator) => void;
+  onLeave: () => void;
+  onTransfer: () => void;
+  onOpenMember: (userId: string) => void;
+}) {
+  const {owner, collaborators, viewer} = detail;
+  const manage = viewer.can_manage && detail.case.status !== "archived";
+  return (
+    <RailCard title="Csapat" icon={Users} count={collaborators.length + (owner ? 1 : 0)}
+              action={manage ? (
+                <button type="button" onClick={onAdd} className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Közreműködő hozzáadása">
+                  <UserPlus className="size-4"/>
+                </button>
+              ) : undefined}>
+      <ul className="divide-y divide-white/5">
+        <li className="flex items-center gap-3 px-4 py-2.5">
+          <button type="button" onClick={() => owner && onOpenMember(owner.id)} className="relative shrink-0">
+            <MemberAvatar url={owner?.avatar_url} name={owner?.full_name} size={34}/>
+            <Crown className="absolute -top-1.5 -right-1 size-3.5 text-amber-300 drop-shadow"/>
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-white">{owner?.full_name ?? "Nincs tulajdonos"}</p>
+            <p className="truncate text-[11px] text-amber-200/80">Vezető nyomozó{owner?.division_rank ? ` · ${owner.division_rank}` : ""}</p>
           </div>
-        </ScrollArea>
-      </div>
-    </Card>
+          {manage && (
+            <button type="button" onClick={onTransfer} title="Akta átadása" className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white">
+              <ArrowRightLeft className="size-4"/>
+            </button>
+          )}
+        </li>
+        {collaborators.map((collaborator) => (
+          <li key={collaborator.id} className="group flex items-center gap-3 px-4 py-2">
+            <button type="button" onClick={() => onOpenMember(collaborator.user_id)} className="shrink-0">
+              <MemberAvatar url={collaborator.profile?.avatar_url} name={collaborator.profile?.full_name} size={30}/>
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm text-slate-200">{collaborator.profile?.full_name ?? "Ismeretlen"}</p>
+              <p className="truncate text-[11px] text-slate-500">{COLLABORATOR_ROLE[collaborator.role]?.label ?? collaborator.role}</p>
+            </div>
+            {manage ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" aria-label="Műveletek"
+                          className="rounded-md p-1 text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white focus:opacity-100 data-[state=open]:opacity-100">
+                    <MoreHorizontal className="size-4"/>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {(["editor", "viewer"] as const).map((role) => (
+                    <DropdownMenuItem key={role} onSelect={() => onRole(collaborator, role)}>
+                      {role === "editor" ? <Pencil className="size-4"/> : <BadgeCheck className="size-4"/>}{COLLABORATOR_ROLE[role].label}
+                      {collaborator.role === role && <Check className="ml-auto size-3.5"/>}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator/>
+                  <DropdownMenuItem variant="destructive" onSelect={() => onRemove(collaborator)}><Trash2 className="size-4"/> Eltávolítás</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : collaborator.user_id === myId ? (
+              <button type="button" onClick={onLeave} title="Kilépés az aktából" className="rounded-md p-1 text-slate-500 hover:bg-white/10 hover:text-white">
+                <LogOut className="size-4"/>
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {manage && collaborators.length === 0 && (
+        <div className="border-t border-white/5 px-4 py-3 text-center">
+          <Button size="sm" variant="outline" className="h-7" onClick={onAdd}><UserPlus className="size-3.5"/> Közreműködő hozzáadása</Button>
+        </div>
+      )}
+    </RailCard>
+  );
+}
+
+// --- References -------------------------------------------------------------------
+
+export function ReferencesCard({refs, linkedSuspectIds, canEdit, onOfficer, onSuspect, onLinkSuspect, onCase}: {
+  refs: DocumentReferences;
+  linkedSuspectIds: string[];
+  canEdit: boolean;
+  onOfficer: (id: string) => void;
+  onSuspect: (id: string) => void;
+  onLinkSuspect: (id: string) => void;
+  onCase: (id: string) => void;
+}) {
+  const total = refs.officers.size + refs.suspects.size + refs.cases.size;
+  return (
+    <RailCard title="Hivatkozások" icon={AtSign} tone="text-emerald-300" count={total}>
+      {total === 0 ? (
+        <p className="px-4 py-4 text-xs text-slate-500">A dokumentumban „@” jellel hivatkozhatsz tagokra, személyekre és más aktákra.</p>
+      ) : (
+        <div className="space-y-3 px-4 py-3">
+          {refs.suspects.size > 0 && (
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Személyek</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[...refs.suspects].map(([id, label]) => (
+                  <span key={id} className="inline-flex items-center overflow-hidden rounded-md bg-orange-500/10 text-xs text-orange-200 ring-1 ring-orange-500/25">
+                    <button type="button" onClick={() => onSuspect(id)} className="flex items-center gap-1 px-2 py-0.5 hover:bg-orange-500/15">
+                      <ShieldAlert className="size-3"/>{label}
+                    </button>
+                    {canEdit && !linkedSuspectIds.includes(id) && (
+                      <button type="button" onClick={() => onLinkSuspect(id)} title="Csatolás az aktához"
+                              className="border-l border-orange-500/25 px-1.5 py-0.5 hover:bg-orange-500/20">
+                        <Link2 className="size-3"/>
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+              {canEdit && [...refs.suspects.keys()].some((id) => !linkedSuspectIds.includes(id)) && (
+                <p className="mt-1 text-[10px] text-slate-500">A lánc ikonnal csatolhatod az említett, de még nem csatolt személyeket.</p>
+              )}
+            </div>
+          )}
+          {refs.officers.size > 0 && (
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Állomány</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[...refs.officers].map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => onOfficer(id)}
+                          className="inline-flex items-center gap-1 rounded-md bg-sky-500/10 px-2 py-0.5 text-xs text-sky-200 ring-1 ring-sky-500/25 hover:bg-sky-500/20">
+                    <BadgeCheck className="size-3"/>{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {refs.cases.size > 0 && (
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Kapcsolódó akták</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[...refs.cases].map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => onCase(id)}
+                          className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-200 ring-1 ring-emerald-500/25 hover:bg-emerald-500/20">
+                    <FolderOpen className="size-3"/>{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </RailCard>
   );
 }

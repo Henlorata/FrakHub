@@ -1,0 +1,13 @@
+node_modules
+dist
+coverage
+bun.lock
+playwright-report
+test-results
+blob-report
+supabase/.temp
+supabase/migrations
+src/data/penalcode.json
+src/types/database.types.ts
+CLAUDE.md
+.e2e-dist

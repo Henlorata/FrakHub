@@ -1,257 +1,215 @@
-import {createReactBlockSpec} from "@blocknote/react";
-import {useCaseEditorContext} from "./CaseEditorContext";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {Input} from "@/components/ui/input";
-import {Label} from "@/components/ui/label";
+import {useEffect, useState} from "react";
+import {createReactBlockSpec, type ReactCustomBlockRenderProps} from "@blocknote/react";
 import {
-  LayoutTemplate,
-  CreditCard,
-  Image,
-  Square,
-  Maximize2,
-  Minimize2,
-  HardDrive,
-  FileImage,
-  Loader2
+  Columns2, FileText, GalleryVertical, ImageIcon, Loader2, Maximize2, Minimize2, PanelTop, Paperclip, Search, SquareDashed, X,
 } from "lucide-react";
-import {useAuth} from "@/context/AuthContext";
-import {useEffect, useState, useRef} from "react";
+import {supabase} from "@/lib/supabaseClient";
 import {cn} from "@/lib/utils";
+import {getOptimizedImageUrl, withTransformation} from "@/lib/cloudinary";
+import {isRemoteFile} from "@/lib/mcb";
+import {useCaseEditorContext} from "./CaseEditorContext";
 
-export const EvidenceBlock = createReactBlockSpec(
-  {
-    type: "evidence",
-    propSchema: {
-      evidenceId: {default: ""},
-      caption: {default: ""},
-      layout: {default: "side"},
-      width: {default: "full"}
-    },
-    content: "none",
+// The stored block format: never rename the type or its props (existing case documents use them).
+const evidenceBlockConfig = {
+  type: "evidence",
+  propSchema: {
+    evidenceId: {default: ""},
+    caption: {default: ""},
+    layout: {default: "side"},
+    width: {default: "full"},
   },
-  {
-    render: (props) => {
-      const {evidenceList, readOnly} = useCaseEditorContext();
-      const {supabase} = useAuth();
-      const [imageUrl, setImageUrl] = useState<string | null>(null);
-      const [loading, setLoading] = useState(false);
+  content: "none",
+} as const;
 
-      // Keresés ID alapján
-      const selectedEvidence = evidenceList.find(e => e.id === props.block.props.evidenceId);
-      const {layout, width} = props.block.props;
+type EvidenceBlockProps = ReactCustomBlockRenderProps<typeof evidenceBlockConfig>;
 
-      const lastEvidenceIdRef = useRef<string | null>(null);
+/**
+ * Display URL of an evidence file: Cloudinary (resized) or legacy Supabase Storage (signed).
+ * Uses the client module directly: BlockNote also renders blocks outside the React tree (copy).
+ */
+export function useEvidenceImageUrl(filePath: string | undefined, isImage: boolean, width = 1200) {
+  const [signedUrl, setSignedUrl] = useState<{path: string; url: string} | null>(null);
+  const isRemote = isRemoteFile(filePath);
 
-      useEffect(() => {
-        if (!selectedEvidence || selectedEvidence.file_type !== 'image') {
-          setImageUrl(null);
-          return;
-        }
+  useEffect(() => {
+    if (!filePath || !isImage || isRemote) return;
+    let active = true;
+    supabase.storage
+      .from("case_evidence")
+      .createSignedUrl(filePath, 3600)
+      .then(({data, error}) => {
+        if (error) console.error("Error loading evidence image:", error);
+        if (active && data) setSignedUrl({path: filePath, url: data.signedUrl});
+      });
+    return () => {
+      active = false;
+    };
+  }, [filePath, isImage, isRemote]);
 
-        if (lastEvidenceIdRef.current === selectedEvidence.id && imageUrl) return;
+  if (!filePath || !isImage) return {url: null, loading: false};
+  if (isRemote) return {url: getOptimizedImageUrl(filePath, width), loading: false};
+  const url = signedUrl?.path === filePath ? signedUrl.url : null;
+  return {url, loading: !url};
+}
 
-        let isMounted = true;
-        setLoading(true);
+const LAYOUTS = [
+  {value: "side", label: "Kép mellett leírás", icon: Columns2},
+  {value: "bottom", label: "Leírás a kép alatt", icon: PanelTop},
+  {value: "card", label: "Kártya", icon: GalleryVertical},
+  {value: "image-only", label: "Csak kép", icon: ImageIcon},
+] as const;
 
-        const fetchImage = async () => {
-          try {
-            // CLOUDINARY VAGY EXTERNAL URL KEZELÉSE
-            if (selectedEvidence.file_path.startsWith('http')) {
-              if (isMounted) {
-                setImageUrl(selectedEvidence.file_path);
-                lastEvidenceIdRef.current = selectedEvidence.id;
-              }
-            }
-            // SUPABASE STORAGE KEZELÉSE
-            else {
-              const {data, error} = await supabase.storage
-                .from('case_evidence')
-                .createSignedUrl(selectedEvidence.file_path, 3600); // 1 órás URL
+function EvidencePicker({onPick}: {onPick: (id: string) => void}) {
+  const {evidenceList, numbers, light} = useCaseEditorContext();
+  const [query, setQuery] = useState("");
+  const term = query.trim().toLowerCase();
+  const items = evidenceList.filter((item) => !term || item.file_name.toLowerCase().includes(term)
+    || String(numbers.get(item.id) ?? "").includes(term));
 
-              if (error) throw error;
-              if (isMounted && data) {
-                setImageUrl(data.signedUrl);
-                lastEvidenceIdRef.current = selectedEvidence.id;
-              }
-            }
-          } catch (err) {
-            console.error("Error loading evidence image:", err);
-          } finally {
-            if (isMounted) setLoading(false);
-          }
-        };
-
-        fetchImage();
-
-        return () => {
-          isMounted = false;
-        };
-      }, [selectedEvidence, supabase]);
-
-      // --- ÜRES ÁLLAPOT (Placeholder) ---
-      if (!props.block.props.evidenceId) {
-        if (readOnly) return null;
-        return (
-          <div
-            className="my-6 p-8 bg-slate-950/30 border border-dashed border-slate-700 rounded-xl flex flex-col items-center justify-center group hover:border-[#c5a065]/50 hover:bg-slate-900/50 transition-all select-none relative overflow-hidden">
-            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{
-              backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)',
-              backgroundSize: '10px 10px'
-            }}></div>
-
-            <div
-              className="w-12 h-12 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center mb-3 group-hover:border-[#c5a065] group-hover:text-[#c5a065] text-slate-500 transition-all shadow-lg">
-              <HardDrive className="w-6 h-6"/>
-            </div>
-            <Label
-              className="mb-4 text-xs uppercase text-slate-400 font-bold tracking-widest group-hover:text-[#c5a065] transition-colors">Bizonyíték
-              Beillesztése</Label>
-
-            <Select onValueChange={(val) => props.editor.updateBlock(props.block, {
-              props: {
-                ...props.block.props,
-                evidenceId: val
-              }
-            })}>
-              <SelectTrigger
-                className="w-[320px] bg-slate-950 border-slate-700 focus:ring-[#c5a065]/30 h-10 text-sm font-mono"><SelectValue
-                placeholder="VÁLASSZ FÁJLT AZ AKTÁBÓL..."/></SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white z-[9999]">
-                {evidenceList.length === 0 ? <SelectItem value="none" disabled>Nincs feltöltött fájl</SelectItem> :
-                  evidenceList.map(e => <SelectItem key={e.id} value={e.id}
-                                                    className="font-mono text-xs">{e.file_type === 'image' ? '📷' : '📄'} {e.file_name}</SelectItem>)
-                }
-              </SelectContent>
-            </Select>
-          </div>
-        );
-      }
-
-      const isSide = layout === 'side';
-      const isBottom = layout === 'bottom';
-      const isImageOnly = layout === 'image-only';
-      const isCard = layout === 'card';
-      const isOverlay = layout === 'overlay';
-      const containerWidthClass = width === 'small' ? "w-[250px]" : width === 'half' ? "w-[48%]" : "w-full";
-
-      return (
-        <div
-          className={cn("my-4 relative select-none transition-all inline-block align-top mr-2", containerWidthClass, "group/evidence")}>
-          {!readOnly && (
-            <div
-              className="absolute -top-10 left-0 right-0 flex justify-center opacity-0 group-hover/evidence:opacity-100 transition-all z-50 pb-2 pointer-events-none group-hover/evidence:pointer-events-auto">
-              <div
-                className="bg-slate-900 border border-slate-700 rounded shadow-xl p-1 flex gap-1 pointer-events-auto scale-90 backdrop-blur-md">
-                <div className="flex gap-1 border-r border-slate-700 pr-2">
-                  <button onClick={() => props.editor.updateBlock(props.block, {
-                    props: {
-                      ...props.block.props,
-                      layout: 'side'
-                    }
-                  })}
-                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'side' && "text-[#c5a065] bg-slate-800")}>
-                    <CreditCard className="w-3.5 h-3.5"/></button>
-                  <button onClick={() => props.editor.updateBlock(props.block, {
-                    props: {
-                      ...props.block.props,
-                      layout: 'bottom'
-                    }
-                  })}
-                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'bottom' && "text-[#c5a065] bg-slate-800")}>
-                    <LayoutTemplate className="w-3.5 h-3.5"/></button>
-                  <button onClick={() => props.editor.updateBlock(props.block, {
-                    props: {
-                      ...props.block.props,
-                      layout: 'card'
-                    }
-                  })}
-                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'card' && "text-[#c5a065] bg-slate-800")}>
-                    <Square className="w-3.5 h-3.5"/></button>
-                  <button onClick={() => props.editor.updateBlock(props.block, {
-                    props: {
-                      ...props.block.props,
-                      layout: 'image-only'
-                    }
-                  })}
-                          className={cn("p-1.5 rounded hover:bg-slate-800", layout === 'image-only' && "text-[#c5a065] bg-slate-800")}>
-                    <Image className="w-3.5 h-3.5"/></button>
-                </div>
-                <div className="flex gap-1 border-r border-slate-700 pr-2">
-                  <button onClick={() => props.editor.updateBlock(props.block, {
-                    props: {
-                      ...props.block.props,
-                      width: 'full'
-                    }
-                  })} className={cn("p-1.5 rounded hover:bg-slate-800", width === 'full' && "text-[#c5a065]")}>
-                    <Maximize2
-                      className="w-3.5 h-3.5"/></button>
-                  <button onClick={() => props.editor.updateBlock(props.block, {
-                    props: {
-                      ...props.block.props,
-                      width: 'half'
-                    }
-                  })} className={cn("p-1.5 rounded hover:bg-slate-800", width === 'half' && "text-[#c5a065]")}>
-                    <Minimize2
-                      className="w-3.5 h-3.5"/></button>
-                </div>
-                <button
-                  onClick={() => props.editor.updateBlock(props.block, {props: {...props.block.props, evidenceId: ""}})}
-                  className="p-1.5 rounded hover:bg-red-900/30 text-slate-400 hover:text-red-400"><Square
-                  className="w-3.5 h-3.5 fill-current"/></button>
-              </div>
-            </div>
-          )}
-
-          <div className={cn(
-            "flex gap-4 items-start rounded border transition-all duration-300 overflow-hidden",
-            isSide && "flex-col md:flex-row p-3 bg-[#0a0f1c] border-slate-800",
-            isBottom && "flex-col p-3 bg-[#0a0f1c] border-slate-800",
-            isCard && "flex-col bg-slate-900 border-slate-800 shadow-md",
-            isOverlay && "relative rounded overflow-hidden border-0",
-            isImageOnly && "flex-col border-transparent p-0 bg-transparent"
-          )}>
-            <div className={cn("flex items-center justify-center overflow-hidden relative bg-black/40 rounded",
-              isSide ? "w-full md:w-1/3 min-h-[120px] border border-slate-800" : "w-full",
-              isOverlay && "w-full h-full rounded-none"
-            )}>
-              {loading ? (
-                <div className="p-10 flex flex-col items-center gap-2">
-                  <Loader2 className="w-6 h-6 animate-spin text-[#c5a065]"/>
-                  <span className="text-[10px] text-slate-500 uppercase">Betöltés...</span>
-                </div>
-              ) : selectedEvidence?.file_type === 'image' && imageUrl ? (
-                <img src={imageUrl} alt="Ev"
-                     className={cn("object-contain", isImageOnly ? "max-h-[800px]" : "max-h-[500px]", isOverlay && "w-full h-auto")}/>
-              ) : (
-                <div className="p-6 flex flex-col items-center text-slate-600"><FileImage
-                  className="w-8 h-8 mb-2"/><span
-                  className="text-[10px] uppercase font-mono">{selectedEvidence?.file_name}</span></div>
-              )}
-            </div>
-
-            {!isImageOnly && (
-              <div
-                className={cn("flex-1 w-full min-w-0 flex flex-col justify-center", isSide && "py-1", isCard && "p-3", isOverlay && "absolute bottom-0 left-0 right-0 bg-black/80 p-3 backdrop-blur-sm")}>
-                <div
-                  className={cn("text-[9px] font-mono font-bold uppercase tracking-widest mb-1 text-[#c5a065]")}>BIZONYÍTÉK: {selectedEvidence?.file_name}</div>
-                {readOnly ? (
-                  <p
-                    className={cn("text-xs leading-relaxed font-mono", isOverlay ? "text-slate-300" : "text-slate-400")}>{props.block.props.caption}</p>
+  return (
+    <div className={cn("evidence-picker my-4 rounded-2xl border border-dashed p-4 select-none", light ? "evidence-light" : "evidence-dark")}
+         contentEditable={false}>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <span className="grid size-9 place-items-center rounded-xl bg-amber-500/15 text-amber-500 ring-1 ring-amber-500/30">
+          <Paperclip className="size-4"/>
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">Bizonyíték beillesztése</p>
+          <p className="text-xs opacity-60">Válassz az akta feltöltött fájljai közül.</p>
+        </div>
+        {evidenceList.length > 6 && (
+          <label className="evidence-search flex h-8 items-center gap-2 rounded-lg px-2.5 text-xs">
+            <Search className="size-3.5 opacity-60"/>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Keresés…"
+                   className="w-32 bg-transparent outline-none"/>
+          </label>
+        )}
+      </div>
+      {evidenceList.length === 0 ? (
+        <p className="rounded-xl px-3 py-6 text-center text-xs opacity-60">
+          Az aktához még nincs feltöltött fájl. A jobb oldali „Bizonyítékok” panelen tölthetsz fel.
+        </p>
+      ) : (
+        <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
+          {items.map((item) => (
+            <button key={item.id} type="button" onClick={() => onPick(item.id)}
+                    className="evidence-tile group relative overflow-hidden rounded-xl text-left transition">
+              <div className="aspect-[4/3] w-full overflow-hidden">
+                {item.file_type === "image" && isRemoteFile(item.file_path) ? (
+                  <img src={withTransformation(item.file_path, "c_fill,w_240,h_180,q_auto,f_auto")} alt="" loading="lazy"
+                       className="size-full object-cover transition duration-300 group-hover:scale-105"/>
                 ) : (
-                  <Input value={props.block.props.caption} onChange={(e) => props.editor.updateBlock(props.block, {
-                    props: {
-                      ...props.block.props,
-                      caption: e.target.value
-                    }
-                  })}
-                         className="bg-transparent border-none focus-visible:ring-0 px-0 h-auto py-0 text-xs font-mono text-slate-300 placeholder:text-slate-700"
-                         placeholder="// Add megjegyzést..."/>
+                  <div className="grid size-full place-items-center opacity-50"><FileText className="size-7"/></div>
                 )}
               </div>
-            )}
+              <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px]">
+                <span className="font-mono font-bold text-amber-500">#{numbers.get(item.id)}</span>
+                <span className="min-w-0 flex-1 truncate">{item.file_name}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EvidenceBlockView({block, editor}: EvidenceBlockProps) {
+  const {evidenceList, numbers, readOnly, light, onOpenEvidence} = useCaseEditorContext();
+  const {evidenceId, layout, width, caption} = block.props;
+  const selected = evidenceList.find((item) => item.id === evidenceId);
+  const isImage = selected?.file_type === "image";
+  const {url: imageUrl, loading} = useEvidenceImageUrl(selected?.file_path, isImage);
+
+  const setProps = (patch: Partial<typeof block.props>) => editor.updateBlock(block, {props: {...block.props, ...patch}});
+
+  if (!evidenceId) {
+    if (readOnly) return null;
+    return <EvidencePicker onPick={(id) => setProps({evidenceId: id})}/>;
+  }
+
+  const isSide = layout === "side";
+  const isImageOnly = layout === "image-only";
+  const isCard = layout === "card";
+  const isOverlay = layout === "overlay";
+  const number = numbers.get(evidenceId);
+  const widthClass = width === "small" ? "w-[250px] max-w-full" : width === "half" ? "w-[48%] max-sm:w-full" : "w-full";
+
+  return (
+    <div className={cn("group/evidence relative my-4 mr-2 inline-block align-top select-none", widthClass)} contentEditable={false}>
+      {!readOnly && (
+        <div className="pointer-events-none absolute -top-11 right-0 left-0 z-50 flex justify-center pb-2 opacity-0 transition group-hover/evidence:pointer-events-auto group-hover/evidence:opacity-100">
+          <div className="flex gap-0.5 rounded-xl border border-white/10 bg-[#0b1220]/95 p-1 text-slate-300 shadow-xl backdrop-blur">
+            {LAYOUTS.map((item) => (
+              <button key={item.value} type="button" title={item.label} onClick={() => setProps({layout: item.value})}
+                      className={cn("grid size-7 place-items-center rounded-lg hover:bg-white/10", layout === item.value && "bg-amber-500/15 text-amber-300")}>
+                <item.icon className="size-3.5"/>
+              </button>
+            ))}
+            <span className="mx-1 w-px bg-white/10"/>
+            <button type="button" title="Teljes szélesség" onClick={() => setProps({width: "full"})}
+                    className={cn("grid size-7 place-items-center rounded-lg hover:bg-white/10", width === "full" && "bg-amber-500/15 text-amber-300")}>
+              <Maximize2 className="size-3.5"/>
+            </button>
+            <button type="button" title="Fél szélesség (két kép egymás mellett)" onClick={() => setProps({width: "half"})}
+                    className={cn("grid size-7 place-items-center rounded-lg hover:bg-white/10", width === "half" && "bg-amber-500/15 text-amber-300")}>
+              <Minimize2 className="size-3.5"/>
+            </button>
+            <span className="mx-1 w-px bg-white/10"/>
+            <button type="button" title="Másik fájl választása" onClick={() => setProps({evidenceId: ""})}
+                    className="grid size-7 place-items-center rounded-lg hover:bg-white/10"><SquareDashed className="size-3.5"/></button>
+            <button type="button" title="Blokk törlése" onClick={() => editor.removeBlocks([block])}
+                    className="grid size-7 place-items-center rounded-lg hover:bg-red-500/20 hover:text-red-300"><X className="size-3.5"/></button>
           </div>
         </div>
-      );
-    },
-  }
-);
+      )}
+
+      <figure className={cn("evidence-card overflow-hidden", light ? "evidence-light" : "evidence-dark",
+        isSide && "flex flex-col gap-4 p-3 md:flex-row",
+        layout === "bottom" && "flex flex-col gap-3 p-3",
+        isCard && "flex flex-col",
+        isOverlay && "relative",
+        isImageOnly && "evidence-bare")}>
+        <button type="button" onClick={() => selected && onOpenEvidence(selected.id)} disabled={!selected}
+                className={cn("evidence-media relative flex items-center justify-center overflow-hidden",
+                  isSide ? "min-h-[120px] w-full shrink-0 md:w-2/5" : "w-full", !isImageOnly && "rounded-xl",
+                  selected && "cursor-zoom-in")}>
+          {loading ? (
+            <span className="flex flex-col items-center gap-2 p-10 text-xs opacity-60"><Loader2 className="size-6 animate-spin"/> Betöltés…</span>
+          ) : imageUrl ? (
+            <img src={imageUrl} alt={selected?.file_name ?? "Bizonyíték"} loading="lazy"
+                 className={cn("object-contain", isImageOnly ? "max-h-[800px] w-full" : "max-h-[500px]", isOverlay && "h-auto w-full")}/>
+          ) : (
+            <span className="flex flex-col items-center gap-2 p-8 text-xs opacity-60">
+              <FileText className="size-8"/>
+              {selected ? selected.file_name : "A bizonyítékot törölték az aktából."}
+            </span>
+          )}
+          {number && !isImageOnly && (
+            <span className="absolute top-2 left-2 rounded-md bg-black/70 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-300">#{number}</span>
+          )}
+        </button>
+
+        {!isImageOnly && (
+          <figcaption className={cn("flex min-w-0 flex-1 flex-col justify-center", isCard && "p-3",
+            isOverlay && "absolute right-0 bottom-0 left-0 bg-black/75 p-3 text-slate-200 backdrop-blur-sm")}>
+            <span className="evidence-label mb-1 font-mono text-[10px] font-bold tracking-widest uppercase">
+              {/* "BIZONYÍTÉK: <name>": kept for the older documents' look and the end-to-end tests. */}
+              BIZONYÍTÉK: {selected?.file_name ?? "törölve"}
+            </span>
+            {readOnly ? (
+              caption ? <p className="text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere">{caption}</p> : null
+            ) : (
+              <textarea value={caption} rows={Math.min(6, Math.max(1, caption.split("\n").length))}
+                        onChange={(event) => setProps({caption: event.target.value})}
+                        placeholder="Leírás, megjegyzés a bizonyítékhoz…"
+                        className="evidence-caption w-full resize-none bg-transparent text-sm leading-relaxed outline-none"/>
+            )}
+          </figcaption>
+        )}
+      </figure>
+    </div>
+  );
+}
+
+export const EvidenceBlock = createReactBlockSpec(evidenceBlockConfig, {render: EvidenceBlockView});

@@ -3,10 +3,55 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* --- FŐ TÉMA KONFIGURÁCIÓ --- */
+/* --- DESIGN TOKENS ---
+   Dark navy surfaces with the department's gold as the primary colour. The shadcn/radix
+   primitives in src/components/ui read these tokens (bg-primary, border-border, ...). */
+@theme inline {
+    --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+}
+
 :root {
-    --radius: 0.5rem;
-    --background: #02040a;
+    --radius: 0.625rem;
+    --background: #060a13;
+    --foreground: #e2e8f0;
+    --card: #0b1220;
+    --card-foreground: #e2e8f0;
+    --popover: #0d1526;
+    --popover-foreground: #e2e8f0;
+    --primary: #eab308;
+    --primary-foreground: #0b0f19;
+    --secondary: #141d31;
+    --secondary-foreground: #e2e8f0;
+    --muted: #111a2c;
+    --muted-foreground: #8a97ab;
+    --accent: #16203a;
+    --accent-foreground: #f8fafc;
+    --destructive: #ef4444;
+    --border: rgb(148 163 184 / 0.13);
+    --input: rgb(148 163 184 / 0.2);
+    --ring: rgb(234 179 8 / 0.5);
 
     /* SFSD Színek */
     --sfsd-gold: #eab308;
@@ -14,6 +59,578 @@
 
     --status-color: #eab308;
     --status-glow: rgba(234, 179, 8, 0.5);
+
+    /* Generated grain and smoke: local CSS, no third-party image requests. */
+    --texture-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --texture-smoke: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.008' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .7 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E");
+}
+
+@layer base {
+    * {
+        border-color: var(--border);
+    }
+
+    html {
+        color-scheme: dark;
+    }
+
+    body {
+        background-color: var(--background);
+        color: var(--foreground);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-feature-settings: "cv11", "ss03";
+        /* A long word or link wraps instead of pushing its box wider. */
+        overflow-wrap: break-word;
+    }
+
+    ::selection {
+        background-color: rgb(234 179 8 / 0.3);
+    }
+
+    /* Native dropdown lists take the select's (translucent) background from the system on
+       Windows, which left light text on a light list. */
+    select option,
+    select optgroup {
+        background-color: #0f172a;
+        color: #e2e8f0;
+    }
+    select option:checked {
+        background-color: #1e3a5f;
+        color: #ffffff;
+    }
+    select option:disabled {
+        color: #64748b;
+    }
+}
+
+/* Motion is decoration: honour the operating system setting. */
+@media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* --- APP SHELL ---
+   Header height and page padding of AppLayout, so full-height pages can size themselves. */
+:root {
+    --shell-header: 3.5rem;
+    --shell-pad: 1rem;
+    --mcb-header: 4.5rem;
+}
+
+@media (width >= 48rem) {
+    :root {
+        --shell-pad: 1.5rem;
+    }
+}
+
+@media (width >= 64rem) {
+    :root {
+        --shell-pad: 2rem;
+    }
+}
+
+/* Height of the content area below the header (minus page padding). */
+@utility h-shell {
+    height: calc(100dvh - var(--shell-header) - 2 * var(--shell-pad));
+}
+
+/* Same inside the MCB area, below its section header. */
+@utility h-shell-mcb {
+    height: calc(100dvh - var(--shell-header) - 2 * var(--shell-pad) - var(--mcb-header));
+}
+
+/* --- SURFACES ---
+   Frosted glass over the animated backdrop, with a faint top highlight. */
+@utility panel {
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0) 140px),
+    rgb(9 14 27 / 0.8);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + 4px);
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 18px 40px -24px rgb(0 0 0 / 0.8);
+    backdrop-filter: blur(18px) saturate(1.4);
+}
+
+/* Cards that react to the pointer: lift, brighter edge, golden glow. */
+@utility lift {
+    transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1), border-color 0.25s, box-shadow 0.25s, background-color 0.25s;
+
+    &:hover {
+        transform: translateY(-2px);
+        border-color: rgb(255 255 255 / 0.18);
+        box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.07), 0 22px 48px -22px rgb(0 0 0 / 0.9), 0 0 0 1px rgb(234 179 8 / 0.1);
+    }
+
+    &:active {
+        transform: translateY(0) scale(0.99);
+    }
+}
+
+/* Gradient text for headings ("gold leaf"). */
+@utility text-gold {
+    background: linear-gradient(100deg, #fff7d6 0%, #facc15 40%, #eab308 60%, #fde68a 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Animated border (hero cards): a light runs around the edge. */
+@utility glow-border {
+    position: relative;
+    isolation: isolate;
+
+    &::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        z-index: -1;
+        border-radius: inherit;
+        padding: 1px;
+        background: conic-gradient(from var(--glow-angle), transparent 0 68%, rgb(250 204 21 / 0.75) 80%, rgb(56 189 248 / 0.55) 90%, transparent 100%);
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        animation: glow-turn 8s linear infinite;
+        pointer-events: none;
+    }
+}
+
+/* Loading placeholder with a moving sheen. */
+@utility skeleton {
+    border-radius: calc(var(--radius) + 2px);
+    background: linear-gradient(100deg, rgb(255 255 255 / 0.03) 30%, rgb(255 255 255 / 0.08) 50%, rgb(255 255 255 / 0.03) 70%);
+    background-size: 300% 100%;
+    animation: sheen 1.6s ease-in-out infinite;
+}
+
+/* --- MOTION ---
+   Entrance: "animate-rise" (fade + slide up); style={{"--i": index}} staggers lists. */
+@property --glow-angle {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
+}
+
+@keyframes rise-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes fade-in-soft {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes sheen {
+    from {
+        background-position: 100% 0;
+    }
+    to {
+        background-position: -100% 0;
+    }
+}
+
+@keyframes glow-turn {
+    to {
+        --glow-angle: 360deg;
+    }
+}
+
+@keyframes float-y {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+@keyframes bell-ring {
+    0%, 100% {
+        transform: rotate(0);
+    }
+    15% {
+        transform: rotate(14deg);
+    }
+    30% {
+        transform: rotate(-12deg);
+    }
+    45% {
+        transform: rotate(8deg);
+    }
+    60% {
+        transform: rotate(-5deg);
+    }
+    75% {
+        transform: rotate(2deg);
+    }
+}
+
+@keyframes backdrop-breathe {
+    0%, 100% {
+        opacity: 0.55;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.12);
+    }
+}
+
+@keyframes shine-pan {
+    to {
+        background-position: -200% 0;
+    }
+}
+
+@utility animate-rise {
+    animation: rise-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+@utility animate-fade {
+    animation: fade-in-soft 0.5s ease-out both;
+    animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+@utility animate-float-y {
+    animation: float-y 6s ease-in-out infinite;
+}
+
+@utility animate-bell {
+    animation: bell-ring 1s ease-in-out;
+    transform-origin: 50% 0;
+}
+
+@utility animate-shine {
+    animation: shine-pan 6s linear infinite;
+}
+
+/* Route changes: the new page fades in and rises slightly. */
+.page-enter {
+    animation: rise-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* --- APP BACKDROP (AppBackdrop.tsx) ---
+   Colour at the edges, a calm dark middle behind the content. */
+.app-backdrop {
+    background: radial-gradient(120% 90% at 50% -20%, #0b1630 0%, #050a15 52%, #03060c 100%);
+}
+
+.backdrop-glow {
+    position: absolute;
+    border-radius: 9999px;
+    will-change: transform, opacity;
+    animation: glow-drift 48s ease-in-out infinite alternate;
+}
+
+.glow-top-right {
+    top: -28vmax;
+    right: -20vmax;
+    width: 68vmax;
+    height: 68vmax;
+    background: radial-gradient(circle at center, var(--aurora-1) 0%, transparent 64%);
+}
+
+.glow-top-left {
+    top: -18vmax;
+    left: -24vmax;
+    width: 62vmax;
+    height: 62vmax;
+    background: radial-gradient(circle at center, var(--aurora-2) 0%, transparent 62%);
+    animation-duration: 56s;
+    animation-delay: -18s;
+}
+
+.glow-bottom {
+    bottom: -40vmax;
+    left: 12%;
+    width: 82vmax;
+    height: 82vmax;
+    background: radial-gradient(circle at center, var(--aurora-3) 0%, transparent 60%);
+    animation-duration: 64s;
+    animation-delay: -30s;
+}
+
+/* Tactical alert: the two top glows take turns, like a light bar seen from afar. */
+.is-siren .glow-top-right {
+    animation: glow-drift 48s ease-in-out infinite alternate, siren-a 3.2s ease-in-out infinite;
+}
+
+.is-siren .glow-top-left {
+    animation: glow-drift 56s ease-in-out infinite alternate, siren-b 3.2s ease-in-out infinite;
+}
+
+/* A thin light along the top edge. */
+.backdrop-horizon {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 40vh;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.035), transparent 70%);
+    mask-image: radial-gradient(ellipse 60% 100% at 50% 0%, #000, transparent);
+}
+
+.backdrop-stars {
+    position: absolute;
+    inset: 0;
+    background-repeat: repeat;
+    animation: twinkle 7s ease-in-out infinite alternate;
+    /* Only around the edges: the reading area stays clean. */
+    mask-image: radial-gradient(ellipse 55% 50% at 50% 50%, transparent 35%, #000 100%);
+}
+
+.stars-near {
+    opacity: 0.55;
+    background-size: 420px 420px;
+    background-image: radial-gradient(1.2px 1.2px at 24px 38px, rgb(255 255 255 / 0.9), transparent),
+    radial-gradient(1px 1px at 120px 210px, rgb(253 230 138 / 0.85), transparent),
+    radial-gradient(1px 1px at 300px 90px, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(1.4px 1.4px at 390px 320px, rgb(186 230 253 / 0.8), transparent),
+    radial-gradient(1px 1px at 210px 370px, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(1px 1px at 70px 290px, rgb(255 255 255 / 0.5), transparent);
+}
+
+.stars-far {
+    opacity: 0.35;
+    background-size: 640px 640px;
+    background-image: radial-gradient(1px 1px at 60px 120px, rgb(255 255 255 / 0.8), transparent),
+    radial-gradient(1px 1px at 420px 60px, rgb(253 230 138 / 0.7), transparent),
+    radial-gradient(1px 1px at 520px 470px, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(1.2px 1.2px at 260px 560px, rgb(186 230 253 / 0.7), transparent),
+    radial-gradient(1px 1px at 150px 430px, rgb(255 255 255 / 0.5), transparent);
+    animation-duration: 11s;
+    animation-delay: -4s;
+}
+
+.backdrop-grid {
+    background-image: linear-gradient(rgb(234 179 8 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(234 179 8 / 0.035) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 45% 55% at 100% 100%, #000 10%, transparent 75%);
+}
+
+/* The department star, engraved into the bottom-right corner. */
+.backdrop-emblem {
+    position: absolute;
+    right: -8vmin;
+    bottom: -10vmin;
+    width: 54vmin;
+    height: 54vmin;
+    opacity: 0.85;
+    mask-image: radial-gradient(circle at 60% 60%, #000 38%, transparent 72%);
+}
+
+.emblem-glint {
+    animation: emblem-glint 14s linear infinite;
+    filter: drop-shadow(0 0 2px rgb(253 230 138 / 0.9));
+    opacity: 0.55;
+}
+
+.emblem-glint-slow {
+    animation-duration: 22s;
+    animation-direction: reverse;
+    opacity: 0.35;
+}
+
+/* The corner star turns slowly; its outer ring the other way. */
+.emblem-turn {
+    transform-box: view-box;
+    transform-origin: 50% 50%;
+    animation: emblem-turn 160s linear infinite;
+}
+
+.emblem-turn-reverse {
+    animation-duration: 240s;
+    animation-direction: reverse;
+}
+
+@keyframes emblem-turn {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.emblem-breathe {
+    transform-origin: center;
+    animation: backdrop-breathe 10s ease-in-out infinite;
+}
+
+/* Darker middle behind the content. */
+.backdrop-calm {
+    background: radial-gradient(ellipse 62% 58% at 52% 48%, rgb(3 6 14 / 0.5), transparent 78%);
+}
+
+@keyframes glow-drift {
+    0% {
+        transform: translate3d(0, 0, 0) scale(1);
+        opacity: 0.85;
+    }
+    50% {
+        transform: translate3d(2.5vmax, 1.5vmax, 0) scale(1.05);
+        opacity: 1;
+    }
+    100% {
+        transform: translate3d(-2vmax, 2.5vmax, 0) scale(0.97);
+        opacity: 0.9;
+    }
+}
+
+@keyframes twinkle {
+    from {
+        opacity: 0.18;
+    }
+    to {
+        opacity: 0.6;
+    }
+}
+
+@keyframes emblem-glint {
+    to {
+        stroke-dashoffset: -1000;
+    }
+}
+
+@keyframes siren-a {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.35;
+    }
+}
+
+@keyframes siren-b {
+    0%, 100% {
+        opacity: 0.35;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+/* --- FLEET: licence scanner and result animations (RegistrationDialog.tsx) --- */
+.scan-grid {
+    background-image: linear-gradient(rgb(234 179 8 / 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(234 179 8 / 0.12) 1px, transparent 1px);
+    background-size: 24px 24px;
+    mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent);
+    opacity: 0.5;
+}
+
+.scan-line {
+    top: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, rgb(250 204 21 / 0.95), transparent);
+    box-shadow: 0 0 18px 4px rgb(250 204 21 / 0.45);
+    animation: scan-sweep 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes scan-sweep {
+    from {
+        top: 2%;
+    }
+    to {
+        top: 96%;
+    }
+}
+
+@keyframes pop-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.6);
+    }
+    70% {
+        opacity: 1;
+        transform: scale(1.08);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+@utility animate-pop {
+    animation: pop-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: calc(var(--i, 0) * 70ms + 120ms);
+}
+
+.ring-burst {
+    animation: ring-burst 1.4s ease-out both;
+}
+
+@keyframes ring-burst {
+    from {
+        opacity: 0.9;
+        transform: scale(0.6);
+    }
+    to {
+        opacity: 0;
+        transform: scale(1.9);
+    }
+}
+
+.draw-check {
+    stroke-dasharray: 24;
+    stroke-dashoffset: 24;
+    animation: draw-check 0.5s 0.25s ease-out forwards;
+}
+
+@keyframes draw-check {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+/* --- TEXTURES (local, CSS only) --- */
+@utility tex-noise {
+    background-image: var(--texture-noise);
+    background-size: 180px 180px;
+}
+
+@utility tex-smoke {
+    background-image: var(--texture-smoke);
+    background-size: 600px 600px;
+}
+
+@utility tex-carbon {
+    background-image: linear-gradient(27deg, rgb(255 255 255 / 0.05) 5px, transparent 5px),
+    linear-gradient(207deg, rgb(255 255 255 / 0.05) 5px, transparent 5px),
+    linear-gradient(27deg, rgb(0 0 0 / 0.25) 5px, transparent 5px),
+    linear-gradient(207deg, rgb(0 0 0 / 0.25) 5px, transparent 5px);
+    background-size: 20px 20px;
+    background-position: 0 5px, 10px 0, 0 10px, 10px 5px;
+}
+
+@utility tex-stripes {
+    background-image: repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.5) 0 2px, transparent 2px 12px);
+}
+
+@utility tex-diamonds {
+    background-image: linear-gradient(45deg, rgb(255 255 255 / 0.35) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.35) 75%),
+    linear-gradient(45deg, rgb(255 255 255 / 0.35) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.35) 75%);
+    background-size: 24px 24px;
+    background-position: 0 0, 12px 12px;
+}
+
+@utility tex-grid {
+    background-image: linear-gradient(rgb(255 255 255 / 0.6) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.6) 1px, transparent 1px);
+    background-size: 32px 32px;
 }
 
 /* --- UI ELEMEK --- */
@@ -29,41 +646,6 @@
     box-shadow: 0 0 15px var(--status-glow);
     z-index: 50;
     transition: all 0.5s ease;
-}
-
-/* Glassmorphism Panel (Sidebar & Cards) */
-.glass-panel {
-    background: rgba(10, 15, 28, 0.7);
-    backdrop-filter: blur(12px);
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Nav Link Hover Effect */
-.nav-item-active {
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
-    border-left: 3px solid var(--status-color);
-    color: white;
-}
-
-/* Ambient Background Animation */
-@keyframes ambient-float {
-    0%, 100% {
-        transform: translate(0, 0);
-        opacity: 0.3;
-    }
-    50% {
-        transform: translate(-20px, 20px);
-        opacity: 0.5;
-    }
-}
-
-.ambient-light {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    opacity: 0.3;
-    animation: ambient-float 10s ease-in-out infinite;
-    pointer-events: none;
 }
 
 /* --- MODERN TACTICAL SCROLLBAR --- */
@@ -175,7 +757,7 @@
 
 /* --- SHARED / COMMON --- */
 
-/* Ujjlenyomat Scanner (Register) */
+/* Scan line of the profile ID card (IdCard.tsx). */
 @keyframes scan-vertical {
     0% {
         top: 0%;
@@ -193,325 +775,182 @@
     }
 }
 
-.scanner-beam {
-    position: absolute;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: white;
-    box-shadow: 0 0 15px white;
-    animation: scan-vertical 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+/* Bars of DutyChart grow from the baseline. */
+@keyframes bar-grow {
+    from {
+        transform: scaleY(0);
+    }
+    to {
+        transform: scaleY(1);
+    }
 }
 
-/* Hardcore Overlay Villogás (REC gomb) */
-@keyframes rec-pulse {
+/* Confetti of the monthly recap. */
+@keyframes recap-fall {
+    0% {
+        opacity: 0;
+        translate: 0 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        translate: 12px 520px;
+        rotate: 540deg;
+    }
+}
+
+/* Horizontal bars (rankings, funnels) grow from the left baseline. */
+@keyframes bar-grow-x {
+    from {
+        transform: scaleX(0);
+    }
+    to {
+        transform: scaleX(1);
+    }
+}
+
+/* --- AUTH PAGES --- */
+.auth-shake {
+    animation: auth-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes auth-shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(3px); }
+    30%, 50%, 70% { transform: translateX(-6px); }
+    40%, 60% { transform: translateX(6px); }
+}
+
+/* The registration's ID card: a light sheen sliding across the laminate. */
+.holo-sheen {
+    background: linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.13) 45%, rgb(255 255 255 / 0.04) 52%, transparent 65%);
+    background-size: 250% 100%;
+    animation: holo-sheen 5.5s ease-in-out infinite;
+}
+
+@keyframes holo-sheen {
+    0% { background-position: 120% 0; }
+    60%, 100% { background-position: -120% 0; }
+}
+
+/* --- MCB CASE DOCUMENTS ---
+   BlockNote defines its colours on .bn-container, so a document look overrides them there. */
+.case-surface-default .bn-container { --bn-colors-editor-background: transparent !important; --bn-colors-editor-text: #e2e8f0 !important; }
+.case-surface-default .case-scroll { background: rgb(8 13 26 / 0.55); }
+.case-surface-paper .bn-container { --bn-colors-editor-background: #f5f0e6 !important; --bn-colors-editor-text: #3d342b !important; }
+.case-surface-paper .case-scroll { background: #f5f0e6; }
+.case-surface-classic .bn-container { --bn-colors-editor-background: #ffffff !important; --bn-colors-editor-text: #0f172a !important; }
+.case-surface-classic .case-scroll { background: #e2e8f0; }
+.case-surface-blue .bn-container { --bn-colors-editor-background: #0f172a !important; --bn-colors-editor-text: #bfdbfe !important; }
+.case-surface-blue .case-scroll { background: #0f172a; }
+.case-surface-terminal .bn-container { --bn-colors-editor-background: #0c0c0c !important; --bn-colors-editor-text: #4ade80 !important; }
+.case-surface-terminal .case-scroll { background: #0c0c0c; }
+.case-surface-amber .bn-container { --bn-colors-editor-background: #1a1200 !important; --bn-colors-editor-text: #ffb000 !important; }
+.case-surface-amber .case-scroll { background: #1a1200; }
+.case-document .bn-block-content[data-content-type="table"] { overflow-x: auto; padding-bottom: 12px; }
+/* Phones: BlockNote keeps 54 px on both sides for its drag handles; the text needs the room. */
+@media (width < 40rem) {
+    .case-document .bn-editor { padding-inline: 10px; }
+}
+
+/* @mentions in case documents (officer, person, case), for dark and light looks. */
+.mention-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0 0.1rem;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid transparent;
+    border-radius: 0.45rem;
+    font-size: 0.82em;
+    font-weight: 650;
+    line-height: 1.45;
+    vertical-align: baseline;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.mention-chip:hover { box-shadow: 0 0 0 3px rgb(255 255 255 / 0.06); }
+.mention-officer { background: rgb(14 165 233 / 0.14); color: #7dd3fc; border-color: rgb(56 189 248 / 0.35); }
+.mention-officer:hover { background: rgb(14 165 233 / 0.28); color: #e0f2fe; }
+.mention-suspect { background: rgb(249 115 22 / 0.14); color: #fdba74; border-color: rgb(251 146 60 / 0.38); }
+.mention-suspect:hover { background: rgb(249 115 22 / 0.28); color: #ffedd5; }
+.mention-case { background: rgb(16 185 129 / 0.14); color: #6ee7b7; border-color: rgb(52 211 153 / 0.35); }
+.mention-case:hover { background: rgb(16 185 129 / 0.28); color: #d1fae5; }
+[data-color-scheme="light"] .mention-officer, .print-light .mention-officer { background: #e0f2fe; color: #075985; border-color: #7dd3fc; }
+[data-color-scheme="light"] .mention-suspect, .print-light .mention-suspect { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
+[data-color-scheme="light"] .mention-case, .print-light .mention-case { background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+
+/* Evidence blocks inside documents. */
+.evidence-card { border: 1px solid transparent; border-radius: 1rem; }
+.evidence-dark.evidence-card { background: rgb(8 13 26 / 0.78); border-color: rgb(255 255 255 / 0.09); color: #cbd5e1; }
+.evidence-dark .evidence-media { background: rgb(0 0 0 / 0.35); }
+.evidence-dark .evidence-label { color: #fbbf24; }
+.evidence-light.evidence-card { background: #ffffff; border-color: #e5dccb; color: #334155; box-shadow: 0 1px 3px rgb(15 23 42 / 0.08); }
+.evidence-light .evidence-media { background: #f1f5f9; }
+.evidence-light .evidence-label { color: #b45309; }
+.evidence-card.evidence-bare { background: transparent; border-color: transparent; box-shadow: none; }
+.evidence-caption::placeholder { color: currentColor; opacity: 0.45; }
+.evidence-picker.evidence-dark { background: rgb(2 6 23 / 0.45); border-color: rgb(255 255 255 / 0.16); color: #cbd5e1; }
+.evidence-picker.evidence-light { background: #fffdf7; border-color: #d6c9ad; color: #3f3a33; }
+.evidence-picker .evidence-tile { border: 1px solid rgb(148 163 184 / 0.25); background: rgb(148 163 184 / 0.08); }
+.evidence-picker .evidence-tile:hover { border-color: rgb(245 158 11 / 0.6); box-shadow: 0 8px 20px -12px rgb(245 158 11 / 0.6); }
+.evidence-picker .evidence-search { border: 1px solid rgb(148 163 184 / 0.3); background: rgb(148 163 184 / 0.08); }
+
+/* Case folder tab on list cards and the case header. */
+.case-tab {
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+}
+
+/* Wanted posters: worn paper with a slow light. */
+.wanted-poster {
+    background:
+        radial-gradient(120% 90% at 50% 0%, rgb(255 255 255 / 0.5), transparent 60%),
+        repeating-linear-gradient(0deg, rgb(120 90 40 / 0.04) 0 2px, transparent 2px 5px),
+        #e9dcc0;
+}
+
+/* Printing (the case print view): white paper, no app chrome. */
+@media print {
+    @page { size: A4; margin: 14mm 12mm; }
+    html, body { background: #ffffff !important; }
+    .print-light .bn-container { --bn-colors-editor-background: #ffffff !important; --bn-colors-editor-text: #111827 !important; }
+    .print-break-avoid { break-inside: avoid; }
+    /* A dialog printed on its own (warrants): the app behind it is left out. */
+    body.print-dialog #root { display: none !important; }
+    body.print-dialog [data-slot="dialog-overlay"] { display: none !important; }
+    body.print-dialog [data-slot="dialog-content"] {
+        position: static !important; transform: none !important; max-height: none !important; max-width: none !important;
+        width: 100% !important; overflow: visible !important; padding: 0 !important; box-shadow: none !important;
+    }
+    body.print-dialog .print-hide { display: none !important; }
+}
+
+/* --- TRAININGS ---
+   The tour's spotlight: a rounded hole in a dark veil (one huge shadow), ringed in the training's
+   colour (--tour-ring, "r g b"); action steps pulse. */
+.tour-hole {
+    --tour-veil: rgb(2 6 23 / 0.74);
+    box-shadow: 0 0 0 9999px var(--tour-veil), 0 0 0 2px rgb(var(--tour-ring, 250 204 21) / 0.9), 0 0 30px 6px rgb(var(--tour-ring, 250 204 21) / 0.22);
+}
+
+/* Glides to a new element; while the page scrolls it follows without delay. */
+.tour-hole-glide {
+    transition: top 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), left 0.35s cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), height 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.tour-hole-action {
+    animation: tour-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tour-pulse {
     0%, 100% {
-        opacity: 1;
+        box-shadow: 0 0 0 9999px var(--tour-veil), 0 0 0 2px rgb(var(--tour-ring, 250 204 21) / 0.95), 0 0 0 0 rgb(var(--tour-ring, 250 204 21) / 0.5);
     }
-    50% {
-        opacity: 0.5;
+    60% {
+        box-shadow: 0 0 0 9999px var(--tour-veil), 0 0 0 2px rgb(var(--tour-ring, 250 204 21) / 0.95), 0 0 0 12px rgb(var(--tour-ring, 250 204 21) / 0);
     }
-}
-
-/* --- LOGIN PAGE ANIMÁCIÓK --- */
-
-/* Padló Rács (Floor Grid) */
-@keyframes grid-move-floor {
-    0% {
-        transform: perspective(1000px) rotateX(70deg) translateY(0);
-    }
-    100% {
-        transform: perspective(1000px) rotateX(70deg) translateY(50px);
-    }
-}
-
-.floor-grid {
-    position: absolute;
-    width: 200%;
-    height: 200%;
-    left: -50%;
-    bottom: -40%;
-    background-image: linear-gradient(rgba(30, 41, 59, 0.5) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(30, 41, 59, 0.5) 1px, transparent 1px);
-    background-size: 60px 60px;
-    animation: grid-move-floor 10s linear infinite;
-    mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, transparent 50%);
-    opacity: 0.3;
-}
-
-/* Vízszintes Adatcsíkok (Data Beams) */
-@keyframes beam-slide-right {
-    0% {
-        transform: translateX(-100vw);
-        opacity: 0;
-    }
-    10% {
-        opacity: 1;
-    }
-    90% {
-        opacity: 1;
-    }
-    100% {
-        transform: translateX(100vw);
-        opacity: 0;
-    }
-}
-
-@keyframes beam-slide-left {
-    0% {
-        transform: translateX(100vw);
-        opacity: 0;
-    }
-    10% {
-        opacity: 1;
-    }
-    90% {
-        opacity: 1;
-    }
-    100% {
-        transform: translateX(-100vw);
-        opacity: 0;
-    }
-}
-
-.data-beam {
-    position: absolute;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 1), transparent);
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.8);
-    animation-iteration-count: infinite;
-    animation-timing-function: linear;
-}
-
-/* --- REGISTER PAGE ANIMÁCIÓK (Tactical & Patrol) --- */
-
-/* 1. Keresőfény Mozgása */
-@keyframes search-patrol {
-    0% {
-        left: 10%;
-        top: 10%;
-        transform: scale(1);
-    }
-    25% {
-        left: 60%;
-        top: 20%;
-        transform: scale(1.1);
-    }
-    50% {
-        left: 30%;
-        top: 60%;
-        transform: scale(0.9);
-    }
-    75% {
-        left: 70%;
-        top: 50%;
-        transform: scale(1.15);
-    }
-    100% {
-        left: 10%;
-        top: 10%;
-        transform: scale(1);
-    }
-}
-
-/* 2. Háttérben lévő piros-kék fények */
-@keyframes ambient-pulse {
-    0%, 100% {
-        opacity: 0.15;
-    }
-    50% {
-        opacity: 0.3;
-    }
-}
-
-/* 3. Eső */
-/* Eső Zuhanás */
-@keyframes rain-fall-natural {
-    0% {
-        background-position: 0 0;
-    }
-    100% {
-        background-position: -20px 100vh;
-    }
-}
-
-/* KÖZÖS ALAP */
-.rain-base {
-    position: absolute;
-    inset: -50%;
-    width: 200%;
-    height: 200%;
-
-    background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
-    mix-blend-mode: screen;
-    pointer-events: none;
-}
-
-/* TÁVOLI ESŐ */
-.rain-layer-far {
-    background-size: 400px 400px;
-    opacity: 0.25;
-    animation: rain-fall-natural 1.5s linear infinite;
-    transform: rotate(-10deg) scaleY(4);
-}
-
-/* KÖZELI ESŐ */
-.rain-layer-near {
-    background-size: 800px 800px;
-    opacity: 0.5;
-    animation: rain-fall-natural 0.8s linear infinite;
-    transform: rotate(-10deg) scaleY(12);
-    filter: blur(0.5px);
-}
-
-/* Pára a földön */
-.rain-mist {
-    position: absolute;
-    inset: 0;
-    background-image: url("https://www.transparenttextures.com/patterns/noise.png");
-    opacity: 0.05;
-    mix-blend-mode: overlay;
-    animation: rain-fall-natural 0.5s steps(3) infinite;
-}
-
-/* 4. Köd */
-@keyframes fog-flow {
-    0% {
-        background-position: 0 0;
-    }
-    100% {
-        background-position: 100% 0;
-    }
-}
-
-/* ALAP HÁTTÉR */
-.night-asphalt-bg {
-    position: absolute;
-    inset: 0;
-    background-color: #080a0f;
-    background-image: url("https://www.transparenttextures.com/patterns/asfalt-dark.png");
-    background-size: 500px 500px;
-    z-index: 0;
-}
-
-/* Ambient Járőr Fények */
-.ambient-patrol-bg {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    pointer-events: none;
-    background: radial-gradient(circle at 10% 90%, rgba(220, 38, 38, 0.4), transparent 50%),
-    radial-gradient(circle at 90% 10%, rgba(37, 99, 235, 0.4), transparent 50%);
-    filter: blur(80px);
-    animation: ambient-pulse 8s ease-in-out infinite;
-    mix-blend-mode: screen;
-}
-
-/* KERESŐFÉNY KONTÉNER */
-.searchlight-container {
-    position: absolute;
-    width: 100vw;
-    height: 100vw;
-    max-width: 1200px;
-    max-height: 1200px;
-
-    animation: search-patrol 35s infinite ease-in-out;
-    will-change: left, top, transform;
-    pointer-events: none;
-    z-index: 10;
-
-    -webkit-mask-image: radial-gradient(circle, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, rgba(0, 0, 0, 0) 65%);
-    mask-image: radial-gradient(circle, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, rgba(0, 0, 0, 0) 65%);
-}
-
-/* Réteg 1: Megvilágítás */
-.searchlight-illumination {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-            circle,
-            rgba(255, 230, 160, 0.25) 0%,
-            rgba(234, 179, 8, 0.15) 35%,
-            transparent 70%
-    );
-    mix-blend-mode: screen;
-}
-
-/* Réteg 2: Volumetrikus Köd */
-.volumetric-fog {
-    position: absolute;
-    inset: -50%;
-    width: 200%;
-    height: 200%;
-    background-image: url("https://www.transparenttextures.com/patterns/smoke.png");
-    background-size: 800px 800px;
-    animation: fog-flow 50s linear infinite;
-    opacity: 0.25;
-    mix-blend-mode: overlay;
-}
-
-/* Réteg 3: Eső */
-.rain-layer {
-    position: absolute;
-    inset: -100%;
-    width: 300%;
-    height: 300%;
-    background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
-    background-attachment: fixed;
-    background-size: 450px 450px;
-    animation: rain-fall 0.7s linear infinite;
-    opacity: 0.6;
-    mix-blend-mode: color-dodge;
-}
-
-/* 2. SEB: DRONE SCANNER */
-@keyframes scan-down {
-    0% {
-        transform: translateY(-100%);
-        opacity: 0;
-    }
-    10% {
-        opacity: 1;
-    }
-    90% {
-        opacity: 1;
-    }
-    100% {
-        transform: translateY(100vh);
-        opacity: 0;
-    }
-}
-
-.drone-scan-line {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 5px;
-    background: linear-gradient(90deg, transparent, rgba(220, 38, 38, 0.8), transparent);
-    box-shadow: 0 0 20px rgba(220, 38, 38, 0.8);
-    animation: scan-down 4s linear infinite;
-}
-
-.night-vision-grain {
-    background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
-    opacity: 0.1;
-}
-
-/* 3. MCB: DIGITAL NETWORK */
-@keyframes network-drift {
-    0% {
-        background-position: 0% 0%;
-    }
-    100% {
-        background-position: 100% 100%;
-    }
-}
-
-.digital-network-bg {
-    background-image: radial-gradient(circle, rgba(59, 130, 246, 0.2) 2px, transparent 2.5px),
-    radial-gradient(circle, rgba(59, 130, 246, 0.2) 2px, transparent 2.5px);
-    background-size: 60px 60px;
-    background-position: 0 0, 30px 30px;
-    animation: network-drift 60s linear infinite;
 }

@@ -1,59 +1,83 @@
-const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const UPLOAD_PRESET_EVIDENCE = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-const UPLOAD_PRESET_AVATAR = import.meta.env.VITE_CLOUDINARY_AVATAR_UPLOAD_PRESET;
+import {postApi} from "./api";
+import {env} from "./env";
+import {compressImage, type CompressOptions} from "./image-compression";
+import {sandbox} from "./sandbox/state";
 
-export const uploadToCloudinary = async (file: File, type: 'evidence' | 'avatar' = 'evidence') => {
-  if (!CLOUD_NAME) throw new Error("Hiányzó Cloudinary konfiguráció (.env)");
+export type UploadKind = "evidence" | "avatar" | "academy" | "mugshot";
 
-  const preset = type === 'avatar' ? UPLOAD_PRESET_AVATAR : UPLOAD_PRESET_EVIDENCE;
-  const folder = type === 'avatar' ? 'avatars' : 'evidence';
+interface UploadSettings extends CompressOptions {
+  /** Upload preset (env) to use; defaults to the kind itself. */
+  preset?: "evidence" | "avatar" | "academy";
+  /** Cloudinary folder; `scope` is e.g. the Academy page id. Undefined = preset default. */
+  folder?: (scope?: string) => string;
+  /** `auto` also accepts documents (PDF, DOCX) as raw uploads. */
+  resourceType: "image" | "auto";
+}
+
+const UPLOAD_SETTINGS: Record<UploadKind, UploadSettings> = {
+  // Evidence keeps the preset's default folder, as it always did.
+  evidence: {resourceType: "auto", maxDimension: 2560, quality: 0.9},
+  avatar: {resourceType: "image", folder: () => "avatars", maxDimension: 512, quality: 0.9},
+  academy: {resourceType: "image", folder: (pageId) => `academy/${pageId}`, maxDimension: 1920, quality: 0.88},
+  // Photos of registered persons: the avatar preset, in their own folder.
+  mugshot: {preset: "avatar", resourceType: "image", folder: () => "mugshots", maxDimension: 768, quality: 0.9},
+};
+
+/**
+ * Uploads a file with an unsigned preset and returns its secure URL.
+ * Images are resized and converted to WebP in the browser first.
+ */
+export async function uploadToCloudinary(file: File, kind: UploadKind, scope?: string): Promise<string> {
+  // Practice mode: the picture stays in this tab only.
+  if (sandbox.isActive()) return URL.createObjectURL(file);
+  const {cloudName, presets} = env.cloudinary;
+  const settings = UPLOAD_SETTINGS[kind];
+  const preset = presets[settings.preset ?? (kind as keyof typeof presets)];
+  if (!cloudName || !preset) throw new Error("Hiányzó Cloudinary konfiguráció (.env).");
 
   const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', preset);
-  formData.append('folder', folder);
+  formData.append("file", await compressImage(file, settings));
+  formData.append("upload_preset", preset);
+  if (settings.folder) formData.append("folder", settings.folder(scope));
 
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
-    method: 'POST',
-    body: formData
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${settings.resourceType}/upload`, {
+    method: "POST",
+    body: formData,
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error?.message || 'Cloudinary feltöltési hiba');
-  }
-
-  const data = await response.json();
+  const data = (await response.json().catch(() => ({}))) as {secure_url?: string; error?: {message?: string}};
+  if (!response.ok || !data.secure_url) throw new Error(data.error?.message ?? "Cloudinary feltöltési hiba.");
   return data.secure_url;
-};
+}
 
-export const getOptimizedAvatarUrl = (url: string | null | undefined, size: number = 400) => {
+const isCloudinaryUrl = (url: string) => url.startsWith("https://res.cloudinary.com/") && url.includes("/upload/");
+
+/** Inserts a delivery transformation into a Cloudinary image URL; other URLs pass through. */
+export function withTransformation(url: string | null | undefined, transformation: string): string {
   if (!url) return "";
-  if (!url.includes('cloudinary.com')) return url;
+  if (!isCloudinaryUrl(url) || !url.includes("/image/upload/")) return url;
+  return url.replace("/upload/", `/upload/${transformation}/`);
+}
 
-  const transformation = `c_fill,g_face,w_${size},h_${size},q_auto,f_auto`;
+/** Square, face-centred avatar in the browser's best format (WebP/AVIF). */
+export const getOptimizedAvatarUrl = (url: string | null | undefined, size = 160) =>
+  withTransformation(url, `c_fill,g_face,w_${size},h_${size},q_auto,f_auto`);
 
-  const parts = url.split('/upload/');
-  if (parts.length === 2) {
-    return `${parts[0]}/upload/${transformation}/${parts[1]}`;
+/** Bounded-width image for inline display; the original stays available for zooming. */
+export const getOptimizedImageUrl = (url: string | null | undefined, width = 1600) =>
+  withTransformation(url, `c_limit,w_${width},q_auto,f_auto`);
+
+/**
+ * Asks the server to delete assets that are no longer referenced (replaced avatar,
+ * removed evidence, images dropped from Academy pages). Best effort: failures are
+ * logged, never thrown, so they cannot break the user's main action.
+ */
+export async function deleteCloudinaryAssets(urls: readonly (string | null | undefined)[]): Promise<void> {
+  const unique = [...new Set(urls.filter((url): url is string => !!url && isCloudinaryUrl(url)))];
+  for (let i = 0; i < unique.length; i += 50) {
+    try {
+      await postApi("/api/delete-image", {urls: unique.slice(i, i + 50)});
+    } catch (error) {
+      console.warn("Cloudinary clean-up failed:", error);
+    }
   }
-  return url;
-};
-
-export const getPublicIdFromUrl = (url: string | null) => {
-  if (!url || !url.includes('cloudinary.com')) return null;
-
-  try {
-    const parts = url.split('/upload/');
-    if (parts.length < 2) return null;
-
-    const pathPart = parts[1];
-    const pathWithoutVersion = pathPart.replace(/^v\d+\//, '');
-    const publicId = pathWithoutVersion.substring(0, pathWithoutVersion.lastIndexOf('.'));
-
-    return publicId;
-  } catch (e) {
-    console.error("Error parsing public ID:", e);
-    return null;
-  }
-};
+}

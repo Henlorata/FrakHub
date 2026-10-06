@@ -1,603 +1,856 @@
-import * as React from "react";
-import {useAuth} from "@/context/AuthContext";
-import {useSystemStatus, type AlertLevelId} from "@/context/SystemStatusContext";
-import {Card, CardHeader, CardTitle} from "@/components/ui/card";
-import {Button} from "@/components/ui/button";
-import {Badge} from "@/components/ui/badge";
-import {ScrollArea} from "@/components/ui/scroll-area";
+import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
+import {Link, useNavigate} from "react-router";
+import {toast} from "sonner";
+import {formatDistanceToNowStrict} from "date-fns";
+import {hu} from "date-fns/locale";
 import {
-  Dialog, DialogContent, DialogTitle, DialogFooter, DialogDescription
-} from "@/components/ui/dialog";
+  Activity, AlertOctagon, AlertTriangle, ArrowRight, Banknote, CalendarDays, CalendarOff, CalendarPlus, Car, Check, CheckCircle2,
+  ChevronDown, ChevronRight, ClipboardCheck, Clock, EyeOff, FileSearch, FileText, Fingerprint, Gavel, GraduationCap, Handshake,
+  HelpCircle, Info, MapPin, Megaphone, Pin, Plus, Radio, Receipt, RefreshCw, ScrollText, Shield, Target, Ticket, Trash2, Truck,
+  UserPlus, Users, X, BookCheck, BrainCircuit, HeartHandshake, ListTodo, Medal, MessageSquareLock, UsersRound, Vote,
+} from "lucide-react";
+import {MonthlyRecapDialog} from "@/components/recap/MonthlyRecapDialog";
+import {progressionApi, type Trainee} from "@/lib/progression";
+import {TRAINEE_RANK} from "@shared/ranks";
+import {RECAP_SEEN_KEY} from "@/lib/recognition";
+import {useAuth} from "@/context/AuthContext";
+import {useSystemStatus} from "@/context/SystemStatusContext";
+import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
+import {Switch} from "@/components/ui/switch";
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
+import {useConfirm} from "@/components/ConfirmDialog";
+import {SheriffStar} from "@/components/brand/SheriffStar";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {TONE_CLASSES, type Tone} from "@/components/layout/PageHeader";
+import {ALERT_LEVELS} from "@/lib/alert-levels";
+import {EVENT_KINDS, organisableAudiences, type UpcomingEvent} from "@/lib/events";
+import {canViewCaseList, cn, errorMessage, isStaff, STAFF_CATEGORY_LABELS, type StaffCategory} from "@/lib/utils";
+import {daysSince, formatSpan, rankPillClass} from "@/pages/hr/hr-utils";
 import {
-  Shield,
-  Activity,
-  Users,
-  Radio,
-  CloudRain,
-  Sun,
-  Cloud,
-  Wind,
-  Clock,
-  Bell,
-  ChevronRight,
-  AlertTriangle,
-  FileText,
-  Terminal,
-  Truck,
-  Siren,
-  Database,
-  Lock,
-  Gavel,
-  Plus,
-  Megaphone,
-  Check,
-  Ticket,
-  AlertOctagon,
-  Info,
-  Podcast,
-  Pin,
-  Trash2,
-  EyeOff,
-  User,
-  Eye, GraduationCap, Signal
-} from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog";
-import {useNavigate} from "react-router-dom";
-import {SheriffBackground} from "@/components/SheriffBackground";
-import {cn, isMcbMember, isSupervisory, isHighCommand, isCommand, isExecutive} from "@/lib/utils";
-import {formatDistanceToNow} from "date-fns";
-import {hu} from "date-fns/locale";
-import {toast} from "sonner";
+  daysBetween, formatDate, formatDayLabel, formatLongDate, formatTime, hungarianHour, hungarianParts, todayKey,
+} from "@/lib/datetime";
+import {WhatsNewStrip} from "./WhatsNewStrip";
 
-// --- KONFIGURÁCIÓ ---
-const ALERT_LEVELS: Record<AlertLevelId, { label: string, color: string, icon: any }> = {
-  'normal': {label: 'NORMÁL', color: 'text-green-500', icon: Shield},
-  'traffic': {label: 'FOKOZOTT ELLENŐRZÉS', color: 'text-yellow-500', icon: Activity},
-  'border': {label: 'HATÁRZÁR', color: 'text-orange-500', icon: AlertTriangle},
-  'tactical': {label: 'TAKTIKAI RIADÓ', color: 'text-red-500', icon: Siren},
-};
+interface DashboardSummary {
+  unread_notifications: number;
+  pending_exam_sheets: number;
+  pending_registrations: number | null;
+  pending_leave_requests: number | null;
+  pending_vehicle_requests: number | null;
+  pending_budget_requests: number | null;
+  pending_warrants: number | null;
+  my_open_cases: number | null;
+  my_pending_requests: number;
+  my_active_warnings: number;
+  my_vehicle_warnings?: number;
+  my_vehicles_due?: number;
+  fleet_registration_due?: number | null;
+  fleet_registration_reviews?: number | null;
+  members_total: number;
+  members_on_leave: number;
+  my_month?: MonthProgress;
+  upcoming_events?: UpcomingEvent[];
+  /** The caller's open case tasks (assignee) and the overdue ones. */
+  my_case_tasks?: {open: number; overdue: number};
+  policies_to_acknowledge?: number;
+  open_polls?: number;
+  nominations_pending?: number | null;
+  trainees_ready?: number | null;
+  trainees_without_mentor?: number | null;
+  mentees?: number;
+  feedback_new?: number | null;
+  /** The month the end-of-month recap is about (null: not yet). */
+  recap_month?: string | null;
+  /** The member's joining day in the HR registry (null: not recorded, the account's creation counts). */
+  joined_on?: string | null;
+}
 
-// --- SEGÉD: RANG KATEGÓRIA ---
-const getStaffCategory = (rank: string) => {
-  const EXECUTIVE = ['Commander', 'Deputy Commander'];
-  const COMMAND = ['Captain III.', 'Captain II.', 'Captain I.', 'Lieutenant II.', 'Lieutenant I.'];
-  const SUPERVISORY = ['Sergeant II.', 'Sergeant I.'];
+/** The member's month against the requirements (duty time is recorded by staff at the meetings). */
+interface MonthProgress {
+  month: string;
+  reports: number;
+  duty_minutes: number | null;
+  duty_updated_at: string | null;
+  min_reports: number | null;
+  min_duty_hours: number | null;
+  /** The next duty pay tier above the recorded time: its hours and the extra pay. */
+  next_tier?: {hours: number; gain: number} | null;
+}
 
-  if (EXECUTIVE.includes(rank)) return "EXECUTIVE STAFF";
-  if (COMMAND.includes(rank)) return "COMMAND STAFF";
-  if (SUPERVISORY.includes(rank)) return "SUPERVISORY STAFF";
-  return "SHERIFF'S DEPARTMENT";
-};
+interface FeedAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  type: "info" | "alert" | "training";
+  is_pinned: boolean;
+  show_author: boolean;
+  created_at: string;
+  created_by: string | null;
+  author_name: string | null;
+  author_rank: string | null;
+  author_category: StaffCategory;
+  can_delete: boolean;
+}
 
-// --- WIDGETEK ---
-const WeatherWidget = () => {
-  const weather = React.useMemo(() => {
-    const types = [
-      {icon: Sun, label: "Tiszta", temp: "24°C", color: "text-yellow-500"},
-      {icon: Cloud, label: "Felhős", temp: "19°C", color: "text-slate-400"},
-      {icon: CloudRain, label: "Esős", temp: "16°C", color: "text-blue-400"},
-      {icon: Wind, label: "Szeles", temp: "18°C", color: "text-slate-300"},
-    ];
-    return types[Math.floor(Math.random() * types.length)];
-  }, []);
-  const Icon = weather.icon;
-  return (
-    <div
-      className="flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border border-slate-800 backdrop-blur-md shadow-lg group hover:border-slate-700 transition-all">
-      <div className={`p-2 rounded-lg bg-slate-900 ${weather.color}`}><Icon className="w-6 h-6"/></div>
-      <div>
-        <div className="text-lg font-bold text-white leading-none">{weather.temp}</div>
-        <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{weather.label}</div>
-      </div>
-    </div>
-  );
-};
+const ANNOUNCEMENT_TYPES = {
+  info: {label: "Információ", icon: Info, tone: "text-sky-300 bg-sky-500/10 ring-sky-500/30", bar: "from-sky-400 to-indigo-500"},
+  alert: {label: "Riasztás", icon: AlertTriangle, tone: "text-red-300 bg-red-500/10 ring-red-500/30", bar: "from-red-400 to-rose-600"},
+  training: {label: "Képzés", icon: GraduationCap, tone: "text-emerald-300 bg-emerald-500/10 ring-emerald-500/30", bar: "from-emerald-300 to-teal-600"},
+} as const;
 
-const ClockWidget = () => {
-  const [time, setTime] = React.useState(new Date());
-  React.useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return (
-    <div
-      className="flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border border-slate-800 backdrop-blur-md shadow-lg group hover:border-slate-700 transition-all">
-      <div className="p-2 rounded-lg bg-slate-900 text-blue-500"><Clock className="w-6 h-6"/></div>
-      <div>
-        <div className="text-lg font-mono font-bold text-white leading-none">{time.toLocaleTimeString('hu-HU', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })}</div>
-        <div
-          className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{time.toLocaleDateString('hu-HU', {
-          month: 'short',
-          day: 'numeric'
-        })}</div>
-      </div>
-    </div>
-  );
-};
-
-// --- MODUL KÁRTYA ---
-const ModuleCard = ({title, desc, icon: Icon, colorClass, onClick, locked = false}: any) => (
-  <div onClick={!locked ? onClick : undefined}
-       className={cn("relative overflow-hidden rounded-xl border p-6 transition-all group cursor-pointer flex flex-col justify-between h-[160px]",
-         locked ? "bg-slate-950/40 border-slate-800/50 opacity-50 cursor-not-allowed" : "bg-slate-900/80 border-slate-700/50 hover:border-yellow-500/50 hover:bg-slate-900 hover:shadow-lg hover:shadow-yellow-500/10 backdrop-blur-sm")}
-  >
-    <div
-      className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
-    <div
-      className={`absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-3xl transition-opacity opacity-0 group-hover:opacity-20 ${colorClass.replace('text-', 'bg-')}`}></div>
-    <div className="relative z-10">
-      <div
-        className={cn("w-10 h-10 rounded-lg flex items-center justify-center mb-3 transition-all group-hover:scale-110", locked ? "bg-slate-900 text-slate-600" : "bg-slate-950 border border-slate-800", colorClass)}>
-        {locked ? <Lock className="w-5 h-5"/> : <Icon className="w-5 h-5"/>}
-      </div>
-      <h3
-        className={cn("text-base font-black uppercase tracking-tight mb-1", locked ? "text-slate-500" : "text-white group-hover:text-yellow-500 transition-colors")}>{title}</h3>
-      <p className="text-[10px] text-slate-400 font-medium line-clamp-2 leading-relaxed">{desc}</p>
-    </div>
-    {!locked && (<div className="relative z-10 mt-auto pt-2 flex justify-end"><ChevronRight
-      className="w-4 h-4 text-slate-600 group-hover:text-yellow-500 group-hover:translate-x-1 transition-all"/></div>)}
-  </div>
-);
-
-// --- HIRDETÉS DIALÓGUS ---
-const NewAnnouncementDialog = ({open, onOpenChange, onSuccess}: {
-  open: boolean,
-  onOpenChange: (o: boolean) => void,
-  onSuccess: () => void
-}) => {
-  const {supabase, user} = useAuth();
-  const [title, setTitle] = React.useState("");
-  const [content, setContent] = React.useState("");
-  const [type, setType] = React.useState("info");
-  const [isPinned, setIsPinned] = React.useState(false);
-  const [showAuthor, setShowAuthor] = React.useState(true);
-  const [loading, setLoading] = React.useState(false);
-
-  const handleSubmit = async () => {
-    if (!title || !content) return toast.error("Minden mező kötelező!");
-    setLoading(true);
-    try {
-      const {error} = await supabase.from('announcements').insert({
-        title, content, type, created_by: user?.id,
-        is_pinned: isPinned, show_author: showAuthor
-      });
-      if (error) throw error;
-      toast.success("Hirdetés közzétéve!");
-      onSuccess();
-      onOpenChange(false);
-      setTitle("");
-      setContent("");
-      setIsPinned(false);
-      setShowAuthor(true);
-    } catch (e) {
-      toast.error("Hiba történt.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const TypeCard = ({id, label, icon: Icon, colorClass, activeClass, borderColor}: any) => (
-    <div onClick={() => setType(id)}
-         className={cn("flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all flex-1 select-none", type === id ? cn("bg-slate-900/80", borderColor, activeClass) : "bg-slate-950 border-slate-800 text-slate-500 hover:bg-slate-900 hover:border-slate-700")}>
-      <Icon className={cn("w-6 h-6 mb-2 transition-colors", type === id ? colorClass : "text-slate-600")}/>
-      <span className="text-[10px] font-black uppercase tracking-wider">{label}</span>
-    </div>
-  );
-
-  // Jól látható Toggle Kártya
-  const ToggleOption = ({label, description, active, onChange, icon: Icon, activeColor, activeText}: any) => (
-    <div onClick={() => onChange(!active)}
-         className={cn("flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all select-none", active ? cn("bg-slate-900/80", activeColor) : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700")}>
-      <div className="flex items-center gap-3">
-        <div className={cn("p-2 rounded-md", active ? "bg-white/10 text-white" : "bg-slate-900 text-slate-600")}><Icon
-          className="w-5 h-5"/></div>
-        <div>
-          <div
-            className={cn("text-xs font-bold uppercase tracking-wider", active ? "text-white" : "text-slate-500")}>{label}</div>
-          <div className="text-[9px] text-slate-600 font-bold">{description}</div>
-        </div>
-      </div>
-      <div
-        className={cn("px-2 py-1 rounded text-[9px] font-black uppercase", active ? activeText : "bg-slate-900 text-slate-600")}>
-        {active ? "AKTÍV" : "KI"}
-      </div>
-    </div>
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="bg-[#0b1221] border border-yellow-500/30 text-white sm:max-w-lg shadow-[0_0_40px_rgba(234,179,8,0.15)] p-0 overflow-hidden">
-        <div className="bg-yellow-500/10 border-b border-yellow-500/20 p-5 flex items-center gap-3">
-          <div className="p-2 rounded bg-yellow-500/10 border border-yellow-500/30 text-yellow-500"><Podcast
-            className="w-5 h-5"/></div>
-          <div><DialogTitle className="text-lg font-black uppercase tracking-tight">ADÁS
-            INDÍTÁSA</DialogTitle><DialogDescription
-            className="text-[10px] text-yellow-500/60 font-mono uppercase tracking-widest font-bold">Secure Broadcast
-            Terminal</DialogDescription></div>
-        </div>
-        <div className="p-6 space-y-5">
-          <div className="space-y-2"><Label
-            className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">Kategória</Label>
-            <div className="flex gap-3"><TypeCard id="info" label="INFO" icon={Info} colorClass="text-blue-400"
-                                                  activeClass="text-blue-100" borderColor="border-blue-500"/><TypeCard
-              id="alert" label="RIASZTÁS" icon={AlertTriangle} colorClass="text-red-500" activeClass="text-red-100"
-              borderColor="border-red-500"/><TypeCard id="training" label="KÉPZÉS" icon={GraduationCap}
-                                                      colorClass="text-green-500" activeClass="text-green-100"
-                                                      borderColor="border-green-500"/></div>
-          </div>
-          <div className="space-y-1.5"><Label
-            className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">Címsor</Label><Input
-            value={title} onChange={e => setTitle(e.target.value)}
-            className="bg-slate-950 border-slate-800 focus-visible:ring-yellow-500/50 font-bold"
-            placeholder="Rövid cím..."/></div>
-          <div className="space-y-1.5"><Label
-            className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">Üzenet</Label><Textarea
-            value={content} onChange={e => setContent(e.target.value)}
-            className="bg-slate-950 border-slate-800 h-32 resize-none break-words whitespace-pre-wrap text-sm leading-relaxed placeholder:text-slate-700 break-all"
-            placeholder="Írd ide az üzenetet..."/></div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800">
-            <ToggleOption label="KIEMELÉS" description="Lista tetejére rögzít" active={isPinned} onChange={setIsPinned}
-                          icon={Pin} activeColor="border-yellow-500/50 shadow-yellow-900/20"
-                          activeText="bg-yellow-500 text-black"/>
-            <ToggleOption label="ALÁÍRÁS" description={showAuthor ? "Név megjelenítése" : "Csak rang látszik"}
-                          active={showAuthor} onChange={setShowAuthor} icon={showAuthor ? Eye : EyeOff}
-                          activeColor="border-blue-500/50 shadow-blue-900/20" activeText="bg-blue-500 text-white"/>
-          </div>
-        </div>
-        <DialogFooter className="p-5 bg-slate-950 border-t border-slate-800 flex justify-between"><Button
-          variant="ghost" onClick={() => onOpenChange(false)}
-          className="hover:bg-slate-900 text-slate-400 text-xs font-bold uppercase">Mégse</Button><Button
-          onClick={handleSubmit} disabled={loading}
-          className="bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase tracking-widest px-6 shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:scale-105 transition-all"><Signal
-          className="w-4 h-4 mr-2"/> ADÁS KÜLDÉSE</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-// --- STÁTUSZ KEZELŐ ---
-const StatusControlDialog = ({open, onOpenChange}: { open: boolean, onOpenChange: (o: boolean) => void }) => {
-  const {alertLevel, setAlertLevel, recruitmentOpen, toggleRecruitment} = useSystemStatus();
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#0b1221] border border-slate-800 text-white sm:max-w-sm p-0 shadow-2xl">
-        <div className="bg-slate-900/50 border-b border-slate-800 p-4"><DialogTitle
-          className="text-sm font-bold uppercase tracking-wider flex items-center gap-2"><Activity
-          className="w-4 h-4 text-blue-500"/> Rendszer Státusz</DialogTitle></div>
-        <div className="p-6 space-y-6">
-          <div className="space-y-3">
-            <Label className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">Riasztási Szint
-              (DEFCON)</Label>
-            <div className="grid grid-cols-1 gap-2">
-              {(Object.keys(ALERT_LEVELS) as AlertLevelId[]).map((level) => (
-                <div key={level} onClick={() => setAlertLevel(level)}
-                     className={cn("flex items-center justify-between p-3 rounded border cursor-pointer transition-all", alertLevel === level ? "bg-slate-800 border-yellow-500/50" : "bg-slate-950 border-slate-800 hover:bg-slate-900")}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${ALERT_LEVELS[level].color.replace('text-', 'bg-')}`}></div>
-                    <span
-                      className={cn("text-xs font-bold uppercase", alertLevel === level ? "text-white" : "text-slate-400")}>{ALERT_LEVELS[level].label}</span>
-                  </div>
-                  {alertLevel === level && <Check className="w-3 h-3 text-yellow-500"/>}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-3 pt-4 border-t border-slate-800">
-            <Label className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">TGF Kapu</Label>
-            <Button onClick={toggleRecruitment}
-                    className={cn("w-full font-bold h-9 text-xs uppercase tracking-wider", recruitmentOpen ? "bg-green-600 hover:bg-green-500" : "bg-red-600 hover:bg-red-500")}>{recruitmentOpen ? "TGF NYITVA (Lezárás)" : "TGF ZÁRVA (Megnyitás)"}</Button>
-          </div>
-        </div>
-        <DialogFooter className="p-4 bg-slate-950 border-t border-slate-800"><Button variant="ghost" size="sm"
-                                                                                     onClick={() => onOpenChange(false)}>Bezárás</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const FeedItem = ({item, onDelete, currentUser}: { item: any, onDelete: (id: string) => void, currentUser: any }) => {
-  const canDelete = (currentUser.id === item.created_by) || isCommand(currentUser) || isExecutive(currentUser) || currentUser.is_bureau_manager;
-
-  // Executive Staff mindig látja az adatokat
-  const isExec = isExecutive(currentUser);
-
-  // Megjelenítendő adatok logikája
-  const showRealData = item.show_author || isExec;
-
-  // Ez jelzi, hogy csak a rang miatt látjuk-e (Privileged View)
-  const isPrivilegedView = !item.show_author && isExec;
-
-  const authorName = showRealData ? item.profiles?.full_name : getStaffCategory(item.profiles?.faction_rank);
-  const authorRank = showRealData ? item.profiles?.faction_rank : "CLASSIFIED";
-
-  return (
-    <div
-      className={cn("p-4 border-l-4 bg-slate-950/40 hover:bg-slate-950/60 hover:border-yellow-500/50 transition-all rounded-r-lg group mb-3 relative", item.is_pinned ? "border-yellow-500 bg-yellow-900/10" : "border-slate-700")}>
-      <div className="flex justify-between items-start mb-2">
-        <div className="flex gap-2 items-center">
-          {item.is_pinned && <Pin className="w-3 h-3 text-yellow-500 fill-current rotate-45"/>}
-          <Badge variant="outline"
-                 className={cn("text-[9px] h-5 uppercase border-opacity-50", item.type === 'alert' ? "text-red-400 border-red-500 bg-red-500/10" : item.type === 'training' ? "text-blue-400 border-blue-500 bg-blue-500/10" : "text-slate-400 border-slate-600 bg-slate-500/10")}>{item.type === 'alert' ? 'RIASZTÁS' : item.type === 'training' ? 'KÉPZÉS' : 'INFÓ'}</Badge>
-          <span className="text-[9px] text-slate-600 font-mono">{formatDistanceToNow(new Date(item.created_at), {
-            locale: hu,
-            addSuffix: true
-          })}</span>
-        </div>
-        {canDelete && <Button size="icon" variant="ghost"
-                              className="h-5 w-5 text-slate-600 hover:text-red-500 -mr-2 opacity-0 group-hover:opacity-100 transition-all"
-                              onClick={() => onDelete(item.id)}><Trash2 className="w-3 h-3"/></Button>}
-      </div>
-      <h4
-        className="text-sm font-bold text-white group-hover:text-yellow-500 transition-colors mb-2 break-all">{item.title}</h4>
-      <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap break-all mb-3">{item.content}</div>
-      <div className="pt-2 border-t border-white/5 flex flex-wrap items-center gap-2">
-        <div
-          className={cn("w-1.5 h-1.5 rounded-full", item.show_author ? "bg-green-500" : (isExec ? "bg-red-500" : "bg-blue-500"))}></div>
-        <div className="text-[9px] text-slate-500 font-mono uppercase flex items-center gap-1 flex-wrap">
-          <span>FROM:</span>
-          <span
-            className={cn("font-bold", item.show_author ? "text-slate-300" : (isExec ? "text-red-400" : "text-blue-400"))}>{authorName}</span>
-
-          {isPrivilegedView && (
-            <span
-              className="flex items-center gap-1 bg-red-500/10 border border-red-500/30 text-red-400 px-1.5 py-0.5 rounded text-[8px] tracking-wider ml-1"
-              title="Ez az információ mások számára rejtett">
-              <EyeOff className="w-2.5 h-2.5"/> REJTETT
-            </span>
-          )}
-
-          <span className="mx-1 text-slate-700">|</span>
-          <span>RANK: {authorRank}</span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- ACTION LOG ITEM ---
-const ActionItem = ({log}: { log: any }) => (
-  <div className="flex items-start gap-3 p-3 border-b border-slate-800/50 hover:bg-slate-900/30 transition-colors">
-    <div
-      className={cn("p-1.5 rounded bg-slate-950 border shrink-0", log.action_type === 'arrest' ? "border-red-900/50 text-red-500" : log.action_type === 'ticket' ? "border-orange-900/50 text-orange-500" : "border-blue-900/50 text-blue-500")}>
-      {log.action_type === 'arrest' ? <AlertOctagon className="w-3 h-3"/> : log.action_type === 'ticket' ?
-        <Ticket className="w-3 h-3"/> : <Info className="w-3 h-3"/>}
-    </div>
-    <div className="min-w-0 flex-1">
-      <div className="flex justify-between items-baseline">
-            <span
-              className={cn("text-xs font-black uppercase tracking-wide", log.action_type === 'arrest' ? "text-red-400" : log.action_type === 'ticket' ? "text-orange-400" : "text-blue-400")}>
-               {log.action_type === 'arrest' ? 'LETARTÓZTATÁS' : log.action_type === 'ticket' ? 'BÍRSÁG' : 'NAPLÓ'}
-            </span>
-        <span className="text-[9px] text-slate-500 font-mono">{new Date(log.created_at).toLocaleTimeString('hu-HU', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })}</span>
-      </div>
-      <div className="flex items-center gap-1 mt-0.5">
-        <User className="w-2.5 h-2.5 text-slate-600"/>
-        <span className="text-[10px] font-bold text-slate-300">{log.profiles?.full_name || "Ismeretlen"}</span>
-        <span className="text-[9px] text-slate-600">#{log.profiles?.badge_number}</span>
-      </div>
-      <p
-        className="text-[10px] text-slate-400 mt-1 leading-snug border-l-2 border-slate-800 pl-2 italic break-all whitespace-pre-wrap">{log.details}</p>
-    </div>
-  </div>
-);
+const ago = (iso: string) => formatDistanceToNowStrict(new Date(iso), {addSuffix: true, locale: hu});
 
 export function DashboardPage() {
   const {profile, supabase} = useAuth();
-  const {alertLevel} = useSystemStatus();
   const navigate = useNavigate();
+  const confirm = useConfirm();
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summaryLoaded, setSummaryLoaded] = useState(false);
+  const [announcements, setAnnouncements] = useState<FeedAnnouncement[] | null>(null);
+  const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
 
-  const [announcements, setAnnouncements] = React.useState<any[]>([]);
-  const [actionLogs, setActionLogs] = React.useState<any[]>([]);
-  const [activeUnitCount, setActiveUnitCount] = React.useState(0);
-  const [isAnnouncementOpen, setIsAnnouncementOpen] = React.useState(false);
-  const [isStatusOpen, setIsStatusOpen] = React.useState(false);
-  const [deleteId, setDeleteId] = React.useState<string | null>(null);
+  // The end-of-month recap opens once per month (remembered in the browser).
+  useEffect(() => {
+    const month = summary?.recap_month;
+    if (!month || localStorage.getItem(RECAP_SEEN_KEY) === month) return;
+    const timer = setTimeout(() => setRecapOpen(true), 900);
+    return () => clearTimeout(timer);
+  }, [summary?.recap_month]);
+  const closeRecap = (open: boolean) => {
+    setRecapOpen(open);
+    if (!open && summary?.recap_month) localStorage.setItem(RECAP_SEEN_KEY, summary.recap_month);
+  };
 
-  const fetchData = React.useCallback(async () => {
-    const {data: news} = await supabase.from('announcements').select('*, profiles(full_name, faction_rank)').order('is_pinned', {ascending: false}).order('created_at', {ascending: false}).limit(10);
-    if (news) setAnnouncements(news);
-
-    const {count} = await supabase.from('profiles').select('id', {
-      count: 'exact',
-      head: true
-    }).neq('system_role', 'pending');
-    setActiveUnitCount(count || 0);
-
-    const {data: logs} = await supabase.from('action_logs').select('*, profiles!action_logs_user_id_fkey(full_name, badge_number)').order('created_at', {ascending: false}).limit(8);
-    if (logs) setActionLogs(logs);
+  const loadAnnouncements = useCallback(async () => {
+    const {data, error} = await supabase.rpc("get_announcements", {_limit: 12});
+    if (!error) setAnnouncements((data ?? []) as FeedAnnouncement[]);
   }, [supabase]);
 
-  React.useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const handleDeleteAnnouncement = async (id: string) => {
-    setDeleteId(id);
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteId) return;
-    const {error} = await supabase.from('announcements').delete().eq('id', deleteId);
-    if (error) toast.error("Hiba a törléskor."); else {
-      toast.success("Törölve.");
-      fetchData();
-    }
-    setDeleteId(null);
-  };
-
-  const greeting = React.useMemo(() => {
-    const h = new Date().getHours();
-    return h < 6 ? "Jó éjszakát" : h < 10 ? "Jó reggelt" : h < 18 ? "Szép napot" : "Jó estét";
-  }, []);
+  // Two requests: every counter, the member's month and the next events come from one RPC, plus the announcements.
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      supabase.rpc("get_dashboard_summary"),
+      supabase.rpc("get_announcements", {_limit: 12}),
+    ]).then(([summaryResult, announcementResult]) => {
+      if (!active) return;
+      if (!summaryResult.error) setSummary(summaryResult.data as DashboardSummary);
+      setSummaryLoaded(true);
+      setAnnouncements((announcementResult.data ?? []) as FeedAnnouncement[]);
+    });
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
 
   if (!profile) return null;
-  const canCreateNews = profile.system_role === 'admin' || isHighCommand(profile) || isSupervisory(profile);
-  const canManageStatus = profile.system_role === 'admin' || isHighCommand(profile);
-  const alertInfo = ALERT_LEVELS[alertLevel];
+  const canPost = isStaff(profile);
+
+  const deleteAnnouncement = async (item: FeedAnnouncement) => {
+    if (!(await confirm({title: "Hirdetmény törlése", description: `Törlöd: „${item.title}”? A művelet nem vonható vissza.`,
+      confirmLabel: "Törlés", destructive: true, kind: "delete"}))) return;
+    const {error} = await supabase.from("announcements").delete().eq("id", item.id);
+    if (error) toast.error("A hirdetmény törlése nem sikerült.");
+    else {
+      setAnnouncements((prev) => (prev ?? []).filter((entry) => entry.id !== item.id));
+      toast.success("Hirdetmény törölve.");
+    }
+  };
+
+  // Only what needs attention right now; zero counters stay hidden.
+  const tasks: {label: string; value: number | null | undefined; icon: typeof Info; tone: Tone; to: string}[] = [
+    {label: "Javítandó vizsgalap", value: summary?.pending_exam_sheets, icon: ClipboardCheck, tone: "violet", to: "/exams?tab=grading"},
+    {label: "Jóváhagyásra váró parancs", value: summary?.pending_warrants, icon: Gavel, tone: "red", to: "/mcb/warrants"},
+    {label: "Új regisztráció", value: summary?.pending_registrations, icon: UserPlus, tone: "emerald", to: "/hr?tab=requests"},
+    {label: "Szabadságkérelem", value: summary?.pending_leave_requests, icon: CalendarOff, tone: "blue", to: "/hr?tab=requests"},
+    {label: "Járműigénylés", value: summary?.pending_vehicle_requests, icon: Truck, tone: "orange", to: "/logistics"},
+    {label: "Költségtérítés", value: summary?.pending_budget_requests, icon: Receipt, tone: "emerald", to: "/finance"},
+    {label: "Forgalmi ellenőrzésre vár", value: summary?.fleet_registration_reviews, icon: FileSearch, tone: "orange", to: "/logistics?tab=fleet&view=reviews"},
+    {label: "Lejáró forgalmi a flottában", value: summary?.fleet_registration_due, icon: Car, tone: "orange", to: "/logistics?tab=fleet"},
+    {label: "Nyitott aktám", value: summary?.my_open_cases, icon: Fingerprint, tone: "blue", to: "/mcb"},
+    {label: "Járművem forgalmija", value: summary?.my_vehicles_due, icon: Car, tone: "gold", to: "/logistics?tab=fleet"},
+    {label: "Lejárt teendőm egy aktában", value: summary?.my_case_tasks?.overdue, icon: ListTodo, tone: "red", to: "/mcb"},
+    {label: "Nyitott teendőm egy aktában", value: (summary?.my_case_tasks?.open ?? 0) - (summary?.my_case_tasks?.overdue ?? 0), icon: ListTodo, tone: "blue", to: "/mcb"},
+    {label: "Elolvasandó szabályzat", value: summary?.policies_to_acknowledge, icon: BookCheck, tone: "emerald", to: "/policies"},
+    {label: "Szavazás vár rád", value: summary?.open_polls, icon: Vote, tone: "violet", to: "/community"},
+    {label: "Előléptetési javaslat", value: summary?.nominations_pending, icon: Medal, tone: "gold", to: "/hr?tab=promotions"},
+    {label: "Felavatásra kész Trainee", value: summary?.trainees_ready, icon: GraduationCap, tone: "emerald", to: "/hr?tab=trainees"},
+    {label: "Mentor nélküli Trainee", value: summary?.trainees_without_mentor, icon: HeartHandshake, tone: "orange", to: "/hr?tab=trainees"},
+    {label: "Mentorált Trainee-m", value: summary?.mentees, icon: HeartHandshake, tone: "cyan", to: "/hr?tab=trainees"},
+    {label: "Új névtelen visszajelzés", value: summary?.feedback_new, icon: MessageSquareLock, tone: "violet", to: "/community?tab=feedback&box=inbox"},
+  ];
+  const openTasks = tasks.filter((task) => (task.value ?? 0) > 0);
 
   return (
-    <div className="min-h-screen bg-[#050a14] relative overflow-hidden pb-20">
-      <SheriffBackground side="left"/>
+    // Few blocks: kept to a readable width on large screens instead of being stretched apart.
+    <div className="mx-auto w-full max-w-[1440px] space-y-6">
+      <NewAnnouncementDialog open={isAnnouncementOpen} onOpenChange={setIsAnnouncementOpen} onCreated={loadAnnouncements}/>
+      <MonthlyRecapDialog month={summary?.recap_month ?? null} open={recapOpen} onOpenChange={closeRecap}/>
 
-      <NewAnnouncementDialog open={isAnnouncementOpen} onOpenChange={setIsAnnouncementOpen} onSuccess={fetchData}/>
-      <StatusControlDialog open={isStatusOpen} onOpenChange={setIsStatusOpen}/>
+      <Hero summary={summary} openTasks={openTasks.length}/>
 
-      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
-        <AlertDialogContent className="bg-[#0b1221] border border-red-900/50 text-white">
-          <AlertDialogHeader><AlertDialogTitle className="text-red-500 flex items-center gap-2"><Trash2
-            className="w-5 h-5"/> HIRDETÉS TÖRLÉSE</AlertDialogTitle><AlertDialogDescription className="text-slate-400">Biztosan
-            törlöd ezt a hirdetményt? A művelet nem visszavonható.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel
-            className="bg-slate-900 border-slate-700 hover:bg-slate-800 text-white">Mégse</AlertDialogCancel><AlertDialogAction
-            onClick={confirmDelete}
-            className="bg-red-600 hover:bg-red-700 border-none text-white font-bold">Törlés</AlertDialogAction></AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <WhatsNewStrip/>
 
-      <div className="max-w-[1600px] mx-auto px-6 py-10 relative z-10">
-        {/* HEADER */}
-        <div
-          className="flex flex-col lg:flex-row justify-between items-end gap-8 mb-10 animate-in fade-in slide-in-from-top-4 duration-700">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-yellow-500/80 mb-2"><Shield className="w-5 h-5"/><span
-              className="text-xs font-bold uppercase tracking-[0.3em]">San Fierro Sheriff's Dept.</span></div>
-            <h1
-              className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter leading-none drop-shadow-lg">{greeting}, <br/><span
-              className="text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">{profile.full_name.split(' ')[0]}.</span>
-            </h1>
-            <div className="flex items-center gap-3 pt-2"><Badge variant="outline"
-                                                                 className="border-slate-600 text-slate-300 font-mono uppercase">{profile.faction_rank}</Badge><Badge
-              className="bg-yellow-600 text-black font-bold font-mono border-none">#{profile.badge_number}</Badge></div>
-          </div>
-          <div className="flex flex-wrap gap-4 items-center">
-            <WeatherWidget/> <ClockWidget/>
-            <div onClick={() => canManageStatus && setIsStatusOpen(true)}
-                 className={cn("flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border backdrop-blur-md px-6 shadow-lg transition-all", canManageStatus ? "cursor-pointer hover:bg-slate-900 hover:scale-105" : "cursor-default", alertLevel === 'tactical' ? "border-red-500/50 bg-red-950/40" : alertLevel === 'border' ? "border-orange-500/50 bg-orange-950/40" : "border-green-500/30 bg-green-950/20")}>
-              <div>
-                <div
-                  className={cn("text-lg font-black uppercase italic tracking-tighter leading-none drop-shadow-md", alertInfo.color)}>{alertInfo.label}</div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-1">Jelenlegi
-                  Készültség {canManageStatus && "(Kezelés)"}</div>
-              </div>
-              {canManageStatus &&
-                <div className="p-1 rounded bg-black/30 text-white"><Shield className="w-4 h-4"/></div>}
-            </div>
-          </div>
+      {openTasks.length > 0 && (
+        <section aria-label="Teendők" data-tour="dashboard-tasks" className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-3">
+          {openTasks.map((task, index) => {
+            const tone = TONE_CLASSES[task.tone];
+            return (
+              <button key={task.label} type="button" onClick={() => navigate(task.to)} style={{"--i": index} as CSSProperties}
+                      className="panel lift animate-rise group flex min-w-0 items-center gap-3 px-4 py-3 text-left">
+                <div className={cn("grid size-10 shrink-0 place-items-center rounded-xl ring-1", tone.tile)}><task.icon className="size-5"/></div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xl font-semibold leading-tight text-white tabular-nums">{task.value}</div>
+                  <div className="truncate text-xs text-muted-foreground">{task.label}</div>
+                </div>
+                <ArrowRight className="size-4 text-slate-600 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-200"/>
+              </button>
+            );
+          })}
+        </section>
+      )}
+
+      {/* The wide column holds what is always full (shortcuts, the activity of the day); announcements are rare, so they
+          share the side column with the member's month and the next events instead of leaving a gap in the middle. */}
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <ModuleGrid/>
+          <ActivityLog/>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* LEFT: MODULES */}
-          <div className="lg:col-span-8 space-y-8 animate-in slide-in-from-left-8 duration-700 delay-100">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div
-                className="bg-slate-900/60 border border-slate-800/50 p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm shadow-md">
-                <div className="p-2 bg-blue-500/10 rounded-full"><Users className="w-5 h-5 text-blue-500"/></div>
-                <div>
-                  <div className="text-xl font-bold text-white">{activeUnitCount}</div>
-                  <div className="text-[10px] text-slate-500 uppercase font-bold">Aktív Egység</div>
-                </div>
-              </div>
-              <div
-                className="bg-slate-900/60 border border-slate-800/50 p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm shadow-md">
-                <div className="p-2 bg-green-500/10 rounded-full"><Radio className="w-5 h-5 text-green-500"/></div>
-                <div>
-                  <div className="text-xl font-bold text-white">ONLINE</div>
-                  <div className="text-[10px] text-slate-500 uppercase font-bold">Rádió Status</div>
-                </div>
-              </div>
-              <div
-                className="bg-slate-900/60 border border-slate-800/50 p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm shadow-md">
-                <Activity className="w-6 h-6 text-yellow-500"/>
-                <div className="w-full">
-                  <div className="flex justify-between text-[10px] text-slate-500 uppercase font-bold mb-1"><span>Rendszer Terhelés</span><span
-                    className="text-white">STABIL</span></div>
-                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full w-[12%] bg-yellow-500 rounded-full shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div>
-              <h3
-                className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 pl-1 mb-4">
-                <Terminal className="w-4 h-4"/> Rendszer Modulok</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <ModuleCard title="NYOMOZÓ IRODA" desc="Akták, gyanúsítottak, körözések." icon={Siren}
-                            colorClass="text-blue-500" onClick={() => navigate('/mcb')}
-                            locked={!isMcbMember(profile) && !isSupervisory(profile) && profile.system_role !== 'admin'}/>
-                <ModuleCard title="LOGISZTIKA" desc="Járműigénylés, raktárkészlet." icon={Truck}
-                            colorClass="text-orange-500" onClick={() => navigate('/logistics')}/>
-                <ModuleCard title="PÉNZÜGY" desc="Költségtérítések, bírságok." icon={Database}
-                            colorClass="text-green-500" onClick={() => navigate('/finance')}/>
-                <ModuleCard title="VIZSGAKÖZPONT" desc="Képzések, tesztek, vizsgáztatás." icon={FileText}
-                            colorClass="text-yellow-500" onClick={() => navigate('/exams')}/>
-                <ModuleCard title="BÜNTETŐ TÖRVÉNYKÖNYV" desc="Bírság kalkulátor és jogszabályok." icon={Gavel}
-                            colorClass="text-purple-500" onClick={() => navigate('/calculator')}/>
-                <ModuleCard title="JELENTÉSEK" desc="Napi jelentések generálása." icon={FileText}
-                            colorClass="text-cyan-500" onClick={() => navigate('/reports')}/>
-              </div>
-            </div>
-          </div>
-          {/* RIGHT: FEEDS */}
-          <div className="lg:col-span-4 space-y-6 animate-in slide-in-from-right-8 duration-700 delay-200">
-            <Card
-              className="bg-[#0b1221]/90 border border-slate-800 h-[320px] flex flex-col shadow-xl backdrop-blur-md">
-              <CardHeader className="pb-2 border-b border-slate-800/50 bg-slate-950/50"><CardTitle
-                className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between"><span
-                className="flex items-center gap-2"><Activity
-                className="w-4 h-4 text-green-500"/> Eseménynapló</span><span
-                className="text-[9px] bg-green-900/20 text-green-500 px-1.5 py-0.5 rounded animate-pulse">LIVE</span></CardTitle></CardHeader>
-              <div className="flex-1 min-h-0 relative"><ScrollArea className="h-full">{actionLogs.length === 0 ?
-                <div className="flex flex-col items-center justify-center h-full text-slate-600 opacity-50"><Activity
-                  className="w-8 h-8 mb-2"/><p className="text-[10px] font-mono uppercase">CSENDES ÜZEMMÓD</p></div> :
-                <div className="divide-y divide-slate-800/30">{actionLogs.map((log) => <ActionItem key={log.id}
-                                                                                                   log={log}/>)}</div>}</ScrollArea>
-              </div>
-            </Card>
-            <Card
-              className="bg-[#0b1221]/80 border border-slate-800 h-[450px] flex flex-col shadow-2xl backdrop-blur-md">
-              <CardHeader
-                className="pb-3 border-b border-slate-800/50 bg-slate-950/50 flex flex-row items-center justify-between"><CardTitle
-                className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Bell
-                className="w-4 h-4 text-yellow-500"/> Hirdetmények</CardTitle>{canCreateNews &&
-                <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-400 hover:text-white"
-                        onClick={() => setIsAnnouncementOpen(true)}><Plus className="w-4 h-4"/></Button>}</CardHeader>
-              <div className="flex-1 min-h-0 relative"><ScrollArea className="h-full">
-                <div className="p-4">{announcements.length === 0 ?
-                  <div className="flex flex-col items-center justify-center h-40 text-slate-600 opacity-50"><Megaphone
-                    className="w-8 h-8 mb-2"/><p className="text-[10px] font-mono uppercase">NINCS FRISS HÍR</p>
-                  </div> : announcements.map((item) => <FeedItem key={item.id} item={item}
-                                                                 onDelete={handleDeleteAnnouncement}
-                                                                 currentUser={profile}/>)}</div>
-              </ScrollArea>
-                <div
-                  className="absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-[#0b1221] to-transparent pointer-events-none"></div>
-              </div>
-            </Card>
-          </div>
+        <div className="order-first flex min-w-0 flex-col gap-6 xl:order-none">
+          <Announcements items={announcements} canPost={canPost} onNew={() => setIsAnnouncementOpen(true)}
+                         onDelete={(item) => void deleteAnnouncement(item)}/>
+          {profile.faction_rank === TRAINEE_RANK && profile.onboarding_completed && <TraineeWeek/>}
+          <MyMonth month={summary?.my_month} loading={!summaryLoaded}/>
+          <UpcomingEvents events={summary?.upcoming_events} loading={!summaryLoaded} canOrganise={organisableAudiences(profile).length > 0}/>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Greeting with the department star, live clock, alert level and personal facts. */
+function Hero({summary, openTasks}: {summary: DashboardSummary | null; openTasks: number}) {
+  const {profile} = useAuth();
+  const {alertLevel} = useSystemStatus();
+  const navigate = useNavigate();
+  const now = useClock();
+  const greeting = useMemo(() => {
+    const hour = hungarianHour(now);
+    return hour < 6 ? "Jó éjszakát" : hour < 10 ? "Jó reggelt" : hour < 18 ? "Szép napot" : "Jó estét";
+  }, [now]);
+  if (!profile) return null;
+  const level = ALERT_LEVELS[alertLevel];
+
+  return (
+    <section data-tour="dashboard-hero" className="panel glow-border animate-rise relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_85%_20%,rgb(234_179_8/0.18),transparent_45%),radial-gradient(circle_at_10%_100%,rgb(56_189_248/0.12),transparent_50%)]"/>
+      <div className="tex-grid pointer-events-none absolute inset-0 opacity-[0.03] [mask-image:linear-gradient(to_left,#000,transparent_70%)]"/>
+
+      <div className="relative flex flex-col gap-8 p-6 md:p-8 lg:flex-row lg:items-center">
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-2 text-yellow-500/85">
+            <Shield className="size-5"/>
+            <span className="text-xs font-bold uppercase tracking-[0.3em]">San Fierro Sheriff&apos;s Dept.</span>
+          </p>
+          <h1 className="mt-3 text-4xl leading-[0.95] font-black tracking-tighter text-white uppercase drop-shadow-lg md:text-5xl xl:text-6xl">
+            {greeting},<br/>
+            <span className="bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">{profile.full_name.split(" ")[0]}.</span>
+          </h1>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+            <span className={cn("rounded-full px-2.5 py-1 font-medium ring-1", rankPillClass(profile.faction_rank))}>{profile.faction_rank}</span>
+            <span className="rounded-full bg-white/5 px-2.5 py-1 font-mono text-slate-200 ring-1 ring-white/10">#{profile.badge_number}</span>
+            <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-300 ring-1 ring-white/10">{profile.division}</span>
+            {/* The joining day of the HR registry (the account may be younger than the membership). */}
+            {summary && (
+              <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+                {formatSpan(daysSince(summary.joined_on ?? profile.created_at))} szolgálatban
+              </span>
+            )}
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-end gap-x-8 gap-y-4">
+            <div>
+              <div className="font-mono text-3xl font-semibold tabular-nums tracking-tight text-white">{formatTime(now)}
+                <span className="text-lg text-slate-500">:{hungarianParts(now).second}</span>
+              </div>
+              <div className="text-xs text-slate-400">{formatLongDate(now)}</div>
+            </div>
+            <div className={cn("flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium ring-1", level.badge)}>
+              <span className={cn("relative flex size-2.5", level.text)}>
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60"/>
+                <span className="relative inline-flex size-2.5 rounded-full bg-current"/>
+              </span>
+              Készültség: {level.label}
+            </div>
+            {summary && (
+              <div className="text-xs text-slate-400">
+                <span className="font-semibold text-white tabular-nums">{summary.members_total}</span> fő az állományban
+                {summary.members_on_leave > 0 && <> · <span className="text-sky-300">{summary.members_on_leave} szabadságon</span></>}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            {!!summary?.my_active_warnings && (
+              <button type="button" onClick={() => navigate("/profile")}
+                      className="flex items-center gap-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-200 ring-1 ring-red-500/30 transition-colors hover:bg-red-500/15">
+                <AlertOctagon className="size-4 text-red-400"/> {summary.my_active_warnings} aktív figyelmeztetés
+              </button>
+            )}
+            {!!summary?.my_vehicle_warnings && (
+              <button type="button" onClick={() => navigate("/profile")}
+                      className="flex items-center gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-sm text-amber-200 ring-1 ring-amber-500/30 transition-colors hover:bg-amber-500/15">
+                <Car className="size-4 text-amber-400"/> {summary.my_vehicle_warnings}/3 jármű-hibapont
+              </button>
+            )}
+            {summary && openTasks === 0 && !summary.my_active_warnings && (
+              <span className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 ring-1 ring-emerald-500/25">
+                <CheckCircle2 className="size-4 text-emerald-400"/> Nincs függő teendőd
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="relative mx-auto grid size-36 shrink-0 place-items-center sm:size-48 md:size-56 lg:mx-0">
+          <div className="absolute inset-0 rounded-full border border-dashed border-yellow-500/30 motion-safe:animate-[spin_60s_linear_infinite]"/>
+          <div className="absolute inset-4 rounded-full border-2 border-yellow-500/15 border-t-yellow-400/60 border-b-transparent motion-safe:animate-[spin_14s_linear_infinite_reverse]"/>
+          <div className="absolute inset-10 rounded-full bg-yellow-500/15 blur-2xl motion-safe:animate-[backdrop-breathe_6s_ease-in-out_infinite]"/>
+          <SheriffStar className="relative size-28 drop-shadow-[0_8px_30px_rgb(234_179_8/0.45)] motion-safe:animate-[float-y_7s_ease-in-out_infinite] sm:size-36 md:size-40"/>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Announcements: rare, so a compact list in the side column (pinned first, newest first). */
+function Announcements({items, canPost, onNew, onDelete}: {
+  items: FeedAnnouncement[] | null;
+  canPost: boolean;
+  onNew: () => void;
+  onDelete: (item: FeedAnnouncement) => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = items && !showAll ? items.slice(0, 3) : items;
+  return (
+    <section data-tour="dashboard-announcements" className="panel animate-rise overflow-hidden p-0" style={{"--i": 2} as CSSProperties}>
+      <header className="flex items-center gap-3 px-4 py-3.5">
+        <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 ring-1 ring-primary/25"><Megaphone className="size-4 text-primary"/></div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-white">Hirdetmények</h2>
+          <p className="truncate text-xs text-slate-500">A vezetőség közleményei</p>
+        </div>
+        {canPost && (
+          <Button size="sm" variant="outline" onClick={onNew} data-tour="announcement-new"><Plus/> Új hirdetmény</Button>
+        )}
+      </header>
+      {items === null ? (
+        <div className="space-y-2 px-4 pb-4">{[0, 1].map((index) => <div key={index} className="skeleton h-16"/>)}</div>
+      ) : items.length === 0 ? (
+        <p className="flex items-center gap-2 border-t border-white/5 px-4 py-3 text-xs text-slate-500">
+          <CheckCircle2 className="size-3.5 text-slate-600"/> Nincs friss hirdetmény.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-2 border-t border-white/5 p-3">
+            {(shown ?? []).map((item, index) => <AnnouncementCard key={item.id} item={item} index={index} onDelete={() => onDelete(item)}/>)}
+          </ul>
+          {items.length > 3 && (
+            <button type="button" onClick={() => setShowAll((value) => !value)}
+                    className="flex w-full items-center justify-center gap-1 border-t border-white/5 py-2 text-xs font-medium text-slate-400 transition-colors hover:bg-white/[0.03] hover:text-white">
+              {showAll ? "Kevesebb" : `Mind a ${items.length} hirdetmény`} <ChevronDown className={cn("size-3.5 transition-transform", showAll && "rotate-180")}/>
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function AnnouncementCard({item, index, onDelete}: {item: FeedAnnouncement; index: number; onDelete: () => void}) {
+  const type = ANNOUNCEMENT_TYPES[item.type] ?? ANNOUNCEMENT_TYPES.info;
+  const [expanded, setExpanded] = useState(false);
+  const long = item.content.length > 160 || item.content.split("\n").length > 3;
+
+  return (
+    <li style={{"--i": Math.min(index, 8)} as CSSProperties}
+        className={cn("animate-rise group relative overflow-hidden rounded-xl bg-white/[0.025] p-3 pl-4 ring-1 ring-white/[0.06] transition-colors hover:bg-white/[0.04]",
+          item.is_pinned && "bg-primary/[0.05] ring-primary/25")}>
+      <span className={cn("absolute inset-y-0 left-0 w-1 bg-gradient-to-b", type.bar)}/>
+      <div className="flex items-start gap-2.5">
+        <div className={cn("grid size-7 shrink-0 place-items-center rounded-lg ring-1", type.tone)}><type.icon className="size-3.5"/></div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-1.5">
+            {item.is_pinned && <Pin className="mt-0.5 size-3.5 shrink-0 rotate-45 text-primary"/>}
+            <h3 className="min-w-0 flex-1 text-sm leading-snug font-semibold text-white wrap-anywhere">{item.title}</h3>
+            {item.can_delete && (
+              <button type="button" title="Törlés" aria-label="Hirdetmény törlése" onClick={onDelete}
+                      className="-mt-0.5 rounded-md p-1 text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-400">
+                <Trash2 className="size-3.5"/>
+              </button>
+            )}
+          </div>
+          <p className={cn("mt-1 text-[13px] leading-relaxed whitespace-pre-wrap text-slate-300 wrap-anywhere", long && !expanded && "line-clamp-3")}>
+            {item.content}
+          </p>
+          {long && (
+            <button type="button" onClick={() => setExpanded((value) => !value)}
+                    className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-primary/90 hover:text-primary">
+              {expanded ? "Kevesebb" : "Tovább olvasom"} <ChevronDown className={cn("size-3.5 transition-transform", expanded && "rotate-180")}/>
+            </button>
+          )}
+          <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+            <span>{ago(item.created_at)}</span>·
+            {item.author_name ? (
+              <>
+                {item.author_name}
+                {!item.show_author && <span className="inline-flex items-center gap-1 text-amber-300/80" title="Mások csak a beosztást látják"><EyeOff className="size-3"/> rejtett</span>}
+              </>
+            ) : (
+              <>{STAFF_CATEGORY_LABELS[item.author_category]}</>
+            )}
+          </p>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+const durationLabel = (minutes: number) => {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} ó ${rest} p` : `${hours} óra`;
+};
+
+/** The member's month against the requirements: reports (live) and duty time (recorded at the meetings). */
+function MyMonth({month, loading}: {month: MonthProgress | undefined; loading: boolean}) {
+  if (!month) return loading ? <div className="skeleton h-44"/> : null;
+  const [year, monthIndex] = month.month.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
+  const daysLeft = daysBetween(todayKey(), `${month.month.slice(0, 8)}${String(lastDay).padStart(2, "0")}`);
+  const monthName = new Intl.DateTimeFormat("hu-HU", {timeZone: "UTC", month: "long"}).format(new Date(Date.UTC(year, monthIndex - 1, 1)));
+  const minReports = month.min_reports ?? 0;
+  const minMinutes = (month.min_duty_hours ?? 0) * 60;
+  const rows = [
+    {
+      label: "Jelentések", icon: FileText, done: month.reports, goal: minReports, to: "/reports?tab=mine",
+      value: `${month.reports} / ${minReports}`, hint: month.reports >= minReports ? "Teljesítve" : `Még ${minReports - month.reports} kell`,
+    },
+    {
+      label: "Duty idő", icon: Clock, done: month.duty_minutes ?? 0, goal: minMinutes, to: "/profile",
+      value: `${durationLabel(month.duty_minutes ?? 0)} / ${month.min_duty_hours ?? 0} óra`,
+      hint: (month.duty_minutes ?? 0) >= minMinutes ? "Teljesítve"
+        : month.duty_updated_at ? `Utoljára rögzítve: ${formatDate(month.duty_updated_at)}` : "A gyűlésen rögzítik",
+    },
+  ];
+  const tier = month.next_tier;
+  const tierHours = tier ? Math.max(0, tier.hours - (month.duty_minutes ?? 0) / 60) : 0;
+  const complete = rows.every((row) => row.done >= row.goal);
+
+  return (
+    <section data-tour="dashboard-month" className="panel animate-rise p-4" style={{"--i": 3} as CSSProperties}>
+      <header className="mb-3 flex items-center gap-3">
+        <div className={cn("grid size-8 shrink-0 place-items-center rounded-lg ring-1",
+          complete ? "bg-emerald-500/10 text-emerald-300 ring-emerald-500/30" : "bg-sky-500/10 text-sky-300 ring-sky-500/25")}>
+          {complete ? <Check className="size-4"/> : <Target className="size-4"/>}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-white">Havi követelmény</h2>
+          <p className="text-xs text-slate-500">{monthName} · {daysLeft > 0 ? `még ${daysLeft} nap` : "a hónap utolsó napja"}</p>
+        </div>
+        {complete && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-200 ring-1 ring-emerald-500/30">Teljesítve</span>}
+      </header>
+      <ul className="space-y-2.5">
+        {rows.map((row) => {
+          const ratio = row.goal > 0 ? Math.min(1, row.done / row.goal) : 1;
+          const met = row.done >= row.goal;
+          return (
+            <li key={row.label}>
+              <Link to={row.to} className="-mx-1.5 block rounded-lg px-1.5 py-1 transition-colors hover:bg-white/[0.03]">
+                <div className="flex items-center gap-2 text-xs">
+                  <row.icon className="size-3.5 text-slate-500"/>
+                  <span className="font-medium text-slate-200">{row.label}</span>
+                  <span className="ml-auto font-mono text-slate-100 tabular-nums">{row.value}</span>
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/5">
+                  <div className={cn("h-full rounded-full bg-gradient-to-r transition-[width] duration-700",
+                    met ? "from-emerald-400 to-teal-500" : ratio >= 0.5 ? "from-sky-400 to-indigo-500" : "from-amber-400 to-orange-500")}
+                       style={{width: `${Math.max(3, ratio * 100)}%`}}/>
+                </div>
+                <p className={cn("mt-1 text-[11px]", met ? "text-emerald-300/80" : "text-slate-500")}>{row.hint}</p>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {tier && tier.gain > 0 && (month.duty_minutes ?? 0) >= minMinutes && (
+        <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/5 pt-2.5 text-[11px] text-emerald-200/90">
+          <Target className="size-3.5 shrink-0 text-emerald-300"/>
+          Még {String(Math.round(tierHours * 10) / 10).replace(".", ",")} óra a(z) {tier.hours} órás sávig: +{new Intl.NumberFormat("hu-HU").format(tier.gain)} $
+        </p>
+      )}
+      {!complete && (
+        <p className="mt-2.5 border-t border-white/5 pt-2.5 text-[11px] text-slate-500">
+          A duty-minimum alatt nem jár alapfizetés és rangfelvétel.
+        </p>
+      )}
+    </section>
+  );
+}
+
+const STATUS_CHIP = {
+  going: {label: "Ott leszel", icon: Check, tone: "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"},
+  maybe: {label: "Talán", icon: HelpCircle, tone: "bg-amber-500/15 text-amber-200 ring-amber-500/30"},
+  absent: {label: "Nem mész", icon: X, tone: "bg-white/5 text-slate-400 ring-white/10"},
+} as const;
+
+const weekdayShort = new Intl.DateTimeFormat("hu-HU", {timeZone: "Europe/Budapest", weekday: "short"});
+
+/** The next events (two weeks) the member sees, with their answer. */
+/** A trainee's own week: the checklist towards Deputy Sheriff I. and the mentor (one call, trainees only). */
+function TraineeWeek() {
+  const [me, setMe] = useState<Trainee | null>(null);
+  useEffect(() => {
+    let active = true;
+    progressionApi.trainees().then((list) => active && setMe(list[0] ?? null)).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+  if (!me) return null;
+  const done = me.checks.filter((check) => check.ok).length;
+  return (
+    <section className="panel animate-rise p-4" style={{"--i": 3} as CSSProperties} data-tour="dashboard-trainee">
+      <header className="mb-3 flex items-center gap-3">
+        <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/25"><GraduationCap className="size-4"/></div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-white">A Trainee hetem</h2>
+          <p className="text-xs text-slate-500">{Math.min(me.days + 1, 99)}. nap · {done}/{me.checks.length} kész</p>
+        </div>
+      </header>
+      <ul className="space-y-1.5">
+        {me.checks.map((check) => (
+          <li key={check.key} className="flex items-center gap-2 text-xs">
+            {check.ok ? <CheckCircle2 className="size-4 shrink-0 text-emerald-400"/> : <span className="size-4 shrink-0 rounded-full ring-1 ring-slate-600"/>}
+            <span className={cn("min-w-0 flex-1 truncate", check.ok ? "text-slate-400" : "text-slate-200")}>{check.label}</span>
+            {check.target !== undefined && <span className="font-mono text-[11px] text-slate-500 tabular-nums">{Math.min(check.value ?? 0, check.target)}/{check.target}</span>}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 border-t border-white/5 pt-2.5 text-[11px] text-slate-500">
+        {me.mentor ? <>Mentorod: <span className="text-slate-300">{me.mentor.full_name}</span>. Kérdezz bátran!</> : "Hamarosan kapsz egy mentort az első hétre."}
+      </p>
+    </section>
+  );
+}
+
+function UpcomingEvents({events, loading, canOrganise}: {events: UpcomingEvent[] | undefined; loading: boolean; canOrganise: boolean}) {
+  if (!events) return loading ? <div className="skeleton h-40"/> : null;
+  return (
+    <section data-tour="dashboard-events" className="panel animate-rise overflow-hidden p-0" style={{"--i": 4} as CSSProperties}>
+      <header className="flex items-center gap-3 px-4 py-3.5">
+        <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/25"><CalendarDays className="size-4"/></div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-white">Közelgő események</h2>
+          <p className="text-xs text-slate-500">A következő két hét</p>
+        </div>
+        <Link to="/events" className="inline-flex items-center gap-0.5 text-xs font-medium text-slate-400 hover:text-white">Naptár <ChevronRight className="size-3.5"/></Link>
+      </header>
+      {events.length === 0 ? (
+        <div className="flex items-center gap-2 border-t border-white/5 px-4 py-3 text-xs text-slate-500">
+          <CalendarDays className="size-3.5 text-slate-600"/> Nincs esemény a következő két hétben.
+          {canOrganise && <Link to="/events" className="ml-auto inline-flex items-center gap-1 font-medium text-primary/90 hover:text-primary"><CalendarPlus className="size-3.5"/> Új</Link>}
+        </div>
+      ) : (
+        <ul className="divide-y divide-white/5 border-t border-white/5">
+          {events.map((event) => {
+            const kind = EVENT_KINDS[event.kind] ?? EVENT_KINDS.other;
+            const day = todayKey(event.starts_at);
+            const relative = formatDayLabel(day);
+            const chip = event.my_status ? STATUS_CHIP[event.my_status] : null;
+            return (
+              <li key={event.id}>
+                <Link to={`/events?id=${event.id}`} className="flex min-w-0 items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.03]">
+                  <div className={cn("grid w-11 shrink-0 place-items-center rounded-lg py-1 ring-1", kind.tile)}>
+                    <span className="text-base leading-none font-bold tabular-nums">{Number(day.slice(8))}</span>
+                    <span className="text-[10px] leading-tight uppercase opacity-80">{weekdayShort.format(new Date(event.starts_at)).replace(".", "")}</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-100">{event.title}</p>
+                    <p className="flex min-w-0 items-center gap-2 text-[11px] text-slate-500">
+                      <span className="shrink-0 font-mono text-slate-300">{relative.length <= 7 ? `${relative} ` : ""}{formatTime(event.starts_at)}</span>
+                      {event.location && <span className="flex min-w-0 items-center gap-1 truncate"><MapPin className="size-3 shrink-0"/>{event.location}</span>}
+                    </p>
+                  </div>
+                  {chip ? (
+                    <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ring-1", chip.tone)}><chip.icon className="size-3"/>{chip.label}</span>
+                  ) : event.rsvp ? (
+                    <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-200 ring-1 ring-amber-500/30">Válaszolj</span>
+                  ) : null}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ModuleGrid() {
+  const {profile} = useAuth();
+  const navigate = useNavigate();
+  if (!profile) return null;
+  const modules = [
+    {label: "Nyomozó Iroda", hint: "Akták, körözések", icon: Fingerprint, to: "/mcb", tone: "blue" as Tone, show: canViewCaseList(profile)},
+    {label: "Logisztika", hint: "Járművek, flotta", icon: Truck, to: "/logistics", tone: "orange" as Tone, show: true},
+    {label: "Pénzügy", hint: "Költségtérítés, fizetés", icon: Banknote, to: "/finance", tone: "emerald" as Tone, show: true},
+    {label: "Vizsgaközpont", hint: "Vizsgák, javítás", icon: ScrollText, to: "/exams", tone: "violet" as Tone, show: true},
+    {label: "Akadémia", hint: "Tananyagok", icon: GraduationCap, to: "/academy", tone: "cyan" as Tone, show: true},
+    {label: "Kalkulátor", hint: "Büntető törvénykönyv", icon: Gavel, to: "/calculator", tone: "red" as Tone, show: true},
+    {label: "Jelentések", hint: "Fórum-jelentés, napló", icon: FileText, to: "/reports", tone: "slate" as Tone, show: true},
+    {label: "Események", hint: "Gyűlések, képzések", icon: CalendarDays, to: "/events", tone: "gold" as Tone, show: true},
+    {label: "Kódtár", hint: "Rádiókódok, hívójel", icon: Radio, to: "/codes", tone: "cyan" as Tone, show: true},
+    {label: "Személyügy", hint: "Állomány, duty idő", icon: Users, to: "/hr", tone: "gold" as Tone, show: true},
+    {label: "Gyakorlás", hint: "Kódok, Btk., szituációk", icon: BrainCircuit, to: "/practice", tone: "cyan" as Tone, show: true},
+    {label: "Szabályzatok", hint: "Szabályok, kötelező olvasmány", icon: BookCheck, to: "/policies", tone: "emerald" as Tone, show: true},
+    {label: "Közösség", hint: "Szavazás, ötletek", icon: UsersRound, to: "/community", tone: "violet" as Tone, show: true},
+  ].filter((module) => module.show);
+
+  return (
+    <section data-tour="dashboard-modules" className="animate-rise" style={{"--i": 3} as CSSProperties}>
+      <h2 className="mb-3 px-1 text-sm font-semibold text-slate-300">Gyors elérés</h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {modules.map((module, index) => {
+          const tone = TONE_CLASSES[module.tone];
+          return (
+            <button key={module.to} type="button" onClick={() => navigate(module.to)} style={{"--i": index + 4} as CSSProperties}
+                    className="panel lift animate-rise group relative flex min-w-0 flex-col items-start gap-3 overflow-hidden p-4 text-left">
+              <div className={cn("pointer-events-none absolute -right-8 -bottom-8 size-24 rounded-full bg-gradient-to-br opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-40", tone.gradient)}/>
+              <div className={cn("relative grid size-10 place-items-center rounded-xl bg-gradient-to-br p-px transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3", tone.gradient)}>
+                <div className="grid size-full place-items-center rounded-[11px] bg-[#0a1120]/85">
+                  <module.icon className={cn("size-5", tone.text)}/>
+                </div>
+              </div>
+              <div className="relative w-full min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-100 group-hover:text-white">{module.label}</div>
+                <div className="truncate text-xs text-slate-500">{module.hint}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+interface ActionLogRow {
+  id: string;
+  action_type: "ticket" | "arrest" | "other";
+  details: string;
+  created_at: string;
+  profiles: {full_name: string; badge_number: string; avatar_url: string | null} | null;
+}
+
+const ACTION_LOOK = {
+  ticket: {label: "Bírság", icon: Ticket, text: "text-orange-300", tile: "bg-orange-500/10 text-orange-300 ring-orange-500/30"},
+  arrest: {label: "Letartóztatás", icon: Handshake, text: "text-red-300", tile: "bg-red-500/10 text-red-300 ring-red-500/30"},
+  other: {label: "Napló", icon: Info, text: "text-sky-300", tile: "bg-sky-500/10 text-sky-300 ring-sky-500/30"},
+} as const;
+
+/** The calculator's copies: "Bírság: $500 000 - Indok: A, B" and "120 perc - Indokok: A, B". */
+function parseAction(type: ActionLogRow["action_type"], details: string) {
+  const ticket = type === "ticket" ? details.match(/^Bírság:\s*(.+?)\s+-\s+Indok:\s*([\s\S]*)$/) : null;
+  const arrest = type === "arrest" ? details.match(/^(\d+)\s*perc\s+-\s+Indokok:\s*([\s\S]*)$/) : null;
+  const match = ticket ?? arrest;
+  if (!match) return {amount: null, reasons: details.trim() ? [details.trim()] : []};
+  return {amount: arrest ? `${match[1]} perc` : match[1], reasons: match[2].split(/,\s*/).map((reason) => reason.trim()).filter(Boolean)};
+}
+
+const sameDay = (a: ReturnType<typeof hungarianParts>, b: ReturnType<typeof hungarianParts>) =>
+  a.year === b.year && a.month === b.month && a.day === b.day;
+
+const timeLabel = (iso: string) => {
+  const day = hungarianParts(iso);
+  return sameDay(day, hungarianParts(new Date())) ? formatTime(iso) : `${day.month}.${day.day}. ${formatTime(iso)}`;
+};
+
+/** Fines and arrests issued from the calculator (no polling: refreshed when the tab is shown again). */
+function ActivityLog() {
+  const {supabase} = useAuth();
+  const [logs, setLogs] = useState<ActionLogRow[] | null>(null);
+  const [loadedAt, setLoadedAt] = useState(0);
+
+  const load = useCallback(async () => {
+    const {data} = await supabase.from("action_logs")
+      .select("id, action_type, details, created_at, profiles!action_logs_user_id_fkey(full_name, badge_number, avatar_url)")
+      .order("created_at", {ascending: false}).limit(15);
+    setLogs((data ?? []) as unknown as ActionLogRow[]);
+    setLoadedAt(Date.now());
+  }, [supabase]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && Date.now() - loadedAt > 60_000) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load, loadedAt]);
+
+  const today = hungarianParts(new Date());
+  const todays = (logs ?? []).filter((log) => sameDay(hungarianParts(log.created_at), today));
+  const fresh = !!logs?.[0] && loadedAt - Date.parse(logs[0].created_at) < 15 * 60_000;
+
+  return (
+    <section data-tour="dashboard-log" className="panel animate-rise overflow-hidden p-0" style={{"--i": 5} as CSSProperties}>
+      <header className="flex items-center gap-3 border-b px-5 py-4">
+        <div className="grid size-9 place-items-center rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/25"><Activity className="size-4 text-emerald-400"/></div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-black tracking-[0.18em] text-slate-200 uppercase">Eseménynapló</h2>
+          <p className="truncate text-xs text-slate-500">
+            {todays.length === 0 ? "Ma még nem volt intézkedés"
+              : `Ma: ${todays.filter((log) => log.action_type === "ticket").length} bírság · ${todays.filter((log) => log.action_type === "arrest").length} letartóztatás${todays.length === 15 ? " vagy több" : ""}`}
+          </p>
+        </div>
+        <span className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-widest",
+          fresh ? "bg-emerald-500/10 text-emerald-300" : "bg-white/5 text-slate-500")} title="Friss intézkedés az elmúlt negyedórában">
+          <span className={cn("size-1.5 rounded-full", fresh ? "animate-pulse bg-emerald-400" : "bg-slate-600")}/>ÉLŐ
+        </span>
+        <button type="button" onClick={() => void load()} aria-label="Eseménynapló frissítése"
+                className="grid size-8 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-white/5 hover:text-slate-200">
+          <RefreshCw className="size-3.5"/>
+        </button>
+      </header>
+      {logs === null ? (
+        <div className="space-y-3 p-4">{[0, 1, 2].map((index) => <div key={index} className="skeleton h-16"/>)}</div>
+      ) : logs.length === 0 ? (
+        <EmptyState icon={Activity} title="Csendes üzemmód" description="A kalkulátorból kiadott bírságok és letartóztatások itt jelennek meg." compact/>
+      ) : (
+        <ol className="max-h-[440px] divide-y divide-white/5 overflow-y-auto">
+          {logs.map((log, index) => {
+            const look = ACTION_LOOK[log.action_type] ?? ACTION_LOOK.other;
+            const {amount, reasons} = parseAction(log.action_type, log.details);
+            return (
+              <li key={log.id} className="animate-fade flex gap-3 px-5 py-3.5 transition-colors hover:bg-white/[0.02]"
+                  style={{"--i": Math.min(index, 8)} as CSSProperties}>
+                <div className={cn("grid size-9 shrink-0 place-items-center rounded-xl ring-1", look.tile)}><look.icon className="size-4"/></div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className={cn("text-sm font-black tracking-wide uppercase", look.text)}>{look.label}</span>
+                    {amount && <span className="rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-xs font-semibold text-white tabular-nums">{amount}</span>}
+                    <span className="ml-auto shrink-0 font-mono text-[11px] text-slate-500">{timeLabel(log.created_at)}</span>
+                  </div>
+                  <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs">
+                    <span className="truncate font-semibold text-slate-200">{log.profiles?.full_name ?? "Ismeretlen"}</span>
+                    {log.profiles?.badge_number && <span className="font-mono text-slate-500">#{log.profiles.badge_number}</span>}
+                  </p>
+                  {reasons.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {reasons.slice(0, 8).map((reason, reasonIndex) => (
+                        <span key={reasonIndex} className="rounded bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-slate-300 ring-1 ring-white/10 wrap-anywhere">
+                          {reason}
+                        </span>
+                      ))}
+                      {reasons.length > 8 && <span className="px-1 text-[10px] text-slate-500">+{reasons.length - 8}</span>}
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+/** Current time, refreshed every second (only while the dashboard is open). */
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
+
+function NewAnnouncementDialog({open, onOpenChange, onCreated}: {open: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void}) {
+  const {supabase, user} = useAuth();
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [type, setType] = useState<FeedAnnouncement["type"]>("info");
+  const [isPinned, setIsPinned] = useState(false);
+  const [showAuthor, setShowAuthor] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    if (!title.trim() || !content.trim()) return toast.error("A cím és az üzenet kötelező.");
+    setLoading(true);
+    const {error} = await supabase.from("announcements").insert({
+      title: title.trim(), content: content.trim(), type, created_by: user?.id, is_pinned: isPinned, show_author: showAuthor,
+    });
+    setLoading(false);
+    if (error) return toast.error("Hiba: " + errorMessage(error));
+    toast.success("Hirdetmény közzétéve. Mindenki értesítést kapott.");
+    setTitle("");
+    setContent("");
+    setIsPinned(false);
+    setShowAuthor(true);
+    onOpenChange(false);
+    onCreated();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Új hirdetmény</DialogTitle>
+          <DialogDescription>Az állomány minden tagja értesítést kap róla.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-2">
+            {(Object.keys(ANNOUNCEMENT_TYPES) as FeedAnnouncement["type"][]).map((key) => {
+              const meta = ANNOUNCEMENT_TYPES[key];
+              return (
+                <button key={key} type="button" onClick={() => setType(key)}
+                        className={cn("flex flex-col items-center gap-1.5 rounded-xl px-3 py-3 text-xs font-medium ring-1 transition-colors",
+                          type === key ? meta.tone : "text-slate-400 ring-white/10 hover:text-slate-200")}>
+                  <meta.icon className="size-5"/>{meta.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Cím</Label>
+            <Input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="Rövid, beszédes cím"/>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Üzenet</Label>
+            <Textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} maxLength={4000}
+                      className="max-h-[40vh]" placeholder="Írd ide az üzenetet…"/>
+          </div>
+          <label className="flex items-center justify-between gap-3 text-sm text-slate-200">
+            <span>Kiemelés <span className="block text-xs text-slate-500">A lista tetején marad.</span></span>
+            <Switch checked={isPinned} onCheckedChange={setIsPinned}/>
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm text-slate-200">
+            <span>Név megjelenítése <span className="block text-xs text-slate-500">Kikapcsolva csak a beosztásod látszik.</span></span>
+            <Switch checked={showAuthor} onCheckedChange={setShowAuthor}/>
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Mégse</Button>
+          <Button onClick={() => void submit()} disabled={loading}><Megaphone/> Közzététel</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

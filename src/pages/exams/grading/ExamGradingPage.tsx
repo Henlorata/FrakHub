@@ -1,555 +1,475 @@
-import {useEffect, useState, useMemo} from "react";
-import {useParams, useNavigate} from "react-router-dom";
-import {useAuth} from "@/context/AuthContext";
-import {Card, CardContent, CardHeader, CardTitle, CardDescription} from "@/components/ui/card";
-import {Button} from "@/components/ui/button";
-import {Badge} from "@/components/ui/badge";
-import {Textarea} from "@/components/ui/textarea";
-import {Label} from "@/components/ui/label";
-import {Input} from "@/components/ui/input";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {Separator} from "@/components/ui/separator";
+import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
+import {Link, useNavigate, useParams} from "react-router";
 import {toast} from "sonner";
 import {
-  Loader2, CheckCircle2, XCircle, ArrowLeft, User, Clock, ShieldAlert,
-  ChevronLeft, ChevronRight, Target, Bot, PenLine, EyeOff, Hourglass
+  ArrowLeft, BookOpenCheck, CheckCircle2, ClipboardPaste, EyeOff, Hourglass, Loader2, MessageSquare, Pencil, Play, RotateCcw,
+  Trash2, XCircle,
 } from "lucide-react";
-import type {ExamSubmission} from "@/types/exams";
-import {formatDistanceToNow} from "date-fns";
-import {hu} from "date-fns/locale";
-import {canGradeExam, cn} from "@/lib/utils";
+import {Button} from "@/components/ui/button";
+import {Switch} from "@/components/ui/switch";
+import {Textarea} from "@/components/ui/textarea";
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {TONE_CLASSES} from "@/components/layout/PageHeader";
+import {useAuth} from "@/context/AuthContext";
+import {examApi, FINISH_LABELS, formatDateTime, formatDuration, percentOf, QUESTION_TYPE_LABELS, STATUS_META} from "@/lib/exams";
+import {cn, errorMessage} from "@/lib/utils";
+import type {ExamSheet, SheetQuestion} from "@/types/exams";
+import {CandidateAvatar} from "../components/CandidateAvatar";
+import {IntegrityPanel} from "./IntegrityPanel";
+import {ScoreRing} from "./ScoreRing";
 
-// Score Ring Component
-const ScoreRing = ({score, max, percent}: { score: number, max: number, percent: number }) => {
-  const radius = 36;
-  const stroke = 5;
-  const normalizedRadius = radius - stroke * 2;
-  const circumference = normalizedRadius * 2 * Math.PI;
-  const strokeDashoffset = circumference - (percent / 100) * circumference;
-  const color = percent >= 80 ? 'text-green-500' : percent >= 60 ? 'text-yellow-500' : 'text-red-500';
+const RETRY_CHOICES = [0, 1, 12, 24, 72, 168];
+const retryLabel = (hours: number) =>
+  hours === 0 ? "Azonnal" : hours < 24 ? `${hours} óra múlva` : hours % 24 === 0 ? `${hours / 24} nap múlva` : `${hours} óra múlva`;
 
-  return (
-    <div className="relative flex items-center justify-center">
-      <svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]">
-        <circle stroke="currentColor" fill="transparent" strokeWidth={stroke} r={normalizedRadius} cx={radius}
-                cy={radius} className="text-slate-800"/>
-        <circle stroke="currentColor" fill="transparent" strokeWidth={stroke}
-                strokeDasharray={circumference + ' ' + circumference} style={{strokeDashoffset}} strokeLinecap="round"
-                r={normalizedRadius} cx={radius} cy={radius}
-                className={`${color} transition-all duration-1000 ease-out`}/>
-      </svg>
-      <div className="absolute flex flex-col items-center">
-        <span className={`text-sm font-bold ${color}`}>{Math.round(percent)}%</span>
-        <span className="text-[10px] text-slate-500">{score}/{max}</span>
-      </div>
-    </div>
-  );
-};
+type Scores = Record<string, {points: number; comment: string}>;
 
+const initialScores = (sheet: ExamSheet): Scores => Object.fromEntries(sheet.questions.map((question) => {
+  // Old sheets were never scored automatically: their choice questions start from the automatic points.
+  const auto = sheet.sheet.status === "pending" && question.question_type !== "text" && question.auto_points != null;
+  return [question.id, {
+    points: auto ? question.auto_points ?? 0 : question.answer?.points ?? 0,
+    comment: question.answer?.comment ?? "",
+  }];
+}));
+
+/** One exam sheet: graders score it and decide, the candidate sees the result (and, if released, the details). */
 export function ExamGradingPage() {
-  const {submissionId} = useParams();
-  const {supabase, profile, user} = useAuth();
+  const {submissionId = ""} = useParams();
   const navigate = useNavigate();
-
-  const [submission, setSubmission] = useState<ExamSubmission | null>(null);
-  const [answers, setAnswers] = useState<any[]>([]);
-  const [questions, setQuestions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Javítás state-ek
-  const [gradingNotes, setGradingNotes] = useState("");
+  const {supabase} = useAuth();
+  const [data, setData] = useState<ExamSheet | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [scores, setScores] = useState<Scores>({});
+  const [notes, setNotes] = useState("");
   const [feedbackVisible, setFeedbackVisible] = useState(false);
-  const [banDuration, setBanDuration] = useState("0");
-  const [isSaving, setIsSaving] = useState(false);
+  const [retryHours, setRetryHours] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState<"passed" | "failed" | null>(null);
 
-  // Manuális pontozás state
-  const [manualPoints, setManualPoints] = useState<Record<string, string | number>>({});
-
-  // Lapozás
-  const [currentPage, setCurrentPage] = useState(1);
+  const load = useCallback(async () => {
+    try {
+      const sheet = await examApi.sheet(submissionId);
+      setData(sheet);
+      setScores(initialScores(sheet));
+      setNotes(sheet.sheet.grading_notes ?? "");
+      setFeedbackVisible(sheet.sheet.feedback_visible);
+      setRetryHours(sheet.exam.retry_cooldown_hours ?? 0);
+      setEditing(false);
+    } catch (error) {
+      setFailed(errorMessage(error));
+    }
+  }, [submissionId]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!submissionId) return;
-      if (!profile) return;
+    void load();
+  }, [load]);
 
-      setLoading(true);
-      try {
-        const {data: subData, error: subError} = await supabase
-          .from('exam_submissions')
-          .select(`
-            *, 
-            exams (
-              title, 
-              passing_percentage, 
-              type,            
-              division,        
-              required_rank,   
-              exam_questions (
-                id, 
-                question_text, 
-                question_type, 
-                points, 
-                order_index, 
-                page_number, 
-                exam_options (id, option_text, is_correct)
-              )
-            )
-          `)
-          .eq('id', submissionId)
-          .single();
+  const numbers = useMemo(() => new Map((data?.questions ?? []).map((question, index) => [question.id, index + 1])), [data]);
 
-        if (subError) throw subError;
+  if (failed) {
+    return (
+      <div className="panel mx-auto w-full max-w-xl">
+        <EmptyState icon={EyeOff} title="A vizsgalap nem nyitható meg." description={failed}
+                    action={<Button asChild variant="outline"><Link to="/exams"><ArrowLeft/> Vizsgaközpont</Link></Button>}/>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="mx-auto w-full max-w-[1500px] space-y-4">
+        <div className="skeleton h-36"/>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="skeleton h-96"/><div className="skeleton h-96"/></div>
+      </div>
+    );
+  }
 
-        // --- JOGOSULTSÁG ELLENŐRZÉS ---
-        const isOwnSubmission = subData.user_id === profile.id;
-        const hasRights = canGradeExam(profile, subData.exams as any);
+  const {viewer, sheet, exam, questions, pages} = data;
+  const grader = viewer.grader;
+  const decided = sheet.status === "passed" || sheet.status === "failed";
+  const canEdit = viewer.can_grade && (sheet.status === "pending" || editing);
+  const details = questions.length > 0;
+  const total = details ? questions.reduce((sum, question) => sum + (scores[question.id]?.points ?? 0), 0) : sheet.total_score ?? 0;
+  const max = details ? questions.reduce((sum, question) => sum + question.points, 0) : sheet.max_score ?? 0;
+  const percent = percentOf(total, max);
+  const suggestion: "passed" | "failed" = percent >= exam.passing_percentage ? "passed" : "failed";
+  const status = STATUS_META[sheet.status];
+  const pageNumbers = [...new Set(questions.map((question) => question.page_number))].sort((a, b) => a - b);
+  const pageTitle = new Map(pages.map((page) => [page.page_number, page]));
+  const duration = sheet.end_time ? Date.parse(sheet.end_time) - Date.parse(sheet.start_time) : null;
 
-        if (!isOwnSubmission && !hasRights) {
-          toast.error("Nincs jogosultságod ezt a vizsgát megtekinteni.");
-          navigate('/exams');
-          return;
-        }
+  const save = async (decision: "passed" | "failed") => {
+    setConfirm(null);
+    setSaving(true);
+    try {
+      await examApi.grade(sheet.id, scores, decision, notes, feedbackVisible, retryHours);
+      toast.success(decision === "passed" ? "Sikeresnek jelölve." : "Sikertelennek jelölve.");
+      if (sheet.status === "pending") navigate("/exams?tab=grading");
+      else await load();
+    } catch (error) {
+      toast.error("A mentés nem sikerült: " + errorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const decide = (decision: "passed" | "failed") => (decision === suggestion ? void save(decision) : setConfirm(decision));
 
-        const {
-          data: ansData,
-          error: ansError
-        } = await supabase.from('exam_answers').select('*').eq('submission_id', submissionId);
-        if (ansError) throw ansError;
-
-        setSubmission(subData as any);
-        setAnswers(ansData || []);
-        setGradingNotes(subData.grading_notes || "");
-        setFeedbackVisible(subData.feedback_visible || false);
-
-        // Kérdések rendezése
-        const sortedQuestions = (subData.exams as any).exam_questions.sort((a: any, b: any) => a.order_index - b.order_index);
-        setQuestions(sortedQuestions);
-
-      } catch (err: any) {
-        console.error(err);
-        toast.error("Hiba: " + err.message);
-        navigate('/exams');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [submissionId, supabase, profile?.id, navigate]);
-
-  // Pontszámítás
-  const {score, maxScore, questionStats} = useMemo(() => {
-    let currentScore = 0;
-    let totalMax = 0;
-    const stats: any[] = [];
-
-    questions.forEach((q) => {
-      totalMax += q.points;
-      const userAns = answers.find(a => a.question_id === q.id);
-      let autoPoints = 0;
-      let isCorrect = false;
-
-      if (userAns) {
-        if (q.question_type === 'single_choice') {
-          const correctOpt = q.exam_options.find((o: any) => o.is_correct);
-          if (correctOpt && userAns.selected_option_ids?.includes(correctOpt.id)) {
-            autoPoints = q.points;
-            isCorrect = true;
-          }
-        } else if (q.question_type === 'multiple_choice') {
-          const correctIds = q.exam_options.filter((o: any) => o.is_correct).map((o: any) => o.id);
-          const userIds = userAns.selected_option_ids || [];
-          const allCorrectSelected = correctIds.every((id: any) => userIds.includes(id));
-          const noWrongSelected = userIds.every((id: any) => correctIds.includes(id));
-          if (allCorrectSelected && noWrongSelected) {
-            autoPoints = q.points;
-            isCorrect = true;
-          }
-        }
-      }
-
-      let finalPoints = autoPoints;
-      const rawManual = manualPoints[q.id];
-
-      if (rawManual !== undefined) {
-        let parsed = parseInt(String(rawManual));
-        if (isNaN(parsed)) parsed = 0;
-        if (parsed < 0) parsed = 0;
-        if (parsed > q.points) parsed = q.points;
-        finalPoints = parsed;
-      } else if (submission?.status !== 'pending' && userAns && typeof userAns.points_awarded === 'number') {
-        finalPoints = userAns.points_awarded;
-      }
-
-      currentScore += finalPoints;
-
-      stats.push({
-        id: q.id,
-        page: q.page_number || 1,
-        isCorrect,
-        type: q.question_type,
-        autoPoints,
-        displayPoints: rawManual !== undefined ? rawManual : finalPoints,
-        calcPoints: finalPoints,
-        isModified: rawManual !== undefined
-      });
-    });
-
-    return {score: currentScore, maxScore: totalMax, questionStats: stats};
-  }, [questions, answers, manualPoints, submission?.status]);
-
-  const handleManualPointChange = (qId: string, val: string) => {
-    if (val === '') {
-      setManualPoints(prev => ({...prev, [qId]: ''}));
+  const setTrashed = async (trashed: boolean) => {
+    setSaving(true);
+    const {error} = await supabase.rpc(trashed ? "exam_submission_trash" : "exam_submission_restore", {_submission_id: sheet.id});
+    setSaving(false);
+    if (error) {
+      toast.error("Hiba: " + errorMessage(error));
       return;
     }
-    if (/^\d*$/.test(val)) {
-      setManualPoints(prev => ({...prev, [qId]: val}));
-    }
+    toast.success(trashed ? "A vizsgalap a lomtárba került." : "A vizsgalap visszaállítva.");
+    if (trashed) navigate("/exams?tab=trash");
+    else await load();
   };
-
-  const handleManualPointBlur = (qId: string, max: number) => {
-    const raw = manualPoints[qId];
-    let val = parseInt(String(raw));
-    if (isNaN(val)) val = 0;
-    if (val < 0) val = 0;
-    if (val > max) val = max;
-    setManualPoints(prev => ({...prev, [qId]: val}));
-  };
-
-  const handleGrade = async (status: 'passed' | 'failed') => {
-    if (!submission) return;
-    setIsSaving(true);
-    try {
-      const answerUpdates = questionStats.map(stat => {
-        const ans = answers.find(a => a.question_id === stat.id);
-        if (ans) {
-          return {
-            ...ans,
-            points_awarded: stat.calcPoints
-          };
-        }
-        return null;
-      }).filter(Boolean);
-
-      if (answerUpdates.length > 0) {
-        const {error: ansError} = await supabase
-          .from('exam_answers')
-          .upsert(answerUpdates);
-
-        if (ansError) throw ansError;
-      }
-
-      let retryDate = null;
-      if (status === 'failed') {
-        const hours = parseInt(banDuration);
-        if (hours > 0) {
-          retryDate = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
-        }
-      }
-
-      const updates: any = {
-        status,
-        grading_notes: gradingNotes,
-        total_score: score,
-        graded_at: new Date().toISOString(),
-        graded_by: profile?.id,
-        feedback_visible: feedbackVisible,
-        retry_allowed_at: retryDate
-      };
-
-      const {error} = await supabase.from('exam_submissions').update(updates).eq('id', submission.id);
-      if (error) throw error;
-
-      toast.success(`Vizsga ${status === 'passed' ? 'elfogadva' : 'elutasítva'}!`);
-      navigate('/exams');
-    } catch (err: any) {
-      toast.error("Hiba: " + err.message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const pageNumbers = useMemo(() => {
-    const pages = new Set(questions.map(q => q.page_number || 1));
-    return Array.from(pages).sort((a, b) => a - b);
-  }, [questions]);
-
-  const currentQuestions = useMemo(() => questions.filter(q => (q.page_number || 1) === currentPage), [questions, currentPage]);
-  const totalPages = pageNumbers.length > 0 ? Math.max(...pageNumbers) : 1;
-
-  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2
-    className="w-10 h-10 animate-spin text-yellow-500"/></div>;
-  if (!submission) return <div className="p-10 text-center text-white">Nem található a beadás.</div>;
-
-  const percentage = maxScore > 0 ? (score / maxScore) * 100 : 0;
-  const passingPercent = (submission.exams as any).passing_percentage;
-  const isPassing = percentage >= passingPercent;
-
-  const isGrader = profile?.id !== submission.user_id && user?.id !== submission.user_id;
-  const isPending = submission.status === 'pending';
-  const showDetails = isGrader || feedbackVisible;
 
   return (
-    <div className="min-h-screen bg-slate-950 pb-20">
-      {/* HEADER */}
-      <div className="border-b border-slate-900 bg-slate-950/80 backdrop-blur sticky top-0 z-30">
-        <div className="max-w-[1600px] mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/exams')}
-                    className="text-slate-400 hover:text-white hover:bg-slate-800"><ArrowLeft
-              className="w-4 h-4 mr-2"/> Kilépés</Button>
-            <Separator orientation="vertical" className="h-6 bg-slate-800"/>
-            <h1 className="text-lg font-bold text-white hidden md:block">{(submission.exams as any)?.title}</h1>
+    <div className="mx-auto w-full max-w-[1500px] space-y-5">
+      <Link to={grader ? "/exams?tab=grading" : "/exams?tab=history"} className="inline-flex items-center gap-1.5 text-sm text-slate-400 transition-colors hover:text-white">
+        <ArrowLeft className="size-4"/> {grader ? "Javítás" : "Eredményeim"}
+      </Link>
+
+      <section className="panel glow-border animate-rise relative overflow-hidden p-5 md:p-6">
+        <div className={cn("pointer-events-none absolute -top-20 -right-16 size-64 rounded-full opacity-60 blur-3xl", TONE_CLASSES[status.tone].soft)}/>
+        <div className="relative flex flex-col gap-5 md:flex-row md:items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <CandidateAvatar name={sheet.candidate_name} url={sheet.avatar_url} className="size-12"/>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-yellow-400 wrap-anywhere">{exam.title}</p>
+              <h1 className="text-2xl font-semibold text-white wrap-anywhere">{sheet.candidate_name}</h1>
+              <p className="text-xs text-slate-400">
+                {sheet.badge_number ? `#${sheet.badge_number} · ` : sheet.user_id ? "" : "Vendég · "}
+                Kezdés: {formatDateTime(sheet.start_time)}{duration !== null ? ` · ${formatDuration(duration)}` : ""}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {submission.status === 'pending' ? <Badge variant="outline"
-                                                      className="text-yellow-500 border-yellow-900/50 bg-yellow-900/10 animate-pulse">Folyamatban</Badge> :
-              <Badge variant="outline"
-                     className={submission.status === 'passed' ? "text-green-500 border-green-900/50" : "text-red-500 border-red-900/50"}>{submission.status === 'passed' ? 'Sikeres' : 'Sikertelen'}</Badge>}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cn("rounded-full px-3 py-1 text-xs font-semibold ring-1", TONE_CLASSES[status.tone].tile)}>{status.label}</span>
+            {grader && decided && viewer.can_grade && !editing && (
+              <Button variant="outline" size="sm" onClick={() => setEditing(true)}><Pencil/> Értékelés módosítása</Button>
+            )}
+            {viewer.can_trash && !sheet.deleted_at && (
+              <Button variant="ghost" size="sm" disabled={saving} onClick={() => void setTrashed(true)} className="text-slate-400 hover:text-red-300"
+                      title="Hibás vagy teszt kitöltés: a lomtárba kerül, visszaállítható">
+                <Trash2/> Lomtárba
+              </Button>
+            )}
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="max-w-[1600px] mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative">
-        {/* BAL OLDAL: KÉRDÉSEK */}
-        <div className="lg:col-span-8 space-y-6">
-          {showDetails ? (
-            <>
-              <div
-                className="flex items-center justify-between bg-slate-900/80 p-2 rounded-lg border border-slate-800 backdrop-blur-sm sticky top-20 z-20 shadow-lg">
-                <Button variant="ghost" size="sm" disabled={currentPage === 1} onClick={() => {
-                  setCurrentPage(p => p - 1);
-                  window.scrollTo({top: 0, behavior: 'smooth'});
-                }}><ChevronLeft className="w-4 h-4 mr-2"/> Előző</Button>
-                <div className="flex gap-1">{pageNumbers.map(p => (<div key={p} onClick={() => setCurrentPage(p)}
-                                                                        className={`w-2 h-2 rounded-full cursor-pointer transition-all ${currentPage === p ? 'bg-yellow-500 w-6' : 'bg-slate-700 hover:bg-slate-600'}`}/>))}</div>
-                <Button variant="ghost" size="sm" disabled={currentPage === totalPages} onClick={() => {
-                  setCurrentPage(p => p + 1);
-                  window.scrollTo({top: 0, behavior: 'smooth'});
-                }}>Következő <ChevronRight className="w-4 h-4 ml-2"/></Button>
+      {sheet.deleted_at && (
+        <div className="animate-rise flex flex-col gap-3 rounded-2xl bg-red-950/30 p-4 ring-1 ring-red-500/30 sm:flex-row sm:items-center">
+          <Trash2 className="size-5 shrink-0 text-red-300"/>
+          <p className="flex-1 text-sm text-red-100">A lap a lomtárban van ({formatDateTime(sheet.deleted_at)}). A vizsgázó nem látja, és nem számít bele az eredményeibe.</p>
+          {viewer.can_trash && <Button size="sm" variant="outline" disabled={saving} onClick={() => void setTrashed(false)}><RotateCcw/> Visszaállítás</Button>}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-w-0 space-y-5">
+          {sheet.status === "in_progress" && (
+            <div className="panel animate-rise flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
+              <Hourglass className="size-5 shrink-0 text-sky-300"/>
+              <p className="flex-1 text-sm text-slate-200">
+                A vizsga még folyamatban van (határidő: {formatDateTime(sheet.deadline)}). {grader ? "A lap a leadás után javítható; addig a mentett válaszokat látod." : ""}
+              </p>
+              {!grader && <Button asChild size="sm"><Link to={`/exam/public/${sheet.exam_id}`}><Play/> Folytatás</Link></Button>}
+            </div>
+          )}
+
+          {details ? pageNumbers.map((page) => (
+            <div key={page} className="space-y-3">
+              {(pageNumbers.length > 1 || pageTitle.get(page)?.title) && (
+                <div className="animate-fade px-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">{pageNumbers.indexOf(page) + 1}. oldal</p>
+                  {pageTitle.get(page)?.title && <p className="text-base font-semibold text-white wrap-anywhere">{pageTitle.get(page)?.title}</p>}
+                </div>
+              )}
+              {questions.filter((question) => question.page_number === page).map((question, index) => (
+                <SheetQuestionCard key={question.id} question={question} number={numbers.get(question.id) ?? index + 1} index={index}
+                                   grader={grader} editable={canEdit} score={scores[question.id]}
+                                   onScore={(patch) => setScores((current) => ({...current, [question.id]: {...current[question.id], ...patch}}))}/>
+              ))}
+            </div>
+          )) : sheet.status !== "in_progress" && (
+            <div className="panel">
+              <EmptyState icon={EyeOff} title="A részletes eredmény nem nyilvános."
+                          description="A javító nem tette közzé a válaszonkénti értékelést. Az összesített eredményt látod."/>
+            </div>
+          )}
+
+          {!grader && sheet.grading_notes && (
+            <section className="panel animate-rise p-5">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><MessageSquare className="size-4 text-yellow-400"/> A javító értékelése</h3>
+              <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap text-slate-200 wrap-anywhere">{sheet.grading_notes}</p>
+              {sheet.graded_by_name && <p className="mt-2 text-xs text-slate-500">{sheet.graded_by_name} · {formatDateTime(sheet.graded_at)}</p>}
+            </section>
+          )}
+        </div>
+
+        <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto lg:pr-1">
+          <section className="panel animate-rise p-5">
+            <div className="flex items-center gap-5">
+              <ScoreRing percent={percent} passing={exam.passing_percentage} caption={`határ ${exam.passing_percentage}%`}/>
+              <div className="min-w-0 space-y-1">
+                <p className="text-2xl font-semibold tabular-nums text-white">{total} <span className="text-base text-slate-500">/ {max} pont</span></p>
+                {(grader || decided) && (
+                  <p className={cn("text-sm font-medium", (decided ? sheet.status === "passed" : suggestion === "passed") ? "text-emerald-300" : "text-red-300")}>
+                    {decided && !canEdit ? status.label : `A pontszám alapján: ${suggestion === "passed" ? "sikeres" : "sikertelen"}`}
+                  </p>
+                )}
+                {sheet.retry_allowed_at && sheet.status === "failed" && (
+                  <p className="text-xs text-slate-400">Újra: {formatDateTime(sheet.retry_allowed_at)}</p>
+                )}
               </div>
+            </div>
+            <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-white/5 pt-4 text-xs">
+              <dt className="text-slate-500">Leadva</dt><dd className="text-right text-slate-200">{formatDateTime(sheet.end_time)}</dd>
+              {sheet.finish_reason && <><dt className="text-slate-500">Lezárás</dt><dd className="text-right text-slate-200">{FINISH_LABELS[sheet.finish_reason]}</dd></>}
+              {sheet.graded_at && (
+                <>
+                  <dt className="text-slate-500">Értékelés</dt>
+                  <dd className="text-right text-slate-200">{sheet.graded_by_name ?? "Automatikus"} · {formatDateTime(sheet.graded_at)}</dd>
+                </>
+              )}
+              {grader && sheet.claim_token && <><dt className="text-slate-500">Vizsgakód</dt><dd className="text-right font-mono text-slate-200">{sheet.claim_token}</dd></>}
+            </dl>
+          </section>
 
-              <div className="space-y-4">
-                {currentQuestions.map((q, idx) => {
-                  const globalIndex = questions.indexOf(q) + 1;
-                  const answer = answers.find(a => a.question_id === q.id);
-                  const stat = questionStats.find(s => s.id === q.id);
+          {canEdit && (
+            <section className="panel animate-rise space-y-4 p-5" style={{"--i": 1} as CSSProperties} data-tour="grading-decision">
+              <h3 className="text-sm font-semibold text-white">{decided ? "Értékelés módosítása" : "Döntés"}</h3>
+              <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={4000}
+                        placeholder="Összegzés a vizsgázónak (nem kötelező)" className="min-h-24"/>
+              <label className="flex cursor-pointer items-start justify-between gap-3 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/5">
+                <span>
+                  <span className="block text-sm font-medium text-slate-100">Részletes visszajelzés</span>
+                  <span className="block text-xs text-slate-400">A vizsgázó látja a válaszait, a helyes válaszokat és a megjegyzéseidet.</span>
+                </span>
+                <Switch checked={feedbackVisible} onCheckedChange={setFeedbackVisible}/>
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-xs text-slate-400">Újrapróbálkozás bukás esetén</span>
+                <Select value={String(retryHours)} onValueChange={(value) => setRetryHours(Number(value))}>
+                  <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    {[...new Set([...RETRY_CHOICES, exam.retry_cooldown_hours ?? 0])].sort((a, b) => a - b).map((hours) => (
+                      <SelectItem key={hours} value={String(hours)}>{retryLabel(hours)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" disabled={saving} onClick={() => decide("failed")}
+                        className={cn("h-11 text-red-200 hover:text-red-100", suggestion === "failed" && "ring-2 ring-red-400/40")}>
+                  <XCircle/> Sikertelen
+                </Button>
+                <Button disabled={saving} onClick={() => decide("passed")}
+                        className={cn("h-11 bg-emerald-600 text-white hover:bg-emerald-500", suggestion === "passed" && "ring-2 ring-emerald-300/50")}>
+                  {saving ? <Loader2 className="animate-spin"/> : <CheckCircle2/>} Sikeres
+                </Button>
+              </div>
+              {editing && <Button variant="ghost" size="sm" className="w-full" onClick={() => void load()}>Mégse</Button>}
+            </section>
+          )}
 
-                  let statusColor = "border-slate-800";
-                  if (q.question_type !== 'text') {
-                    if (stat?.autoPoints > 0) statusColor = "border-green-900/30";
-                    else statusColor = "border-red-900/30";
-                  }
+          {grader && (
+            <IntegrityPanel summary={sheet.integrity} log={sheet.integrity_log} legacyCount={sheet.tab_switch_count} questionNumbers={numbers}/>
+          )}
 
+          {grader && details && (
+            <section className="panel animate-rise p-5" style={{"--i": 3} as CSSProperties}>
+              <h3 className="mb-3 text-sm font-semibold text-white">Kérdések</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {questions.map((question) => {
+                  const points = scores[question.id]?.points ?? 0;
+                  const open = question.question_type === "text" && question.points > 0 && sheet.status === "pending" && points === 0;
                   return (
-                    <Card key={q.id} className={`bg-slate-900 ${statusColor} transition-all duration-300`}>
-                      <CardHeader className="pb-2 border-b border-slate-950 bg-slate-950/20">
-                        <div className="flex justify-between items-start">
-                          <div className="flex gap-3">
-                            <div
-                              className="flex items-center justify-center w-6 h-6 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-slate-400 mt-0.5">{globalIndex}</div>
-                            <CardTitle className="text-base text-slate-200 leading-snug">{q.question_text}</CardTitle>
-                          </div>
-                          <div className="flex items-center gap-3 pl-4">
-                            {isGrader && isPending ? (
-                              <div
-                                className="flex items-center gap-2 bg-slate-950/50 p-1 rounded border border-slate-800">
-                                {stat?.isModified ? (
-                                  <Badge variant="secondary"
-                                         className="bg-blue-900/20 text-blue-400 text-[10px] h-6"><PenLine
-                                    className="w-3 h-3 mr-1"/> Kézi</Badge>
-                                ) : (
-                                  <Badge variant="secondary"
-                                         className="bg-slate-800 text-slate-500 text-[10px] h-6"><Bot
-                                    className="w-3 h-3 mr-1"/> Auto</Badge>
-                                )}
-                                <div className="flex items-center">
-                                  <Input type="text"
-                                         className="w-12 h-6 text-right p-0 pr-1 bg-transparent border-none text-white font-mono focus-visible:ring-0"
-                                         value={stat?.displayPoints}
-                                         onChange={(e) => handleManualPointChange(q.id, e.target.value)}
-                                         onBlur={() => handleManualPointBlur(q.id, q.points)}
-                                  />
-                                  <span className="text-slate-500 text-xs">/ {q.points} p</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <Badge variant="secondary"
-                                     className="bg-slate-950 border border-slate-800 text-slate-400 font-mono text-xs h-7">{stat?.calcPoints} / {q.points} pont</Badge>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4 pt-4">
-                        {q.question_type === 'text' ? (
-                          <div
-                            className="bg-slate-950 p-4 rounded-md border border-slate-800 text-slate-300 italic min-h-[60px] whitespace-pre-wrap text-sm">
-                            {answer?.answer_text ||
-                              <span className="text-slate-600 opacity-50">Nem érkezett válasz.</span>}
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            {q.exam_options.map((opt: any) => {
-                              const isSelected = answer?.selected_option_ids?.includes(opt.id);
-                              const isActuallyCorrect = opt.is_correct;
-                              let style = "bg-slate-950 border-slate-800 text-slate-400 opacity-70";
-                              if (isSelected && isActuallyCorrect) style = "bg-green-900/20 border-green-500/50 text-green-400 font-bold opacity-100 shadow-[0_0_10px_rgba(34,197,94,0.1)]";
-                              else if (isSelected && !isActuallyCorrect) style = "bg-red-900/20 border-red-500/50 text-red-400 opacity-100";
-                              else if (!isSelected && isActuallyCorrect) style = "bg-green-900/5 border-green-900/30 text-green-600 border-dashed opacity-100";
-                              else if (isSelected) style = "bg-slate-800 text-white opacity-100";
-                              return (
-                                <div key={opt.id}
-                                     className={`p-3 rounded-md border text-sm flex justify-between items-center transition-all ${style}`}>
-                                  <span>{opt.option_text}</span>
-                                  {isSelected && <Badge variant="outline"
-                                                        className="text-[10px] border-current h-5 bg-transparent">Választott</Badge>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                    <button key={question.id} type="button"
+                            onClick={() => document.getElementById(`sheet-question-${question.id}`)?.scrollIntoView({behavior: "smooth", block: "center"})}
+                            className={cn("grid size-8 place-items-center rounded-lg text-xs font-semibold ring-1 transition-transform hover:scale-110",
+                              question.points === 0 ? "bg-white/[0.03] text-slate-400 ring-white/10"
+                                : open ? "bg-amber-500/15 text-amber-200 ring-amber-400/40"
+                                  : points >= question.points ? "bg-emerald-500/15 text-emerald-200 ring-emerald-400/30"
+                                    : points > 0 ? "bg-sky-500/15 text-sky-200 ring-sky-400/30" : "bg-red-500/15 text-red-200 ring-red-400/30")}>
+                      {numbers.get(question.id)}
+                    </button>
                   );
                 })}
               </div>
-            </>
-          ) : (
-            <Card className="bg-slate-900 border-slate-800 py-20"><CardContent className="text-center"><EyeOff
-              className="w-12 h-12 text-slate-600 mx-auto mb-4"/><h3 className="text-xl font-bold text-white">Részletek
-              elrejtve</h3><p className="text-slate-500 text-sm mt-2">A részletes eredmények nem publikusak.</p>
-            </CardContent></Card>
+              <p className="mt-3 text-[11px] text-slate-500">Sárga: pontozásra vár · zöld: teljes pont · kék: részpont · piros: 0 pont</p>
+            </section>
           )}
+        </aside>
+      </div>
 
-          {!isGrader && gradingNotes && (
-            <Card className="bg-slate-900 border-slate-800 mt-8"><CardHeader><CardTitle className="text-lg text-white">Oktatói
-              értékelés</CardTitle></CardHeader><CardContent>
-              <div
-                className="bg-slate-950 p-6 rounded-lg border border-slate-800 text-slate-300 italic whitespace-pre-wrap">"{gradingNotes}"
-              </div>
-            </CardContent></Card>
-          )}
-        </div>
+      <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Biztosan {confirm === "passed" ? "sikeresnek" : "sikertelennek"} jelölöd?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A pontszám {percent}%, a sikeres határ {exam.passing_percentage}%. A döntés eltér attól, amit a pontszám mutat; írd le az okát az összegzésben.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Mégse</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirm && void save(confirm)}>Igen, mentés</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
 
-        {/* --- JOBB OLDAL: VEZÉRLŐPULT --- */}
-        <div className="lg:col-span-4">
-          <div className="space-y-6 lg:sticky lg:top-24 h-fit max-h-[calc(100vh-8rem)] overflow-y-auto pr-1">
+interface SheetQuestionCardProps {
+  question: SheetQuestion;
+  number: number;
+  index: number;
+  grader: boolean;
+  editable: boolean;
+  score: {points: number; comment: string} | undefined;
+  onScore: (patch: Partial<{points: number; comment: string}>) => void;
+}
 
-            <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-              <div
-                className={`h-2 w-full transition-colors duration-500 ${isPassing ? 'bg-green-500' : 'bg-red-500'}`}/>
-              <CardHeader className="pb-2">
-                <CardTitle className="flex justify-between items-center text-white">
-                  <span>Eredmény</span>
-                  <ScoreRing score={score} max={maxScore} percent={percentage}/>
-                </CardTitle>
-                <CardDescription>Minimum: <span
-                  className="text-white font-bold">{passingPercent}%</span></CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4 pt-4">
-                <div className="space-y-2 pt-2 border-t border-slate-800">
-                  <div className="flex items-center gap-2 text-sm text-slate-400"><User
-                    className="w-4 h-4 text-yellow-500"/> <span
-                    className="text-white font-medium truncate">{submission.applicant_name || "Ismeretlen"}</span></div>
-                  <div className="flex items-center gap-2 text-sm text-slate-400"><Clock
-                    className="w-4 h-4 text-blue-500"/>
-                    <span>{submission.start_time ? formatDistanceToNow(new Date(submission.start_time), {
-                      locale: hu,
-                      addSuffix: true
-                    }) : '-'}</span></div>
-                  {submission.tab_switch_count > 0 && (<div
-                    className="flex items-center gap-2 text-sm text-red-400 bg-red-950/20 p-2 rounded border border-red-900/30 animate-pulse">
-                    <ShieldAlert className="w-4 h-4"/> <span>{submission.tab_switch_count}x fókuszvesztés</span></div>)}
-                </div>
-              </CardContent>
-            </Card>
+function SheetQuestionCard({question, number, index, grader, editable, score, onScore}: SheetQuestionCardProps) {
+  const answer = question.answer;
+  const isText = question.question_type === "text";
+  const selected = answer?.options ?? [];
+  const points = score?.points ?? 0;
+  const pasted = answer?.pasted ?? 0;
+  const textLength = answer?.text?.length ?? 0;
+  const [commentOpen, setCommentOpen] = useState(!!score?.comment);
 
-            {isGrader && (
-              <Card className="bg-slate-900 border-slate-800 shadow-xl">
-                <CardHeader className="pb-2 pt-4 px-4"><CardTitle
-                  className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><Target
-                  className="w-4 h-4"/> Navigátor</CardTitle></CardHeader>
-                <CardContent className="p-4">
-                  <div className="grid grid-cols-5 gap-2">
-                    {questionStats.map((stat, i) => (
-                      <button key={stat.id} onClick={() => {
-                        setCurrentPage(stat.page);
-                      }}
-                              className={`h-8 rounded text-xs font-bold transition-all border ${stat.type === 'text' ? 'bg-slate-800 border-slate-700 text-slate-400' : stat.calcPoints > 0 ? 'bg-green-900/20 border-green-900/50 text-green-500' : 'bg-red-900/20 border-red-900/50 text-red-500'} ${stat.page === currentPage ? 'ring-2 ring-yellow-500/50 scale-110' : ''}`}
-                      >{i + 1}</button>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {isGrader && isPending && (
-              <Card className="bg-slate-900 border-slate-800 shadow-xl border-l-4 border-l-yellow-600">
-                <CardHeader className="pb-2 pt-4"><CardTitle
-                  className="text-white text-base">Javítás</CardTitle></CardHeader>
-                <CardContent className="space-y-4 p-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-400">Megjegyzés</Label>
-                    <Textarea placeholder="Indoklás..." value={gradingNotes}
-                              onChange={e => setGradingNotes(e.target.value)}
-                              className="bg-slate-950 border-slate-700 text-white min-h-[80px] text-sm resize-none break-all"/>
-                  </div>
-
-                  {/* RÉSZLETES VISSZAJELZÉS KAPCSOLÓ */}
-                  <div onClick={() => setFeedbackVisible(!feedbackVisible)}
-                       className={cn("flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all select-none", feedbackVisible ? "bg-blue-900/20 border-blue-500/50" : "bg-slate-950 border-slate-800 hover:border-slate-600")}>
-                    <div className="space-y-0.5">
-                      <Label
-                        className={cn("text-sm font-bold cursor-pointer", feedbackVisible ? "text-blue-400" : "text-slate-300")}>RÉSZLETES
-                        VISSZAJELZÉS</Label>
-                      <p className="text-[10px] text-slate-500">Ha aktív, a diák látja a hibáit.</p>
-                    </div>
-                    <div
-                      className={cn("px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider", feedbackVisible ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-500")}>
-                      {feedbackVisible ? "LÁTHATÓ" : "REJTETT"}
-                    </div>
-                  </div>
-
-                  {/* TILTÁS BEÁLLÍTÁS */}
-                  <div className="space-y-1.5 pt-2 border-t border-slate-800">
-                    <Label className="text-xs text-slate-400 flex items-center gap-2"><Hourglass
-                      className="w-3 h-3"/> Újrapróbálkozás Tiltása (Bukás esetén)</Label>
-                    <Select value={banDuration} onValueChange={setBanDuration}>
-                      <SelectTrigger
-                        className="bg-slate-950 border-slate-700 h-9 text-xs"><SelectValue/></SelectTrigger>
-                      <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                        <SelectItem value="0">Nincs tiltás (Azonnal)</SelectItem>
-                        <SelectItem value="1">1 óra</SelectItem>
-                        <SelectItem value="12">12 óra</SelectItem>
-                        <SelectItem value="24">24 óra (1 nap)</SelectItem>
-                        <SelectItem value="72">72 óra (3 nap)</SelectItem>
-                        <SelectItem value="168">168 óra (1 hét)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <Button variant="outline"
-                            className={`h-12 border-red-900/50 text-red-500 hover:bg-red-900/20 hover:text-red-400 transition-all ${!isPassing ? 'ring-2 ring-red-500/50 bg-red-900/10' : 'opacity-60 grayscale'}`}
-                            onClick={() => handleGrade('failed')} disabled={isSaving}>
-                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin"/> :
-                        <XCircle className="w-5 h-5 mr-2"/>} Megbukott
-                    </Button>
-                    <Button
-                      className={`h-12 border-none font-bold shadow-lg transition-all ${isPassing ? 'bg-green-600 hover:bg-green-700 text-white ring-2 ring-green-400/50 scale-105' : 'bg-slate-800 text-slate-400 opacity-60'}`}
-                      onClick={() => handleGrade('passed')} disabled={isSaving}>
-                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin"/> :
-                        <CheckCircle2 className="w-5 h-5 mr-2"/>} Átment
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+  return (
+    <article id={`sheet-question-${question.id}`} style={{"--i": Math.min(index, 8)} as CSSProperties}
+             className="panel animate-rise scroll-mt-24 p-5 md:p-6">
+      <header className="flex items-start gap-4">
+        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/[0.04] text-sm font-semibold text-slate-200 ring-1 ring-white/10">{number}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] leading-relaxed whitespace-pre-wrap text-slate-100 wrap-anywhere">{question.question_text}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+            <span className="rounded-full bg-white/[0.04] px-2 py-0.5 text-slate-300 ring-1 ring-white/10">{QUESTION_TYPE_LABELS[question.question_type]}</span>
+            <span className="rounded-full bg-white/[0.04] px-2 py-0.5 text-slate-300 ring-1 ring-white/10">
+              {question.points === 0 ? "Nem pontozott" : `${question.points} pont`}
+            </span>
           </div>
         </div>
+      </header>
+
+      {grader && question.guide && (
+        <div className="mt-4 rounded-xl bg-amber-500/[0.07] p-3 ring-1 ring-amber-400/20 md:ml-13">
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-300"><BookOpenCheck className="size-3.5"/> Javítási útmutató</p>
+          <p className="mt-1 text-sm whitespace-pre-wrap text-amber-50/90 wrap-anywhere">{question.guide}</p>
+        </div>
+      )}
+
+      <div className="mt-4 space-y-2 md:ml-13">
+        {isText ? (
+          <>
+            <div className="rounded-xl bg-black/25 p-4 text-sm leading-relaxed whitespace-pre-wrap text-slate-100 ring-1 ring-white/5 wrap-anywhere">
+              {answer?.text?.trim() ? answer.text : <span className="text-slate-500 italic">Nem érkezett válasz.</span>}
+            </div>
+            {grader && pasted > 0 && (
+              <p className="flex items-center gap-1.5 text-xs text-orange-300">
+                <ClipboardPaste className="size-3.5"/>
+                Beillesztett szöveg: {pasted} karakter{textLength > 0 ? ` (a válasz kb. ${Math.min(100, Math.round((100 * pasted) / textLength))}%-a)` : ""}
+              </p>
+            )}
+          </>
+        ) : (
+          <ul className="space-y-1.5">
+            {question.options.map((option) => {
+              const chosen = selected.includes(option.id);
+              // Unscored questions (e.g. "which division?") have no right answer.
+              const correct = question.points > 0 ? option.is_correct : undefined;
+              return (
+                <li key={option.id}
+                    className={cn("flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm",
+                      chosen && correct ? "bg-emerald-500/10 text-emerald-100 ring-1 ring-emerald-400/40"
+                        : chosen && correct === false ? "bg-red-500/10 text-red-100 ring-1 ring-red-400/40"
+                          : chosen ? "bg-white/[0.06] text-white ring-1 ring-white/20"
+                            : correct ? "border border-dashed border-emerald-400/35 bg-emerald-500/[0.04] text-emerald-200/90"
+                              : "bg-white/[0.02] text-slate-400 ring-1 ring-white/5")}>
+                  <span className={cn("grid size-5 shrink-0 place-items-center ring-1", question.question_type === "multiple_choice" ? "rounded-md" : "rounded-full",
+                    chosen ? "bg-current/20 ring-current" : "ring-white/20")}>
+                    {chosen && <span className="size-2 rounded-full bg-current"/>}
+                  </span>
+                  <span className="min-w-0 flex-1 wrap-anywhere">{option.option_text}</span>
+                  {chosen && <span className="text-[11px] font-medium opacity-80">Választott</span>}
+                  {!chosen && correct && <span className="text-[11px] font-medium">Helyes válasz</span>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
+
+      {(question.points > 0 || (editable && !commentOpen)) && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-white/5 pt-4 md:ml-13">
+          {question.points > 0 && (editable ? (
+            <ScoreControl value={points} max={question.points} onChange={(value) => onScore({points: value})}/>
+          ) : (
+            <span className="rounded-full bg-white/[0.04] px-3 py-1 text-sm font-semibold tabular-nums text-white ring-1 ring-white/10">{points} / {question.points} pont</span>
+          ))}
+          {question.points > 0 && !isText && question.auto_points != null && grader && (
+            <span className="text-xs text-slate-500">{points === question.auto_points ? "Automatikusan pontozva" : `Automatikus: ${question.auto_points} pont (felülírva)`}</span>
+          )}
+          {editable && !commentOpen && (
+            <button type="button" onClick={() => setCommentOpen(true)} className="ml-auto flex items-center gap-1.5 text-xs text-primary hover:underline">
+              <MessageSquare className="size-3.5"/> Megjegyzés
+            </button>
+          )}
+        </div>
+      )}
+
+      {editable && commentOpen && (
+        <div className="mt-3 md:ml-13">
+          <Textarea value={score?.comment ?? ""} onChange={(event) => onScore({comment: event.target.value})} maxLength={2000}
+                    placeholder="Megjegyzés a vizsgázónak ehhez a kérdéshez (a részletes visszajelzéssel látja)" className="min-h-16 text-sm"/>
+        </div>
+      )}
+      {!editable && answer?.comment && (
+        <div className="mt-3 rounded-xl bg-sky-500/[0.06] p-3 text-sm text-sky-50/90 ring-1 ring-sky-400/20 md:ml-13">
+          <p className="mb-0.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-300"><MessageSquare className="size-3.5"/> A javító megjegyzése</p>
+          <p className="whitespace-pre-wrap wrap-anywhere">{answer.comment}</p>
+        </div>
+      )}
+    </article>
+  );
+}
+
+/** Points of one question: quick buttons (0, half, full) and an exact value. */
+function ScoreControl({value, max, onChange}: {value: number; max: number; onChange: (value: number) => void}) {
+  const quick = [...new Set([0, Math.round(max / 2), max])];
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex rounded-xl bg-white/[0.03] p-0.5 ring-1 ring-white/10">
+        {quick.map((option) => (
+          <button key={option} type="button" onClick={() => onChange(option)}
+                  className={cn("min-w-9 rounded-lg px-2.5 py-1 text-xs font-semibold tabular-nums transition-colors",
+                    value === option ? "bg-primary text-primary-foreground" : "text-slate-300 hover:bg-white/5")}>
+            {option === max ? `${option} (max)` : option}
+          </button>
+        ))}
+      </div>
+      <input type="number" min={0} max={max} value={value} aria-label="Pontszám"
+             onChange={(event) => {
+               const next = Number.parseInt(event.target.value, 10);
+               onChange(Number.isNaN(next) ? 0 : Math.max(0, Math.min(max, next)));
+             }}
+             className="h-8 w-16 rounded-lg bg-black/30 px-2 text-center text-sm tabular-nums text-white ring-1 ring-white/10 outline-none focus:ring-primary/60"/>
+      <span className="text-xs text-slate-500">/ {max}</span>
     </div>
   );
 }

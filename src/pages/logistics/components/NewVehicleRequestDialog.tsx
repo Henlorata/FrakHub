@@ -100,7 +100,7 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
 
     setIsLoading(true);
     try {
-      const {error} = await (supabase.from('vehicle_requests') as any).insert({
+      const {error} = await supabase.from('vehicle_requests').insert({
         user_id: user.id, vehicle_type: finalType, reason: reason, status: 'pending'
       });
       if (error) throw error;
@@ -120,7 +120,7 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#0b1221] border border-orange-500/30 text-white sm:max-w-lg p-0 shadow-[0_0_40px_rgba(249,115,22,0.15)] overflow-hidden">
+        className="bg-[#0b1221]/75 backdrop-blur-xl border border-orange-500/30 text-white sm:max-w-lg p-0 shadow-[0_0_40px_rgba(249,115,22,0.15)] overflow-hidden">
 
         {/* --- FORM HEADER --- */}
         <div className="bg-orange-500/10 border-b border-orange-500/20 p-5 flex items-center justify-between">
@@ -146,13 +146,13 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
         <form onSubmit={handleSubmit} className="p-6 space-y-6 relative">
           {/* Háttér minta */}
           <div
-            className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/graphy.png')] opacity-10 pointer-events-none"></div>
+            className="absolute inset-0 tex-grid opacity-10 pointer-events-none"></div>
 
           {/* JÁRMŰ LISTA */}
           <div className="space-y-2 relative z-10">
             <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Igényelhető
               Járművek</Label>
-            <div
+            <div role="radiogroup" aria-label="Igényelhető járművek"
               className="max-h-[220px] overflow-y-auto pr-2 custom-scrollbar border border-slate-700 bg-slate-950/80 rounded-sm">
               {VEHICLES.map(veh => {
                 const status = checkAvailability(veh);
@@ -160,10 +160,11 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
                 const isSelected = vehicleType === veh.name;
 
                 return (
-                  <div key={veh.name}
-                       onClick={() => !status.disabled && setVehicleType(veh.name)}
+                  // A real radio button: reachable with the keyboard and read out with its lock reason.
+                  <button key={veh.name} type="button" role="radio" aria-checked={isSelected} disabled={status.disabled}
+                       onClick={() => setVehicleType(veh.name)}
                        className={cn(
-                         "flex items-center justify-between p-2.5 cursor-pointer text-xs font-mono uppercase border-b border-slate-800 transition-all",
+                         "flex w-full items-center justify-between p-2.5 text-left cursor-pointer text-xs font-mono uppercase border-b border-slate-800 transition-all outline-none focus-visible:bg-orange-500/10 disabled:cursor-not-allowed",
                          status.disabled ? 'opacity-60 bg-slate-900/50' : 'hover:bg-orange-500/10 hover:text-orange-400',
                          isSelected && "bg-orange-500/20 text-orange-400 border-l-2 border-l-orange-500 pl-3"
                        )}
@@ -181,7 +182,7 @@ export function NewVehicleRequestDialog({open, onOpenChange, onSuccess}: NewVehi
                     ) : isSelected && (
                       <ChevronRight className="w-3 h-3"/>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>

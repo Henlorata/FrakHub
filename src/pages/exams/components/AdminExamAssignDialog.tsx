@@ -1,221 +1,169 @@
-import {useState, useEffect} from "react";
-import {useAuth} from "@/context/AuthContext";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogFooter
-} from "@/components/ui/dialog";
+import {useCallback, useEffect, useState, type CSSProperties, type ReactNode} from "react";
+import {toast} from "sonner";
+import {ArrowRight, Link2, Loader2, RefreshCw, Search} from "lucide-react";
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
-import {toast} from "sonner";
-import {Search, Loader2, RefreshCw, Link, User} from "lucide-react";
-import {Badge} from "@/components/ui/badge";
-import {cn} from "@/lib/utils";
+import {PersonAvatar} from "@/components/fleet/Holders";
+import {useAuth} from "@/context/AuthContext";
+import {formatDateTime, STATUS_META} from "@/lib/exams";
+import {getProfileDirectory, type DirectoryProfile} from "@/lib/profile-directory";
+import {cn, errorMessage} from "@/lib/utils";
+import type {SubmissionStatus} from "@/types/exams";
+
+interface OrphanSubmission {
+  id: string;
+  applicant_name: string | null;
+  start_time: string;
+  status: SubmissionStatus;
+  exams: {title: string} | null;
+}
+
+const TRAINEE_RANK = "Deputy Sheriff Trainee";
 
 interface AdminExamAssignDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * Attaches a guest sheet (recruitment exam without a claim code) to a trainee's profile. The
+ * server also attaches the same person's other guest sheets of the last month.
+ */
 export function AdminExamAssignDialog({open, onOpenChange}: AdminExamAssignDialogProps) {
   const {supabase} = useAuth();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [orphanExams, setOrphanExams] = useState<any[]>([]);
-  const [trainees, setTrainees] = useState<any[]>([]);
-  const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [term, setTerm] = useState("");
+  const [sheets, setSheets] = useState<OrphanSubmission[]>([]);
+  const [trainees, setTrainees] = useState<DirectoryProfile[]>([]);
+  const [sheetId, setSheetId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const fetchData = async (query = "") => {
-    setIsLoading(true);
+  const load = useCallback(async (query: string) => {
+    setLoading(true);
     try {
-      // 1. Gazdátlan Vizsgák (Dátum korlátozás nélkül, a legújabb 50, a BUKOTTAK ELREJTVE)
-      let examQuery = supabase
-        .from('exam_submissions')
-        .select('id, applicant_name, start_time, status, exams(title)')
-        .is('user_id', null)
-        .neq('status', 'failed');
+      // Guest sheets that are handed in (running attempts and failed ones are left out).
+      let sheetQuery = supabase.from("exam_submissions").select("id, applicant_name, start_time, status, exams(title)")
+        .is("user_id", null).is("deleted_at", null).in("status", ["pending", "passed"]);
+      if (query) sheetQuery = sheetQuery.ilike("applicant_name", `%${query}%`);
+      const {data, error} = await sheetQuery.order("start_time", {ascending: false}).limit(50);
+      if (error) throw error;
+      setSheets((data ?? []) as unknown as OrphanSubmission[]);
 
-      if (query) {
-        examQuery = examQuery.ilike('applicant_name', `%${query}%`);
+      // Trainees without a sheet yet (only their own sheets are checked, not every sheet ever).
+      const needle = query.trim().toLowerCase();
+      const candidates = (await getProfileDirectory())
+        .filter((member) => member.faction_rank === TRAINEE_RANK && member.system_role !== "pending")
+        .filter((member) => !needle || member.full_name.toLowerCase().includes(needle));
+      let taken = new Set<string>();
+      if (candidates.length) {
+        const {data: existing, error: takenError} = await supabase.from("exam_submissions").select("user_id")
+          .in("user_id", candidates.map((member) => member.id)).is("deleted_at", null);
+        if (takenError) throw takenError;
+        taken = new Set((existing ?? []).map((row: {user_id: string}) => row.user_id));
       }
-
-      const { data: exams, error: examError } = await examQuery
-        .order('start_time', { ascending: false })
-        .limit(50);
-
-      if (examError) throw examError;
-      setOrphanExams(exams || []);
-
-      // 2. Trainees lekérése (kizárva azokat, akiknek MÁR VAN bármilyen vizsgája)
-      const { data: existingSubmissions, error: subError } = await supabase
-        .from('exam_submissions')
-        .select('user_id')
-        .not('user_id', 'is', null);
-
-      if (subError) throw subError;
-
-      const excludedUserIds = existingSubmissions?.map(s => s.user_id) || [];
-
-      let userQuery = supabase
-        .from('profiles')
-        .select('id, full_name, badge_number')
-        .eq('faction_rank', 'Deputy Sheriff Trainee');
-
-      if (excludedUserIds.length > 0) {
-        userQuery = userQuery.not('id', 'in', `(${excludedUserIds.join(',')})`);
-      }
-
-      if (query) {
-        userQuery = userQuery.ilike('full_name', `%${query}%`);
-      }
-
-      const { data: users, error: userError } = await userQuery
-        .order('full_name')
-        .limit(50);
-
-      if (userError) throw userError;
-      setTrainees(users || []);
-
-    } catch (e: any) {
-      toast.error("Hiba az adatok lekérésekor: " + e.message);
+      setTrainees(candidates.filter((member) => !taken.has(member.id)).slice(0, 50));
+    } catch (error) {
+      toast.error("Hiba az adatok lekérésekor: " + errorMessage(error));
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
-    if (open) {
-      setSearchTerm("");
-      setSelectedExamId(null);
-      setSelectedUserId(null);
-      fetchData();
+    if (!open) return;
+    setTerm("");
+    setSheetId(null);
+    setUserId(null);
+    void load("");
+  }, [open, load]);
+
+  const assign = async () => {
+    if (!sheetId || !userId) return;
+    setLoading(true);
+    const {error} = await supabase.rpc("admin_assign_exam", {_submission_id: sheetId, _target_user_id: userId});
+    setLoading(false);
+    if (error) {
+      toast.error("A párosítás nem sikerült: " + errorMessage(error));
+      return;
     }
-  }, [open]);
-
-  const handleAssign = async () => {
-    if (!selectedExamId || !selectedUserId) return;
-    setIsLoading(true);
-    try {
-      const {error} = await supabase.rpc('admin_assign_exam', {
-        _submission_id: selectedExamId,
-        _target_user_id: selectedUserId
-      });
-      if (error) throw error;
-
-      toast.success("Vizsga sikeresen hozzárendelve a profilhoz!");
-
-      // Frissítjük a listát és nullázzuk a kijelöléseket
-      await fetchData(searchTerm);
-      setSelectedExamId(null);
-      setSelectedUserId(null);
-    } catch (e: any) {
-      toast.error("Hiba a hozzárendelés során: " + e.message);
-    } finally {
-      setIsLoading(false);
-    }
+    toast.success("A vizsgalap a profilhoz került.");
+    setSheetId(null);
+    setUserId(null);
+    void load(term);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="bg-[#0b1221] border border-blue-900/30 text-white sm:max-w-3xl h-[700px] flex flex-col p-0 shadow-2xl">
-        <div className="bg-blue-950/20 border-b border-blue-900/30 p-5 flex items-center gap-3">
-          <div className="p-2 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400"><Link
-            className="w-5 h-5"/></div>
-          <div>
-            <DialogTitle className="text-lg font-black uppercase tracking-tight text-white">MANUÁLIS
-              PÁROSÍTÁS</DialogTitle>
-            <p className="text-[10px] text-blue-400/60 font-mono uppercase tracking-widest">Manual Override Protocol</p>
+      <DialogContent className="flex h-[min(44rem,92dvh)] flex-col gap-0 p-0 sm:max-w-3xl">
+        <div className="border-b border-white/5 p-5">
+          <DialogTitle className="flex items-center gap-2"><Link2 className="size-4 text-primary"/> Vendéglap párosítása</DialogTitle>
+          <DialogDescription className="mt-1">
+            Ha egy felvételiző elvesztette a vizsgakódját: válaszd ki a lapját és a profilját. Ugyanannak a névnek az elmúlt havi többi vendéglapja is a profilhoz kerül.
+          </DialogDescription>
+          <div className="mt-4 flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
+              <Input value={term} onChange={(event) => setTerm(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void load(term)}
+                     placeholder="Név keresése…" className="pl-9"/>
+            </div>
+            <Button variant="outline" size="icon" aria-label="Keresés" onClick={() => void load(term)}>
+              <RefreshCw className={cn(loading && "animate-spin")}/>
+            </Button>
           </div>
         </div>
 
-        <div className="p-4 border-b border-slate-800 bg-slate-950/50 flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"/>
-            <Input placeholder="Név keresése..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                   onKeyDown={e => e.key === 'Enter' && fetchData(searchTerm)}
-                   className="pl-10 bg-slate-900 border-slate-700 font-mono text-xs h-10"/>
-          </div>
-          <Button variant="outline" onClick={() => fetchData(searchTerm)}
-                  className="border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"><RefreshCw
-            className={cn("w-4 h-4", isLoading && "animate-spin")}/></Button>
+        <div className="grid min-h-0 flex-1 grid-cols-1 divide-y divide-white/5 md:grid-cols-2 md:divide-x md:divide-y-0">
+          <Column title="Vendéglapok" empty="Nincs párosítatlan vendéglap.">
+            {sheets.map((sheet, index) => (
+              <button key={sheet.id} type="button" onClick={() => setSheetId(sheet.id)} style={{"--i": Math.min(index, 10)} as CSSProperties}
+                      className={cn("animate-fade w-full rounded-xl p-3 text-left ring-1 transition-colors",
+                        sheetId === sheet.id ? "bg-primary/10 ring-primary/50" : "bg-white/[0.02] ring-white/5 hover:ring-white/15")}>
+                <span className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-semibold text-white">{sheet.applicant_name}</span>
+                  <span className="shrink-0 text-[11px] text-slate-400">{STATUS_META[sheet.status]?.label}</span>
+                </span>
+                <span className="block truncate text-xs text-slate-400">{sheet.exams?.title}</span>
+                <span className="block text-[11px] text-slate-500">{formatDateTime(sheet.start_time)}</span>
+              </button>
+            ))}
+          </Column>
+          <Column title="Trainee-k vizsgalap nélkül" empty="Nincs találat a trainee-k között.">
+            {trainees.map((member, index) => (
+              <button key={member.id} type="button" onClick={() => setUserId(member.id)} style={{"--i": Math.min(index, 10)} as CSSProperties}
+                      className={cn("animate-fade flex w-full items-center gap-3 rounded-xl p-3 text-left ring-1 transition-colors",
+                        userId === member.id ? "bg-emerald-500/10 ring-emerald-400/50" : "bg-white/[0.02] ring-white/5 hover:ring-white/15")}>
+                <PersonAvatar person={member} size="md"/>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">{member.full_name}</span>
+                <span className="shrink-0 text-[11px] text-slate-400">#{member.badge_number}</span>
+              </button>
+            ))}
+          </Column>
         </div>
 
-        <div className="flex-1 min-h-0 grid grid-cols-2 gap-px bg-slate-800">
-          {/* LEFT: EXAMS */}
-          <div className="bg-[#050a14] flex flex-col min-h-0">
-            <div
-              className="p-2 bg-slate-900/80 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center border-b border-slate-800 sticky top-0">Gazdátlan
-              Vizsgák
-            </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-              {orphanExams.map(ex => (
-                <div key={ex.id} onClick={() => setSelectedExamId(ex.id)}
-                     className={cn("p-3 rounded border cursor-pointer transition-all", selectedExamId === ex.id ? "bg-yellow-900/20 border-yellow-500/50 shadow-[inset_0_0_10px_rgba(234,179,8,0.1)]" : "bg-slate-900/50 border-slate-800 hover:bg-slate-900 hover:border-slate-600")}>
-                  <div className="flex justify-between items-start mb-1">
-                    <span
-                      className={cn("font-bold text-sm", selectedExamId === ex.id ? "text-yellow-500" : "text-white")}>{ex.applicant_name}</span>
-                    <Badge variant="outline"
-                           className="text-[9px] h-4 border-slate-700 text-slate-500">{ex.status}</Badge>
-                  </div>
-                  <div className="text-[10px] text-slate-400 truncate">{ex.exams?.title}</div>
-                  <div
-                    className="text-[9px] text-slate-600 font-mono mt-1 text-right">{new Date(ex.start_time).toLocaleDateString()}</div>
-                </div>
-              ))}
-
-              {orphanExams.length === 0 && !isLoading && (
-                <div className="text-center p-4 text-xs font-mono text-slate-500">Nincs gazdátlan vizsga.</div>
-              )}
-            </div>
-          </div>
-
-          {/* RIGHT: TRAINEES */}
-          <div className="bg-[#050a14] flex flex-col min-h-0">
-            <div
-              className="p-2 bg-slate-900/80 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center border-b border-slate-800 sticky top-0">Trainee
-              Lista
-            </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-              {trainees.map(u => (
-                <div key={u.id} onClick={() => setSelectedUserId(u.id)}
-                     className={cn("p-3 rounded border cursor-pointer transition-all flex items-center justify-between", selectedUserId === u.id ? "bg-green-900/20 border-green-500/50 shadow-[inset_0_0_10px_rgba(34,197,94,0.1)]" : "bg-slate-900/50 border-slate-800 hover:bg-slate-900 hover:border-slate-600")}>
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-8 h-8 rounded bg-slate-950 border border-slate-700 flex items-center justify-center text-slate-500 shrink-0">
-                      <User className="w-4 h-4"/></div>
-                    <span
-                      className={cn("font-bold text-sm truncate", selectedUserId === u.id ? "text-green-400" : "text-white")}>{u.full_name}</span>
-                  </div>
-                  <span
-                    className="text-[10px] font-mono bg-black/40 px-1.5 py-0.5 rounded text-slate-400 shrink-0">{u.badge_number}</span>
-                </div>
-              ))}
-
-              {trainees.length === 0 && !isLoading && (
-                <div className="text-center p-4 text-xs font-mono text-slate-500">Nincs találat a Trainee-k között.</div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter className="p-4 bg-slate-950 border-t border-slate-800 flex justify-between items-center">
-          <div className="text-xs text-slate-500 font-mono flex items-center gap-2">
-            <div
-              className={cn("w-2 h-2 rounded-full", selectedExamId && selectedUserId ? "bg-green-500 animate-pulse" : "bg-red-500")}></div>
-            {selectedExamId && selectedUserId ? "RENDSZER KÉSZ A PÁROSÍTÁSRA" : "VÁLASSZ MINDKÉT LISTÁBÓL"}
-          </div>
+        <DialogFooter className="flex-row items-center justify-between border-t border-white/5 p-4 sm:justify-between">
+          <span className="flex items-center gap-2 text-xs text-slate-400">
+            {sheetId && userId ? <>Kész a párosításra <ArrowRight className="size-3"/></> : "Válassz egy lapot és egy profilt."}
+          </span>
           <div className="flex gap-2">
-            <Button variant="ghost" className="text-slate-300 hover:text-white" onClick={() => onOpenChange(false)}>Mégse</Button>
-            <Button onClick={handleAssign} disabled={!selectedExamId || !selectedUserId || isLoading}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider">
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : "ÖSSZERENDELÉS"}
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>Bezárás</Button>
+            <Button disabled={!sheetId || !userId || loading} onClick={() => void assign()}>
+              {loading ? <Loader2 className="animate-spin"/> : <Link2/>} Párosítás
             </Button>
           </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Column({title, empty, children}: {title: string; empty: string; children: ReactNode[]}) {
+  return (
+    <div className="flex min-h-0 flex-col">
+      <p className="px-4 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</p>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-4">
+        {children.length ? children : <p className="py-8 text-center text-xs text-slate-500">{empty}</p>}
+      </div>
+    </div>
   );
 }

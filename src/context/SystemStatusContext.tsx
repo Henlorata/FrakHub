@@ -1,8 +1,9 @@
-import React, {createContext, useContext, useEffect, useState} from 'react';
-import {useAuth} from './AuthContext';
-import {toast} from 'sonner';
+import React, {createContext, useCallback, useContext, useEffect, useMemo, useRef, useState} from "react";
+import {toast} from "sonner";
+import {useAuth} from "./AuthContext";
+import {uniqueChannelName} from "@/lib/realtime";
 
-export type AlertLevelId = 'normal' | 'traffic' | 'border' | 'tactical';
+export type AlertLevelId = "normal" | "traffic" | "border" | "tactical";
 
 interface SystemStatusContextType {
   alertLevel: AlertLevelId;
@@ -12,103 +13,111 @@ interface SystemStatusContextType {
   isLoading: boolean;
 }
 
+interface StatusRow {
+  alert_level?: string | null;
+  recruitment_open?: boolean | null;
+}
+
 const SystemStatusContext = createContext<SystemStatusContextType | undefined>(undefined);
 
-export function SystemStatusProvider({children}: { children: React.ReactNode }) {
+/**
+ * Faction-wide broadcast state (single `system_status` row, id = 'global'):
+ * alert level and recruitment open/closed. Read once for everyone (the registration
+ * page needs it too); kept live through Realtime only for signed-in users, so
+ * anonymous visitors do not hold a Realtime connection.
+ */
+export function SystemStatusProvider({children}: {children: React.ReactNode}) {
   const {supabase, user} = useAuth();
-  const [alertLevel, setAlertLevelState] = useState<AlertLevelId>('normal');
+  const userId = user?.id ?? null;
+  const [alertLevel, setAlertLevelState] = useState<AlertLevelId>("normal");
   const [recruitmentOpen, setRecruitmentOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const recruitmentRef = useRef(true);
+
+  const applyRow = useCallback((row: StatusRow, announce: boolean) => {
+    if (row.alert_level) setAlertLevelState(row.alert_level as AlertLevelId);
+    if (typeof row.recruitment_open === "boolean") {
+      if (announce && row.recruitment_open !== recruitmentRef.current) toast.info("Létszámstop státusz frissült!");
+      recruitmentRef.current = row.recruitment_open;
+      setRecruitmentOpen(row.recruitment_open);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const {data} = await supabase
-          .from('system_status')
-          .select('*')
-          .eq('id', 'global')
-          .single();
-
-        if (data) {
-          setAlertLevelState(data.alert_level as AlertLevelId);
-          setRecruitmentOpen(data.recruitment_open ?? true);
-        }
-      } finally {
-        setIsLoading(false);
-      }
+    let active = true;
+    supabase
+      .from("system_status")
+      .select("alert_level, recruitment_open")
+      .eq("id", "global")
+      .maybeSingle()
+      .then(({data}) => {
+        if (active && data) applyRow(data, false);
+      })
+      .then(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
     };
+  }, [supabase, applyRow]);
 
-    fetchStatus();
-
+  useEffect(() => {
+    if (!userId) return;
     const channel = supabase
-      .channel('system_status_changes')
+      .channel(uniqueChannelName("system_status"))
       .on(
-        'postgres_changes',
-        {event: 'UPDATE', schema: 'public', table: 'system_status', filter: 'id=eq.global'},
-        (payload) => {
-          if (payload.new.alert_level) setAlertLevelState(payload.new.alert_level as AlertLevelId);
-          if (Object.prototype.hasOwnProperty.call(payload.new, 'recruitment_open')) {
-            setRecruitmentOpen(payload.new.recruitment_open);
-            toast.info(`Létszámstop státusz frissült!`);
-          }
-        }
+        "postgres_changes",
+        {event: "UPDATE", schema: "public", table: "system_status", filter: "id=eq.global"},
+        (payload) => applyRow(payload.new as StatusRow, true),
       )
       .subscribe();
-
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
-  }, [supabase]);
+  }, [supabase, userId, applyRow]);
 
-  const setAlertLevel = async (level: AlertLevelId) => {
-    if (!user) return;
-    const {error} = await supabase.from('system_status').upsert({
-      id: 'global',
-      alert_level: level,
-      recruitment_open: recruitmentOpen,
-      updated_by: user.id,
-      updated_at: new Date().toISOString()
-    });
-    if (error) toast.error("Hiba a státusz módosításakor");
-    else setAlertLevelState(level);
-  };
-
-  const toggleRecruitment = async () => {
-    if (!user) return;
-    const newState = !recruitmentOpen;
-
-    try {
-      const {error} = await supabase.from('system_status').upsert({
-        id: 'global',
-        alert_level: alertLevel,
-        recruitment_open: newState,
-        updated_by: user.id,
-        updated_at: new Date().toISOString()
-      });
-
-      if (error) throw error;
-
-      setRecruitmentOpen(newState);
-      toast.success(newState ? "Tagfelvétel megnyitva!" : "Létszámstop aktiválva!");
-    } catch (error: any) {
-      console.error(error);
-      if (error.code === '42703') { // Undefined column
-        toast.error("Adatbázis hiba: Hiányzik a 'recruitment_open' oszlop a system_status táblából!");
-      } else {
-        toast.error("Hiba a létszámstop módosításakor.");
-      }
-    }
-  };
-
-  return (
-    <SystemStatusContext.Provider value={{alertLevel, setAlertLevel, recruitmentOpen, toggleRecruitment, isLoading}}>
-      {children}
-    </SystemStatusContext.Provider>
+  const setAlertLevel = useCallback(
+    async (level: AlertLevelId) => {
+      if (!userId) return;
+      const {data, error} = await supabase
+        .from("system_status")
+        .update({alert_level: level, updated_by: userId, updated_at: new Date().toISOString()})
+        .eq("id", "global")
+        .select("id");
+      if (error || !data?.length) toast.error("Hiba a státusz módosításakor");
+      else setAlertLevelState(level);
+    },
+    [supabase, userId],
   );
+
+  const toggleRecruitment = useCallback(async () => {
+    if (!userId) return;
+    const next = !recruitmentRef.current;
+    const {data, error} = await supabase
+      .from("system_status")
+      .update({recruitment_open: next, updated_by: userId, updated_at: new Date().toISOString()})
+      .eq("id", "global")
+      .select("id");
+    if (error || !data?.length) {
+      console.error(error);
+      toast.error("Hiba a létszámstop módosításakor.");
+      return;
+    }
+    recruitmentRef.current = next;
+    setRecruitmentOpen(next);
+    toast.success(next ? "Tagfelvétel megnyitva!" : "Létszámstop aktiválva!");
+  }, [supabase, userId]);
+
+  const value = useMemo(
+    () => ({alertLevel, recruitmentOpen, setAlertLevel, toggleRecruitment, isLoading}),
+    [alertLevel, recruitmentOpen, setAlertLevel, toggleRecruitment, isLoading],
+  );
+
+  return <SystemStatusContext.Provider value={value}>{children}</SystemStatusContext.Provider>;
 }
 
 export function useSystemStatus() {
   const context = useContext(SystemStatusContext);
-  if (context === undefined) throw new Error('useSystemStatus must be used within a SystemStatusProvider');
+  if (context === undefined) throw new Error("useSystemStatus must be used within a SystemStatusProvider");
   return context;
 }

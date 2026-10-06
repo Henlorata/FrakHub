@@ -26,7 +26,24 @@ import {
   UserCheck,
   UserX
 } from "lucide-react";
-import {cn} from "@/lib/utils";
+import {cn, getStaffCategory} from "@/lib/utils";
+import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
+import type {LucideIcon} from "lucide-react";
+import {PROFILE_COLUMNS, type Profile, type Ribbon} from "@/types/supabase";
+import {formatDate} from "@/lib/datetime";
+
+interface AwardRow {
+  id: string;
+  awarded_at: string;
+  ribbon: Ribbon | null;
+}
+
+const STAFF_DISPLAY = {
+  executive: 'EXECUTIVE STAFF',
+  command: 'COMMAND STAFF',
+  supervisory: 'SUPERVISORY STAFF',
+  field: 'FIELD STAFF',
+} as const;
 
 interface OfficerProfileDialogProps {
   open: boolean;
@@ -37,50 +54,45 @@ interface OfficerProfileDialogProps {
 
 export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: OfficerProfileDialogProps) {
   const {supabase} = useAuth();
-  const [profile, setProfile] = useState<any>(null);
-  const [awards, setAwards] = useState<any[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [awards, setAwards] = useState<AwardRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [accessInfo, setAccessInfo] = useState<{ code: string, label: string, color: string, icon: any }>({
+  const [accessInfo, setAccessInfo] = useState<{ code: string, label: string, color: string, icon: LucideIcon }>({
     code: "...", label: "ELLENŐRZÉS...", color: "text-slate-500 border-slate-700", icon: Loader2
   });
 
-  const getDivisionDisplay = (p: any) => {
+  const getDivisionDisplay = (p: Profile) => {
     const div = p.division || "ISMERETLEN";
-    if (div !== 'TSB') return div;
-    const rank = p.faction_rank || "";
-    if (['Commander', 'Deputy Commander'].includes(rank)) return 'EXECUTIVE STAFF';
-    if (rank.includes('Captain') || rank.includes('Lieutenant')) return 'COMMAND STAFF';
-    if (rank.includes('Sergeant')) return 'SUPERVISORY STAFF';
-    return 'FIELD STAFF';
+    return div !== 'TSB' ? div : STAFF_DISPLAY[getStaffCategory(p.faction_rank)];
   };
 
+  const loadedUserId = profile?.id;
+
   useEffect(() => {
-    if (!open || !userId) return;
-
-    if (profile && profile.id === userId && !loading) return;
-
+    if (!open || !userId || loadedUserId === userId) return;
+    let active = true;
     setLoading(true);
 
-    const fetchData = async () => {
-      try {
-        const {data: profileData} = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (profileData) {
-          setProfile(profileData);
-          const {data: awardsData} = await supabase.from('user_ribbons').select('*, ribbon:ribbons(*)').eq('user_id', userId);
-          setAwards(awardsData || []);
-        } else {
-          setProfile(null);
-        }
-      } catch (e) {
-        console.error("Profile fetch error:", e);
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Profile and awards in parallel.
+    Promise.all([
+      supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', userId).maybeSingle(),
+      supabase.from('user_ribbons').select('*, ribbon:ribbons(*)').eq('user_id', userId),
+    ])
+      .then(([profileResult, awardResult]) => {
+        if (!active) return;
+        setProfile((profileResult.data ?? null) as Profile | null);
+        setAwards((awardResult.data ?? []) as AwardRow[]);
+      })
+      .catch((e) => console.error("Profile fetch error:", e))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
 
-    fetchData();
-  }, [open, userId]);
+    return () => {
+      active = false;
+    };
+  }, [open, userId, loadedUserId, supabase]);
 
   // ACCESS LOGIC
   useEffect(() => {
@@ -107,7 +119,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
         return;
       }
 
-      const {data: caseData} = await supabase.from('cases').select('owner_id').eq('id', caseId).single();
+      const {data: caseData} = await supabase.from('cases').select('owner_id').eq('id', caseId).maybeSingle();
       if (caseData?.owner_id === profile.id) {
         setAccessInfo({
           code: "OWNER",
@@ -149,7 +161,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
     };
 
     calculateAccess();
-  }, [profile, caseId]);
+  }, [profile, caseId, supabase]);
 
   if (!open) return null;
 
@@ -158,7 +170,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="bg-[#0b1120] border-2 border-slate-800 text-slate-200 max-w-2xl p-0 gap-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] [&>button]:hidden rounded-xl">
+        className="bg-[#0b1120]/70 backdrop-blur-xl border-2 border-slate-800 text-slate-200 max-w-2xl p-0 gap-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] [&>button]:hidden rounded-xl">
 
         {/* AKADÁLYMENTESÍTÉS JAVÍTÁS */}
         <DialogTitle className="sr-only">Profil Adatok</DialogTitle>
@@ -189,12 +201,12 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
 
         {/* LOADING VAGY TARTALOM */}
         {loading ? (
-          <div className="h-[350px] flex flex-col items-center justify-center gap-4 bg-[#0b1120]">
+          <div className="h-[350px] flex flex-col items-center justify-center gap-4 bg-[#0b1120]/70 backdrop-blur-xl">
             <Loader2 className="w-10 h-10 animate-spin text-blue-500"/>
             <span className="text-xs uppercase tracking-[0.3em] text-slate-500 font-mono animate-pulse">Adatok letöltése...</span>
           </div>
         ) : profile ? (
-          <div className="relative z-10 bg-[#0b1120] flex flex-col">
+          <div className="relative z-10 bg-[#0b1120]/70 backdrop-blur-xl flex flex-col">
 
             {/* PROFILKÉP & NÉV */}
             <div className="px-8 pb-6 -mt-16 flex items-end gap-6 relative">
@@ -202,7 +214,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
                 <div
                   className="w-32 h-32 rounded-lg bg-slate-900 border-2 border-slate-700 p-1 shadow-2xl relative overflow-hidden">
                   <Avatar className="w-full h-full rounded bg-slate-950">
-                    <AvatarImage src={profile?.avatar_url} className="object-cover"/>
+                    <AvatarImage src={getOptimizedAvatarUrl(profile?.avatar_url, 256) || undefined} className="object-cover"/>
                     <AvatarFallback className="text-3xl font-bold bg-slate-900 text-slate-600 rounded">
                       {profile?.full_name?.charAt(0) || "?"}
                     </AvatarFallback>
@@ -220,7 +232,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
                 <h2
                   className="text-2xl font-black text-white uppercase tracking-tight flex items-center gap-3 drop-shadow-md truncate">
                   {profile.full_name}
-                  {profile.faction_rank === 'Sheriff' &&
+                  {profile.faction_rank === 'Commander' &&
                     <Shield className="w-5 h-5 text-yellow-500 fill-yellow-500/20"/>}
                 </h2>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -358,7 +370,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
                                   <p
                                     className="text-xs font-bold text-yellow-500 truncate pr-2">{awardItem.ribbon?.name || "Ismeretlen Kitüntetés"}</p>
                                   <span
-                                    className="text-[9px] font-mono text-slate-600 bg-slate-950 px-1 rounded border border-slate-900">{new Date(awardItem.awarded_at).toLocaleDateString('hu-HU')}</span>
+                                    className="text-[9px] font-mono text-slate-600 bg-slate-950 px-1 rounded border border-slate-900">{formatDate(awardItem.awarded_at)}</span>
                                 </div>
                                 <p
                                   className="text-[10px] text-slate-400 mt-1 line-clamp-2">{awardItem.ribbon?.description || "Nincs leírás a kitüntetéshez."}</p>
@@ -392,7 +404,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
 
           </div>
         ) : (
-          <div className="p-20 text-center text-slate-500 bg-[#0b1120]">
+          <div className="p-20 text-center text-slate-500 bg-[#0b1120]/70 backdrop-blur-xl">
             <UserX className="w-12 h-12 mx-auto mb-4 opacity-20"/>
             <p className="uppercase tracking-widest text-xs">Profil nem elérhető</p>
           </div>

@@ -1,153 +1,163 @@
-import * as React from "react";
-import {useAuth} from "@/context/AuthContext";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogFooter
-} from "@/components/ui/dialog";
+import {useEffect, useRef, useState} from "react";
+import {Camera, Loader2, ScanFace, UserRound} from "lucide-react";
+import {toast} from "sonner";
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {toast} from "sonner";
-import {ScanFace, FileText} from "lucide-react";
-import type {Suspect} from "@/types/supabase";
+import {useAuth} from "@/context/AuthContext";
+import {uploadToCloudinary} from "@/lib/cloudinary";
+import {SUSPECT_STATUS, SUSPECT_STATUSES} from "@/lib/mcb";
+import {cn, errorMessage} from "@/lib/utils";
+import type {Suspect, SuspectStatus} from "@/types/supabase";
 
-function NewSuspectDialog({open, onOpenChange, onSuccess}: {
-  open: boolean,
-  onOpenChange: (o: boolean) => void,
-  onSuccess: () => void
-}) {
-  const {supabase, user} = useAuth();
-  const [loading, setLoading] = React.useState(false);
-  const [formData, setFormData] = React.useState<Partial<Suspect>>({
-    full_name: "", alias: "", status: "free", gang_affiliation: "", description: "", gender: "male"
-  });
+export const GENDERS: {value: string; label: string}[] = [
+  {value: "male", label: "Férfi"},
+  {value: "female", label: "Nő"},
+  {value: "unknown", label: "Nem ismert"},
+];
 
-  const handleSubmit = async () => {
-    if (!formData.full_name) {
-      toast.error("A név megadása kötelező!");
+/** Photo picker of a person: shows the chosen file at once, uploads when the form is saved. */
+export function MugshotPicker({file, url, onFile, size = 128}: {file: File | null; url: string | null | undefined;
+  onFile: (file: File | null) => void; size?: number}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) {
+      setPreview(null);
       return;
     }
-    setLoading(true);
+    const objectUrl = URL.createObjectURL(file);
+    setPreview(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  const shown = preview ?? url ?? null;
+
+  return (
+    <button type="button" onClick={() => input.current?.click()} style={{width: size, height: size * 1.25}}
+            className="group relative shrink-0 overflow-hidden rounded-2xl bg-gradient-to-b from-slate-800 to-slate-950 ring-1 ring-white/15">
+      {shown ? <img src={shown} alt="" className="size-full object-cover"/> : (
+        <span className="grid size-full place-items-center text-slate-600"><UserRound className="size-1/2"/></span>
+      )}
+      <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-black/70 py-1.5 text-[11px] font-medium text-slate-200 opacity-90 transition group-hover:opacity-100">
+        <Camera className="size-3.5"/>{shown ? "Csere" : "Fénykép"}
+      </span>
+      <span aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(transparent_calc(100%-1px),rgb(255_255_255/0.07)_1px)] bg-[size:100%_14px]"/>
+      <input ref={input} type="file" accept="image/*" className="hidden" onChange={(event) => {
+        const next = event.target.files?.[0] ?? null;
+        if (next && next.size > 10 * 1024 * 1024) toast.error("A kép legfeljebb 10 MB lehet.");
+        else onFile(next);
+        event.target.value = "";
+      }}/>
+    </button>
+  );
+}
+
+interface NewSuspectDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (suspect: Suspect) => void;
+}
+
+const EMPTY = {full_name: "", alias: "", gender: "male", status: "free" as SuspectStatus, gang_affiliation: "", description: ""};
+
+export function NewSuspectDialog({open, onOpenChange, onCreated}: NewSuspectDialogProps) {
+  const {supabase, user} = useAuth();
+  const [form, setForm] = useState(EMPTY);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(EMPTY);
+    setPhoto(null);
+  }, [open]);
+
+  const submit = async () => {
+    const name = form.full_name.trim();
+    if (!name) return toast.error("A név megadása kötelező.");
+    setBusy(true);
     try {
-      const {error} = await supabase.from('suspects').insert({...formData, created_by: user?.id} as any);
+      const mugshot = photo ? await uploadToCloudinary(photo, "mugshot") : null;
+      const {data, error} = await supabase.from("suspects").insert({
+        full_name: name, alias: form.alias.trim() || null, gender: form.gender, status: form.status,
+        gang_affiliation: form.gang_affiliation.trim() || null, description: form.description.trim() || null,
+        mugshot_url: mugshot, created_by: user?.id,
+      }).select("*").single();
       if (error) throw error;
       toast.success("Adatlap létrehozva.");
-      setFormData({full_name: "", alias: "", status: "free", description: "", gender: "male"});
-      onSuccess();
       onOpenChange(false);
-    } catch (error: any) {
-      toast.error("Hiba történt.");
+      onCreated(data as Suspect);
+    } catch (error) {
+      toast.error("Az adatlap létrehozása nem sikerült.", {description: errorMessage(error)});
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="bg-[#050a14] border border-slate-800 text-white sm:max-w-lg p-0 overflow-hidden shadow-2xl">
-        <div
-          className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center gap-4 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-16 h-full bg-gradient-to-l from-red-900/20 to-transparent"></div>
-          <div className="w-10 h-10 rounded bg-red-500/10 flex items-center justify-center border border-red-500/20">
-            <ScanFace className="w-5 h-5 text-red-500"/>
-          </div>
-          <div>
-            <DialogTitle className="text-lg font-black tracking-tight text-white uppercase font-mono">ÚJ
-              NYILVÁNTARTÁS</DialogTitle>
-            <p className="text-[10px] text-red-500/60 font-mono tracking-widest uppercase">Create Criminal Record</p>
-          </div>
-        </div>
-
-        <div className="p-6 space-y-5">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Teljes Név *</Label>
-              <Input
-                value={formData.full_name}
-                onChange={e => setFormData({...formData, full_name: e.target.value})}
-                className="bg-slate-950 border-slate-800 h-10 font-mono text-sm focus-visible:ring-red-500/30"
-                placeholder="ISMERETLEN..."
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Alias / Becenév</Label>
-              <Input
-                value={formData.alias || ""}
-                onChange={e => setFormData({...formData, alias: e.target.value})}
-                className="bg-slate-950 border-slate-800 h-10 font-mono text-sm focus-visible:ring-red-500/30"
-                placeholder="NINCS..."
-              />
+    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-2xl bg-red-500/10 text-red-300 ring-1 ring-red-500/30"><ScanFace className="size-5"/></span>
+            <div>
+              <DialogTitle>Új személy a nyilvántartásban</DialogTitle>
+              <DialogDescription>Gyanúsítottak, tanúk, sértettek közös adatbázisa; aktákhoz később csatolható.</DialogDescription>
             </div>
           </div>
+        </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Jelenlegi Státusz</Label>
-              <Select value={formData.status} onValueChange={(val: any) => setFormData({...formData, status: val})}>
-                <SelectTrigger className="bg-slate-950 border-slate-800 h-10 text-sm"><SelectValue/></SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                  <SelectItem value="free" className="text-green-400">SZABADLÁBON</SelectItem>
-                  <SelectItem value="wanted" className="text-red-500 font-bold">KÖRÖZÖTT</SelectItem>
-                  <SelectItem value="jailed" className="text-orange-400">BÖRTÖNBEN</SelectItem>
-                  <SelectItem value="deceased" className="text-slate-500">ELHUNYT</SelectItem>
-                  <SelectItem value="unknown">ISMERETLEN</SelectItem>
-                </SelectContent>
-              </Select>
+        <div className="flex flex-col gap-5 sm:flex-row">
+          <MugshotPicker file={photo} url={null} onFile={setPhoto}/>
+          <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="suspect-name">Teljes név</Label>
+              <Input id="suspect-name" value={form.full_name} autoFocus maxLength={120} onChange={(event) => setForm({...form, full_name: event.target.value})}/>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Nem</Label>
-              <Select value={formData.gender || "male"}
-                      onValueChange={(val) => setFormData({...formData, gender: val})}>
-                <SelectTrigger className="bg-slate-950 border-slate-800 h-10 text-sm"><SelectValue/></SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                  <SelectItem value="male">FÉRFI</SelectItem>
-                  <SelectItem value="female">NŐ</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="suspect-alias">Álnév / becenév</Label>
+              <Input id="suspect-alias" value={form.alias} maxLength={80} onChange={(event) => setForm({...form, alias: event.target.value})}/>
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Bűnszervezet /
-              Kapcsolat</Label>
-            <Input
-              value={formData.gang_affiliation || ""}
-              onChange={e => setFormData({...formData, gang_affiliation: e.target.value})}
-              className="bg-slate-950 border-slate-800 h-10 font-mono text-sm" placeholder="PL. TRIÁDOK..."
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Személyleírás /
-              Ismertetőjelek</Label>
-            <div className="relative">
-              <FileText className="absolute top-3 left-3 w-4 h-4 text-slate-600"/>
-              <Textarea
-                value={formData.description || ""}
-                onChange={e => setFormData({...formData, description: e.target.value})}
-                className="bg-slate-950 border-slate-800 min-h-[100px] pl-10 font-mono text-xs leading-relaxed resize-none focus-visible:ring-red-500/30 break-all"
-                placeholder="Tetoválások, sebhelyek, feltűnő viselkedés..."
-              />
+            <div className="space-y-1.5">
+              <Label htmlFor="suspect-gang">Szervezet / banda</Label>
+              <Input id="suspect-gang" value={form.gang_affiliation} maxLength={80} onChange={(event) => setForm({...form, gang_affiliation: event.target.value})}/>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nem</Label>
+              <div className="grid grid-cols-3 gap-1 rounded-lg bg-white/[0.03] p-1 ring-1 ring-white/10">
+                {GENDERS.map((item) => (
+                  <button key={item.value} type="button" onClick={() => setForm({...form, gender: item.value})}
+                          className={cn("h-8 rounded-md text-xs transition", form.gender === item.value ? "bg-white/10 text-white" : "text-slate-400 hover:text-white")}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Státusz</Label>
+              <select value={form.status} onChange={(event) => setForm({...form, status: event.target.value as SuspectStatus})}
+                      className="h-10 w-full rounded-lg border bg-white/[0.03] px-3 text-sm text-slate-200">
+                {SUSPECT_STATUSES.map((value) => <option key={value} value={value}>{SUSPECT_STATUS[value].label}</option>)}
+              </select>
             </div>
           </div>
         </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="suspect-description">Személyleírás, ismertetőjelek</Label>
+          <Textarea id="suspect-description" value={form.description} rows={4} maxLength={4000}
+                    onChange={(event) => setForm({...form, description: event.target.value})}
+                    placeholder="Testalkat, tetoválások, sebhelyek, ruházat, szokások, ismert tartózkodási helyek…"/>
+        </div>
 
-        <DialogFooter className="p-4 bg-slate-950 border-t border-slate-800">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}
-                  className="hover:bg-slate-900 hover:text-white">MÉGSE</Button>
-          <Button onClick={handleSubmit} disabled={loading}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold tracking-wider shadow-[0_0_15px_rgba(220,38,38,0.3)]">
-            ADATLAP MENTÉSE
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Mégse</Button>
+          <Button onClick={() => void submit()} disabled={busy || !form.full_name.trim()} className="bg-red-600 text-white hover:bg-red-500">
+            {busy && <Loader2 className="size-4 animate-spin"/>} Adatlap mentése
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-
-export {NewSuspectDialog};

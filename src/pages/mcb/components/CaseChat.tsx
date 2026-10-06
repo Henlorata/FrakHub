@@ -1,167 +1,174 @@
-import * as React from "react";
-import {useAuth} from "@/context/AuthContext";
-import {Card, CardHeader, CardTitle} from "@/components/ui/card";
-import {Input} from "@/components/ui/input";
+import {useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent} from "react";
+import {Loader2, Lock, MessageSquare, Send, Trash2} from "lucide-react";
+import {toast} from "sonner";
 import {Button} from "@/components/ui/button";
-import {ScrollArea} from "@/components/ui/scroll-area";
-import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {Send, MessageSquare, Lock} from "lucide-react";
-import {formatDistanceToNow} from "date-fns";
-import {hu} from "date-fns/locale";
-import type {CaseNote} from "@/types/supabase";
+import {Textarea} from "@/components/ui/textarea";
+import {EmptyState} from "@/components/layout/EmptyState";
+import {useAuth} from "@/context/AuthContext";
+import {useProfileDirectory} from "@/lib/profile-directory";
+import {formatLongDate, formatTime, todayKey} from "@/lib/datetime";
+import {cn, errorMessage, isStaff} from "@/lib/utils";
+import type {CaseNoteRow} from "../useCaseRoom";
+import {MemberAvatar} from "./McbBadges";
 
-export function CaseChat({caseId, readOnly = false}: { caseId: string, readOnly?: boolean }) {
-  const {supabase, user, profile} = useAuth();
-  const [notes, setNotes] = React.useState<CaseNote[]>([]);
-  const [message, setMessage] = React.useState("");
+/** Only the most recent messages are loaded; very old chatter is rarely needed. */
+const NOTE_LIMIT = 200;
 
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      const scrollViewport = document.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollViewport) scrollViewport.scrollTop = scrollViewport.scrollHeight;
-    }, 100);
-  }
+interface CaseChatProps {
+  caseId: string;
+  /** Members who may open the case may write while it is open. */
+  canWrite: boolean;
+  /** The latest message from Realtime (the page owns the channel). */
+  liveNote: CaseNoteRow | null;
+}
 
-  React.useEffect(() => {
-    const fetchNotes = async () => {
-      const {data} = await supabase
-        .from('case_notes')
-        .select('*, profile:user_id(full_name, avatar_url, faction_rank)')
-        .eq('case_id', caseId)
-        .order('created_at', {ascending: true});
-      if (data) {
-        setNotes(data as any);
-        scrollToBottom();
-      }
-    };
-    fetchNotes();
+export function CaseChat({caseId, canWrite, liveNote}: CaseChatProps) {
+  const {supabase, profile} = useAuth();
+  const {profiles} = useProfileDirectory();
+  const members = useMemo(() => new Map(profiles.map((member) => [member.id, member])), [profiles]);
+  const [notes, setNotes] = useState<CaseNoteRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const staff = isStaff(profile);
 
-    const channel = supabase.channel(`case_chat_${caseId}`)
-      .on('postgres_changes', {event: 'INSERT', schema: 'public', table: 'case_notes', filter: `case_id=eq.${caseId}`},
-        async (payload) => {
-          if (payload.new.user_id === user?.id) return;
-          const {data: newNote} = await supabase.from('case_notes').select('*, profile:user_id(full_name, avatar_url, faction_rank)').eq('id', payload.new.id).single();
-          if (newNote) {
-            setNotes(prev => [...prev, newNote as any]);
-            scrollToBottom();
-          }
-        }).subscribe();
+  const scrollToEnd = useCallback(() => {
+    requestAnimationFrame(() => listRef.current?.scrollTo({top: listRef.current.scrollHeight}));
+  }, []);
 
+  useEffect(() => {
+    let active = true;
+    supabase.from("case_notes").select("id, case_id, user_id, content, created_at").eq("case_id", caseId)
+      .order("created_at", {ascending: false}).limit(NOTE_LIMIT)
+      .then(({data, error}) => {
+        if (!active) return;
+        if (error) toast.error("Az üzenetek betöltése nem sikerült.");
+        setNotes(((data ?? []) as CaseNoteRow[]).reverse());
+        setLoading(false);
+        scrollToEnd();
+      });
     return () => {
-      supabase.removeChannel(channel);
+      active = false;
     };
-  }, [caseId, supabase, user?.id]);
+  }, [caseId, scrollToEnd, supabase]);
 
-  const handleSend = async () => {
-    if (!message.trim() || readOnly) return;
-    const content = message;
+  useEffect(() => {
+    if (!liveNote || liveNote.case_id !== caseId) return;
+    setNotes((list) => (list.some((note) => note.id === liveNote.id) ? list : [...list, liveNote]));
+    scrollToEnd();
+  }, [caseId, liveNote, scrollToEnd]);
+
+  const send = async () => {
+    const content = message.trim();
+    if (!content || !profile || sending) return;
+    if (content.length > 2000) return toast.error("Egy üzenet legfeljebb 2000 karakter lehet.");
+    setSending(true);
+    const temp: CaseNoteRow = {id: `temp-${Date.now()}`, case_id: caseId, user_id: profile.id, content, created_at: new Date().toISOString()};
+    setNotes((list) => [...list, temp]);
     setMessage("");
-
-    const tempNote: any = {
-      id: `temp-${Date.now()}`,
-      case_id: caseId, user_id: user!.id, content: content, created_at: new Date().toISOString(),
-      profile: {
-        full_name: profile?.full_name || "Én",
-        avatar_url: profile?.avatar_url,
-        faction_rank: profile?.faction_rank
-      }
-    };
-    setNotes(prev => [...prev, tempNote]);
-    scrollToBottom();
-
-    await supabase.from('case_notes').insert({case_id: caseId, user_id: user?.id, content: content});
+    scrollToEnd();
+    const {data, error} = await supabase.from("case_notes").insert({case_id: caseId, user_id: profile.id, content})
+      .select("id, case_id, user_id, content, created_at").single();
+    setSending(false);
+    if (error) {
+      setNotes((list) => list.filter((note) => note.id !== temp.id));
+      setMessage(content);
+      toast.error("Az üzenet elküldése nem sikerült.", {description: errorMessage(error)});
+      return;
+    }
+    const saved = data as CaseNoteRow;
+    setNotes((list) => {
+      const rest = list.filter((note) => note.id !== temp.id);
+      return rest.some((note) => note.id === saved.id) ? rest : [...rest, saved];
+    });
   };
 
+  const remove = async (note: CaseNoteRow) => {
+    const {error} = await supabase.from("case_notes").delete().eq("id", note.id);
+    if (error) return void toast.error("Az üzenet törlése nem sikerült.");
+    setNotes((list) => list.filter((item) => item.id !== note.id));
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      void send();
+    }
+  };
+
+  const today = todayKey();
   return (
-    <Card
-      className="bg-slate-950/80 border border-sky-900/30 backdrop-blur-md flex flex-col h-full min-h-[400px] shadow-lg overflow-hidden group">
-      {/* Header */}
-      <CardHeader
-        className="py-3 px-4 border-b border-sky-500/10 bg-sky-900/5 shrink-0 flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold flex items-center gap-2">
-          <MessageSquare className="w-3.5 h-3.5"/> Secure Comms
-        </CardTitle>
-        <div className="flex items-center gap-1.5">
-          <div className={`w-1.5 h-1.5 rounded-full ${readOnly ? 'bg-red-500' : 'bg-green-500 animate-pulse'}`}></div>
-          <span className="text-[9px] font-mono text-slate-500 uppercase">{readOnly ? 'ARCHIVED' : 'ENCRYPTED'}</span>
-        </div>
-      </CardHeader>
-
-      {/* Messages Area */}
-      <div
-        className="flex-1 min-h-0 relative bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-repeat opacity-90">
-        <div className="absolute inset-0 bg-slate-950/90"></div>
-        <ScrollArea className="h-full w-full relative z-10">
-          <div className="p-4 space-y-4">
-            {notes.length === 0 && <div
-              className="flex items-center justify-center h-full pt-10 opacity-30 text-[10px] font-mono uppercase tracking-widest text-slate-500">No
-              records found</div>}
-
-            {notes.map((note, index) => {
-              const isMe = note.user_id === user?.id;
-              return (
-                <div key={note.id || index} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group/msg`}>
-                  <Avatar className="w-8 h-8 border border-slate-700 shrink-0 rounded-sm">
-                    <AvatarImage src={note.profile?.avatar_url}/>
-                    <AvatarFallback
-                      className="text-[10px] bg-slate-900 font-mono rounded-sm">{note.profile?.full_name?.charAt(0)}</AvatarFallback>
-                  </Avatar>
-
-                  <div className={`max-w-[85%] relative`}>
-                    <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse text-right' : ''}`}>
-                       <span
-                         className={`text-[10px] font-bold uppercase tracking-wide ${isMe ? 'text-sky-400' : 'text-slate-400'}`}>
-                          {note.profile?.full_name}
-                       </span>
-                      <span
-                        className="text-[8px] font-mono text-slate-600 uppercase">{note.profile?.faction_rank}</span>
-                    </div>
-
-                    <div className={`relative p-2.5 text-xs leading-relaxed border shadow-sm ${
-                      isMe
-                        ? 'bg-sky-900/20 text-sky-100 border-sky-500/30 rounded-tl-lg rounded-bl-lg rounded-br-lg'
-                        : 'bg-slate-900 text-slate-300 border-slate-800 rounded-tr-lg rounded-br-lg rounded-bl-lg'
-                    }`}>
-                      <div
-                        className={`absolute top-0 w-2 h-2 border-t border-current opacity-30 ${isMe ? 'right-0 border-r rounded-tr' : 'left-0 border-l rounded-tl'}`}></div>
-
-                      <p className="whitespace-pre-wrap break-words font-mono text-[11px]">{note.content}</p>
-                    </div>
-
-                    <div className={`text-[9px] text-slate-600 mt-1 font-mono ${isMe ? 'text-right' : ''}`}>
-                      {formatDistanceToNow(new Date(note.created_at), {locale: hu, addSuffix: true})}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </ScrollArea>
-      </div>
-
-      {/* Input Area */}
-      <div className="p-2 border-t border-sky-500/10 bg-slate-900/50 backdrop-blur shrink-0 flex gap-2">
-        {readOnly ? (
-          <div
-            className="w-full h-9 flex items-center justify-center bg-slate-950/50 border border-slate-800 rounded text-xs text-slate-500 font-mono gap-2">
-            <Lock className="w-3 h-3"/> Kommunikáció lezárva
-          </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {loading ? (
+          <div className="flex justify-center py-10"><Loader2 className="size-5 animate-spin text-slate-500"/></div>
+        ) : notes.length === 0 ? (
+          <EmptyState compact icon={MessageSquare} title="Még nincs üzenet"
+                      description="Az akta csapatának belső csatornája: egyeztetés, feladatok, gyors jegyzetek."/>
         ) : (
-          <>
-            <Input
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSend()}
-              placeholder="Üzenet küldése..."
-              className="bg-slate-950 border-slate-800 h-9 text-xs font-mono focus-visible:ring-sky-500/30 pl-3"
-            />
-            <Button size="icon" className="h-9 w-9 bg-sky-600 hover:bg-sky-500 shrink-0 border border-sky-400/20"
-                    onClick={handleSend}>
-              <Send className="w-3.5 h-3.5"/>
-            </Button>
-          </>
+          <ol className="space-y-1">
+            {notes.map((note, index) => {
+              const previous = notes[index - 1];
+              const day = todayKey(note.created_at);
+              const newDay = !previous || todayKey(previous.created_at) !== day;
+              const grouped = !newDay && previous?.user_id === note.user_id
+                && Date.parse(note.created_at) - Date.parse(previous.created_at) < 5 * 60_000;
+              const mine = note.user_id === profile?.id;
+              const author = members.get(note.user_id);
+              const pendingSend = note.id.startsWith("temp-");
+              return (
+                <li key={note.id}>
+                  {newDay && (
+                    <div className="my-3 flex items-center gap-2 text-[10px] tracking-wider text-slate-500 uppercase">
+                      <span className="h-px flex-1 bg-white/10"/>{day === today ? "Ma" : formatLongDate(note.created_at)}<span className="h-px flex-1 bg-white/10"/>
+                    </div>
+                  )}
+                  <div className={cn("group flex gap-2", mine && "flex-row-reverse", grouped ? "mt-0.5" : "mt-2.5")}>
+                    <div className="w-7 shrink-0">
+                      {!grouped && <MemberAvatar url={author?.avatar_url} name={author?.full_name} size={28}/>}
+                    </div>
+                    <div className={cn("flex max-w-[82%] min-w-0 flex-col", mine && "items-end")}>
+                      {!grouped && (
+                        <p className={cn("mb-0.5 flex items-baseline gap-1.5 text-[11px]", mine && "flex-row-reverse")}>
+                          <span className={cn("font-semibold", mine ? "text-sky-300" : "text-slate-200")}>{author?.full_name ?? "Ismeretlen"}</span>
+                          <span className="text-slate-500">{formatTime(note.created_at)}</span>
+                        </p>
+                      )}
+                      <div className={cn("relative rounded-2xl px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap wrap-anywhere",
+                        mine ? "rounded-tr-md bg-sky-500/15 text-sky-50 ring-1 ring-sky-500/25" : "rounded-tl-md bg-white/[0.05] text-slate-200 ring-1 ring-white/10",
+                        pendingSend && "opacity-60")}>
+                        {note.content}
+                      </div>
+                    </div>
+                    {(mine || staff) && !pendingSend && (
+                      <button type="button" onClick={() => void remove(note)} title="Üzenet törlése"
+                              className="self-center rounded-md p-1 text-slate-600 opacity-0 transition group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-300">
+                        <Trash2 className="size-3.5"/>
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         )}
       </div>
-    </Card>
+      <div className="shrink-0 border-t border-white/10 p-2">
+        {canWrite ? (
+          <div className="flex items-end gap-2">
+            <Textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={onKeyDown} rows={1}
+                      placeholder="Üzenet a csapatnak… (Enter: küldés, Shift+Enter: új sor)"
+                      className="max-h-32 min-h-10 resize-none text-sm"/>
+            <Button size="icon" onClick={() => void send()} disabled={!message.trim() || sending} aria-label="Küldés"
+                    className="size-10 shrink-0 bg-sky-600 text-white hover:bg-sky-500">
+              <Send className="size-4"/>
+            </Button>
+          </div>
+        ) : (
+          <p className="flex items-center justify-center gap-2 py-2 text-xs text-slate-500"><Lock className="size-3.5"/> Az akta lezárva: a csatorna csak olvasható.</p>
+        )}
+      </div>
+    </div>
   );
 }

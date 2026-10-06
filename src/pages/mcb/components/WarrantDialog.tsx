@@ -1,288 +1,218 @@
-import * as React from "react";
-import {useAuth} from "@/context/AuthContext";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogFooter
-} from "@/components/ui/dialog";
+import {useEffect, useMemo, useState} from "react";
+import {Check, Gavel, Loader2, MapPin, UserRound} from "lucide-react";
+import {toast} from "sonner";
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import {toast} from "sonner";
-import {Loader2, MapPin, User, CheckSquare, Square, FileWarning, AlertTriangle, ShieldAlert} from "lucide-react";
-import {cn} from "@/lib/utils";
+import {useAuth} from "@/context/AuthContext";
+import {PROPERTY_TYPE, WARRANT_TYPE} from "@/lib/mcb";
+import {cn, errorMessage} from "@/lib/utils";
+import type {CaseEvidence, CaseSuspect, CaseWarrant, SuspectProperty, WarrantType} from "@/types/supabase";
+import {InvolvementChip, Mugshot} from "./McbBadges";
 
 interface WarrantDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   caseId: string;
-  suspects: any[];
-  onSuccess: () => void;
+  people: CaseSuspect[];
+  warrants: CaseWarrant[];
+  evidence: CaseEvidence[];
+  numbers: Map<string, number>;
+  onCreated: () => void;
 }
 
-export function WarrantDialog({open, onOpenChange, caseId, suspects, onSuccess}: WarrantDialogProps) {
+const MANUAL = "manual";
+
+/** Arrest or search warrant request; approvers decide it (never the requester). */
+export function WarrantDialog({open, onOpenChange, caseId, people, warrants, evidence, numbers, onCreated}: WarrantDialogProps) {
   const {supabase, user} = useAuth();
-  const [loading, setLoading] = React.useState(false);
-  const [type, setType] = React.useState("arrest");
-  const [selectedSuspectId, setSelectedSuspectId] = React.useState<string | "unknown">("");
-  const [suspectProperties, setSuspectProperties] = React.useState<any[]>([]);
-  const [selectedPropertyIds, setSelectedPropertyIds] = React.useState<string[]>([]);
-  const [manualTarget, setManualTarget] = React.useState("");
-  const [reason, setReason] = React.useState("");
-  const [description, setDescription] = React.useState("");
+  const [type, setType] = useState<WarrantType>("arrest");
+  const [personId, setPersonId] = useState<string>("");
+  const [properties, setProperties] = useState<SuspectProperty[]>([]);
+  const [selectedProperties, setSelectedProperties] = useState<string[]>([]);
+  const [manualTarget, setManualTarget] = useState("");
+  const [reason, setReason] = useState("");
+  const [description, setDescription] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  React.useEffect(() => {
-    if (selectedSuspectId && selectedSuspectId !== "unknown" && type === 'search') {
-      const fetchProps = async () => {
-        const {data} = await supabase.from('suspect_properties').select('*').eq('suspect_id', selectedSuspectId);
-        setSuspectProperties(data || []);
-        setSelectedPropertyIds([]);
-      };
-      fetchProps();
-    } else {
-      setSuspectProperties([]);
-      setSelectedPropertyIds([]);
+  useEffect(() => {
+    if (!open) return;
+    setType("arrest");
+    setPersonId(people.find((item) => item.involvement_type === "suspect" || item.involvement_type === "perpetrator")?.suspect_id ?? "");
+    setManualTarget("");
+    setReason("");
+    setDescription("");
+    setSelectedProperties([]);
+  }, [open, people]);
+
+  // Known addresses of the chosen person (search warrants).
+  useEffect(() => {
+    if (type !== "search" || !personId || personId === MANUAL) {
+      setProperties([]);
+      return;
     }
-  }, [selectedSuspectId, type, supabase]);
+    let active = true;
+    supabase.from("suspect_properties").select("id, suspect_id, address, property_type, notes").eq("suspect_id", personId)
+      .then(({data}) => {
+        if (active) setProperties((data ?? []) as SuspectProperty[]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [type, personId, supabase]);
 
-  const toggleProperty = (propId: string) => {
-    setSelectedPropertyIds(prev => prev.includes(propId) ? prev.filter(id => id !== propId) : [...prev, propId]);
-  };
+  const live = useMemo(() => warrants.filter((item) => item.status === "pending" || item.status === "approved"), [warrants]);
+  const needsManual = personId === MANUAL || !personId || (type === "search" && selectedProperties.length === 0);
 
-  const checkDuplicate = async (criteria: any) => {
-    const {data} = await supabase.from('case_warrants').select('id').eq('case_id', caseId).eq('type', type).eq('status', 'pending').match(criteria);
-    return data && data.length > 0;
-  };
+  const submit = async () => {
+    if (!user) return;
+    if (!reason.trim()) return toast.error("Az indoklás kötelező.");
+    const suspectId = personId && personId !== MANUAL ? personId : null;
+    const target = manualTarget.trim();
+    if (type === "arrest" && !suspectId && !target) return toast.error("Válassz személyt vagy add meg a nevét.");
+    if (type === "search" && selectedProperties.length === 0 && !target) return toast.error("Válassz ingatlant vagy add meg a címet.");
 
-  const handleSubmit = async () => {
-    if (!reason) return toast.error("Indoklás kötelező!");
-    const requests = [];
-    setLoading(true);
+    const base = {case_id: caseId, type, reason: reason.trim(), description: description.trim() || null, requested_by: user.id, status: "pending"};
+    const rows: (typeof base & {suspect_id: string | null; property_id: string | null; target_name: string | null})[] =
+      type === "search" && selectedProperties.length > 0
+      ? selectedProperties.map((propertyId) => ({...base, suspect_id: suspectId, property_id: propertyId, target_name: null}))
+      : [{...base, suspect_id: suspectId, property_id: null, target_name: suspectId && type === "arrest" ? null : target || null}];
 
-    try {
-      if (type === 'arrest') {
-        if (!selectedSuspectId) {
-          setLoading(false);
-          return toast.error("Válassz személyt!");
-        }
-        if (selectedSuspectId !== 'unknown') {
-          if (await checkDuplicate({suspect_id: selectedSuspectId})) {
-            setLoading(false);
-            return toast.error("Már van függőben lévő kérelem!");
-          }
-          requests.push({
-            case_id: caseId,
-            type: 'arrest',
-            suspect_id: selectedSuspectId,
-            target_name: null,
-            reason,
-            description,
-            requested_by: user?.id,
-            status: 'pending'
-          });
-        } else if (!manualTarget) {
-          setLoading(false);
-          return toast.error("Add meg a nevet!");
-        } else {
-          if (await checkDuplicate({target_name: manualTarget})) {
-            setLoading(false);
-            return toast.error("Már van függőben lévő kérelem!");
-          }
-          requests.push({
-            case_id: caseId,
-            type: 'arrest',
-            suspect_id: null,
-            target_name: manualTarget,
-            reason,
-            description,
-            requested_by: user?.id,
-            status: 'pending'
-          });
-        }
-      } else {
-        if (selectedSuspectId && selectedSuspectId !== 'unknown') {
-          if (selectedPropertyIds.length > 0) {
-            for (const propId of selectedPropertyIds) {
-              if (await checkDuplicate({property_id: propId})) {
-                toast.error("Duplikáció!");
-                setLoading(false);
-                return;
-              }
-              requests.push({
-                case_id: caseId,
-                type: 'search',
-                suspect_id: selectedSuspectId,
-                property_id: propId,
-                target_name: null,
-                reason,
-                description,
-                requested_by: user?.id,
-                status: 'pending'
-              });
-            }
-          } else if (manualTarget) {
-            requests.push({
-              case_id: caseId,
-              type: 'search',
-              suspect_id: selectedSuspectId,
-              property_id: null,
-              target_name: manualTarget,
-              reason,
-              description,
-              requested_by: user?.id,
-              status: 'pending'
-            });
-          } else {
-            setLoading(false);
-            return toast.error("Válassz ingatlant vagy adj meg címet!");
-          }
-        } else {
-          if (!manualTarget) {
-            setLoading(false);
-            return toast.error("Add meg a címet!");
-          }
-          requests.push({
-            case_id: caseId,
-            type: 'search',
-            suspect_id: null,
-            property_id: null,
-            target_name: manualTarget,
-            reason,
-            description,
-            requested_by: user?.id,
-            status: 'pending'
-          });
-        }
-      }
+    const duplicate = rows.some((row) => live.some((item) => item.type === row.type
+      && (row.property_id ? item.property_id === row.property_id
+        : row.suspect_id && row.type === "arrest" ? item.suspect_id === row.suspect_id
+          : (item.target_name ?? "").toLowerCase() === (row.target_name ?? "").toLowerCase() && !item.property_id)));
+    if (duplicate) return toast.error("Erre a célpontra már van érvényes vagy elbírálásra váró parancs.");
 
-      const {error} = await supabase.from('case_warrants').insert(requests);
-      if (error) throw error;
-      toast.success(`${requests.length} parancs igényelve.`);
-      onSuccess();
-      onOpenChange(false);
-      setReason("");
-      setDescription("");
-      setManualTarget("");
-      setSelectedSuspectId("");
-      setSelectedPropertyIds([]);
-    } catch (e) {
-      toast.error("Hiba történt.");
-    } finally {
-      setLoading(false);
-    }
+    setBusy(true);
+    const {error} = await supabase.from("case_warrants").insert(rows);
+    setBusy(false);
+    if (error) return void toast.error("A kérelem beküldése nem sikerült.", {description: errorMessage(error)});
+    toast.success(rows.length > 1 ? `${rows.length} parancs kérelmezve.` : "Parancs kérelmezve.", {description: "A jóváhagyók értesítést kaptak."});
+    onOpenChange(false);
+    onCreated();
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="bg-[#0a0f1c] border border-red-900/40 text-white sm:max-w-lg max-h-[90vh] p-0 overflow-hidden shadow-[0_0_50px_rgba(220,38,38,0.1)]">
-        <div className="bg-red-950/20 border-b border-red-900/30 px-6 py-4 flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded bg-red-500/10 flex items-center justify-center border border-red-500/20 animate-pulse">
-            <ShieldAlert className="w-5 h-5 text-red-500"/>
+    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-2xl bg-red-500/10 text-red-300 ring-1 ring-red-500/30"><Gavel className="size-5"/></span>
+            <div>
+              <DialogTitle>Parancs kérelmezése</DialogTitle>
+              <DialogDescription>A Supervisory Staff és felette vagy egy Investigator III. bírálja el; saját kérelmet senki sem hagy jóvá.</DialogDescription>
+            </div>
           </div>
-          <div>
-            <DialogTitle className="text-lg font-black tracking-tight text-white uppercase font-mono">PARANCS
-              IGÉNYLÉSE</DialogTitle>
-            <p className="text-[10px] text-red-500/70 font-mono tracking-widest uppercase">Judicial Authorization
-              Request</p>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-2">
+          {(["arrest", "search"] as const).map((value) => {
+            const look = WARRANT_TYPE[value];
+            return (
+              <button key={value} type="button" onClick={() => {
+                setType(value);
+                setSelectedProperties([]);
+              }} className={cn("flex items-center gap-3 rounded-xl p-3 text-left ring-1 transition",
+                type === value ? (value === "arrest" ? "bg-red-500/10 ring-red-500/40" : "bg-amber-500/10 ring-amber-500/40")
+                  : "bg-white/[0.02] ring-white/10 hover:bg-white/[0.05]")}>
+                <look.icon className={cn("size-6 shrink-0", type === value ? look.accent : "text-slate-500")}/>
+                <span>
+                  <span className="block text-sm font-semibold text-white">{look.label}</span>
+                  <span className="block text-[11px] text-slate-400">{value === "arrest" ? "Személy őrizetbe vétele" : "Ingatlan, jármű átvizsgálása"}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="space-y-2">
+          <Label>{type === "arrest" ? "Célszemély" : "Kinek az ingatlana? (nem kötelező)"}</Label>
+          <div className="grid max-h-56 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
+            {people.map((item) => item.suspect && (
+              <button key={item.suspect_id} type="button" onClick={() => {
+                setPersonId(item.suspect_id);
+                setSelectedProperties([]);
+              }} className={cn("flex min-w-0 items-center gap-2.5 rounded-lg p-2 text-left ring-1 transition",
+                personId === item.suspect_id ? "bg-sky-500/10 ring-sky-500/40" : "bg-white/[0.02] ring-white/10 hover:bg-white/[0.05]")}>
+                <Mugshot url={item.suspect.mugshot_url} name={item.suspect.full_name} status={item.suspect.status} size={32}/>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-white">{item.suspect.full_name}</span>
+                  <InvolvementChip value={item.involvement_type} className="mt-0.5"/>
+                </span>
+                {personId === item.suspect_id && <Check className="size-4 shrink-0 text-sky-300"/>}
+              </button>
+            ))}
+            <button type="button" onClick={() => setPersonId(MANUAL)}
+                    className={cn("flex items-center gap-2.5 rounded-lg p-2 text-left ring-1 transition",
+                      personId === MANUAL ? "bg-sky-500/10 ring-sky-500/40" : "bg-white/[0.02] ring-white/10 hover:bg-white/[0.05]")}>
+              <span className="grid size-8 place-items-center rounded-xl bg-white/5 text-slate-400"><UserRound className="size-4"/></span>
+              <span className="text-sm text-slate-300">{type === "arrest" ? "Nincs az aktában / ismeretlen" : "Nincs személyhez kötve"}</span>
+            </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => {
-              setType("arrest");
-              setSelectedSuspectId("");
-            }}
-                    className={cn("flex items-center justify-center gap-2 py-3 rounded border font-bold uppercase text-xs transition-all",
-                      type === 'arrest' ? 'bg-red-600/20 border-red-600 text-red-500 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700')}>
-              <FileWarning className="w-4 h-4"/> ELFOGATÓ (Arrest)
-            </button>
-            <button onClick={() => {
-              setType("search");
-              setSelectedSuspectId("");
-            }}
-                    className={cn("flex items-center justify-center gap-2 py-3 rounded border font-bold uppercase text-xs transition-all",
-                      type === 'search' ? 'bg-orange-600/20 border-orange-600 text-orange-500 shadow-[0_0_15px_rgba(234,88,12,0.2)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700')}>
-              <AlertTriangle className="w-4 h-4"/> HÁZKUTATÁSI (Search)
-            </button>
-          </div>
-
+        {type === "search" && personId && personId !== MANUAL && (
           <div className="space-y-2">
-            <Label className="text-[10px] uppercase font-bold text-slate-500">Célpont Kiválasztása</Label>
-            <Select value={selectedSuspectId} onValueChange={setSelectedSuspectId}>
-              <SelectTrigger className="bg-slate-950 border-slate-800 h-10"><SelectValue
-                placeholder="Válassz az aktából..."/></SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                <SelectItem value="unknown" className="text-yellow-500 font-bold">ISMERETLEN / KÜLSŐ
-                  CÉLPONT</SelectItem>
-                {suspects.map(s => <SelectItem key={s.suspect_id}
-                                               value={s.suspect_id}>{s.suspect?.full_name} ({s.involvement_type})</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {type === 'search' && selectedSuspectId && selectedSuspectId !== 'unknown' && (
-            <div className="space-y-2 p-3 rounded bg-slate-950/50 border border-slate-800">
-              <Label className="text-[10px] uppercase font-bold text-slate-500">Ismert Ingatlanok</Label>
-              {suspectProperties.length === 0 ?
-                <p className="text-xs text-slate-500 italic">Nincsenek rögzített ingatlanok.</p> :
-                <div className="space-y-1">
-                  {suspectProperties.map(p => {
-                    const isSelected = selectedPropertyIds.includes(p.id);
-                    return (
-                      <div key={p.id}
-                           className={cn("flex items-center gap-3 p-2 rounded cursor-pointer transition-colors border", isSelected ? 'bg-orange-500/10 border-orange-500/50' : 'border-transparent hover:bg-slate-900')}
-                           onClick={() => toggleProperty(p.id)}>
-                        {isSelected ? <CheckSquare className="w-4 h-4 text-orange-500"/> :
-                          <Square className="w-4 h-4 text-slate-600"/>}
-                        <span
-                          className={cn("text-xs font-mono", isSelected ? "text-orange-200" : "text-slate-400")}>{p.address} ({p.property_type})</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              }
-            </div>
-          )}
-
-          {((selectedSuspectId === 'unknown' || !selectedSuspectId) || (type === 'search' && selectedPropertyIds.length === 0)) && (
-            <div className="space-y-2">
-              <Label
-                className="text-[10px] uppercase font-bold text-slate-500">{type === 'arrest' ? 'Név (Manuális)' : 'Cím (Manuális)'}</Label>
-              <div className="relative">
-                {type === 'search' ?
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"/> :
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"/>}
-                <Input placeholder="..." value={manualTarget} onChange={e => setManualTarget(e.target.value)}
-                       className="bg-slate-950 border-slate-800 pl-9"/>
+            <Label>Ismert ingatlanok</Label>
+            {properties.length === 0 ? (
+              <p className="rounded-lg bg-white/[0.02] p-3 text-xs text-slate-500 ring-1 ring-white/10">A személyhez nincs rögzített ingatlan; add meg a címet lent.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {properties.map((property) => {
+                  const active = selectedProperties.includes(property.id);
+                  return (
+                    <button key={property.id} type="button"
+                            onClick={() => setSelectedProperties((list) => (active ? list.filter((id) => id !== property.id) : [...list, property.id]))}
+                            className={cn("flex min-w-0 items-center gap-2 rounded-lg p-2.5 text-left text-sm ring-1 transition",
+                              active ? "bg-amber-500/10 text-amber-100 ring-amber-500/40" : "bg-white/[0.02] text-slate-300 ring-white/10 hover:bg-white/[0.05]")}>
+                      <MapPin className={cn("size-4 shrink-0", active ? "text-amber-300" : "text-slate-500")}/>
+                      <span className="min-w-0 flex-1 truncate">{property.address}</span>
+                      <span className="text-[11px] text-slate-500">{PROPERTY_TYPE[property.property_type ?? ""] ?? property.property_type}</span>
+                    </button>
+                  );
+                })}
               </div>
+            )}
+          </div>
+        )}
+
+        {needsManual && (
+          <div className="space-y-1.5">
+            <Label htmlFor="warrant-target">{type === "arrest" ? "A személy neve" : "Cím"}</Label>
+            <Input id="warrant-target" value={manualTarget} maxLength={160} onChange={(event) => setManualTarget(event.target.value)}
+                   placeholder={type === "arrest" ? "Teljes név vagy személyleírás" : "pl. Grove Street 12., garázs"}/>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <Label htmlFor="warrant-reason">Indoklás</Label>
+          <Input id="warrant-reason" value={reason} maxLength={300} onChange={(event) => setReason(event.target.value)}
+                 placeholder="pl. Fegyveres rablás megalapozott gyanúja"/>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="warrant-description">Bizonyítékok, hivatkozások</Label>
+          <Textarea id="warrant-description" value={description} maxLength={2000} rows={3} onChange={(event) => setDescription(event.target.value)}
+                    placeholder="Mire alapozod a kérelmet: vallomások, felvételek, bizonyítékok sorszáma."/>
+          {evidence.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {[...evidence].sort((a, b) => (numbers.get(a.id) ?? 0) - (numbers.get(b.id) ?? 0)).slice(0, 16).map((item) => (
+                <button key={item.id} type="button" title={item.file_name}
+                        onClick={() => setDescription((text) => `${text}${text && !text.endsWith(" ") ? " " : ""}#${numbers.get(item.id)} (${item.file_name})`)}
+                        className="rounded-md bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-300 ring-1 ring-amber-500/25 hover:bg-amber-500/20">
+                  #{numbers.get(item.id)}
+                </button>
+              ))}
             </div>
           )}
-
-          <div className="space-y-2">
-            <Label className="text-[10px] uppercase font-bold text-slate-500">Hivatalos Indoklás</Label>
-            <Input value={reason} onChange={e => setReason(e.target.value)} className="bg-slate-950 border-slate-800"
-                   placeholder="Pl. Fegyveres rablás megalapozott gyanúja"/>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-[10px] uppercase font-bold text-slate-500">Bizonyítékok hivatkozása</Label>
-            <Textarea value={description} onChange={e => setDescription(e.target.value)}
-                      className="bg-slate-950 border-slate-800 h-20 resize-none break-all"
-                      placeholder="Lásd: 3-as számú jelentés..."/>
-          </div>
         </div>
 
-        <DialogFooter className="p-4 bg-slate-950/50 border-t border-slate-800/50">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} size="sm">Mégse</Button>
-          <Button onClick={handleSubmit} disabled={loading} size="sm"
-                  className="bg-red-600 hover:bg-red-500 text-white font-bold">
-            {loading && <Loader2 className="w-3 h-3 animate-spin mr-2"/>} IGÉNYLÉS BENYÚJTÁSA
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Mégse</Button>
+          <Button onClick={() => void submit()} disabled={busy || !reason.trim()} className="bg-red-600 text-white hover:bg-red-500">
+            {busy ? <Loader2 className="size-4 animate-spin"/> : <Gavel className="size-4"/>} Kérelem beküldése
           </Button>
         </DialogFooter>
       </DialogContent>

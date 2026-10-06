@@ -1,19 +1,14 @@
-import * as React from "react";
-import {
-  Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter
-} from "@/components/ui/dialog";
-import {useAuth} from "@/context/AuthContext";
+import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
+import {toast} from "sonner";
+import {Ban, Lock, Search, ShieldCheck, UserCheck, X} from "lucide-react";
+import {Dialog, DialogContent, DialogDescription, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
-import {Search, UserCheck, UserX, Shield, Lock, AlertCircle} from "lucide-react";
-import {toast} from "sonner";
-import {ScrollArea} from "@/components/ui/scroll-area";
-import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
-import {Badge} from "@/components/ui/badge";
-import type {Profile} from "@/types/supabase";
-import type {Exam} from "@/types/exams";
-import {cn} from "@/lib/utils";
+import {PersonAvatar} from "@/components/fleet/Holders";
+import {useAuth} from "@/context/AuthContext";
+import {getProfileDirectory, type DirectoryProfile} from "@/lib/profile-directory";
+import {cn, errorMessage} from "@/lib/utils";
+import type {Exam, ExamOverride} from "@/types/exams";
 
 interface ExamAccessDialogProps {
   open: boolean;
@@ -22,199 +17,135 @@ interface ExamAccessDialogProps {
   onUpdate?: () => void;
 }
 
+/**
+ * Invitations and exclusions of one exam. An invitation is used up when the member starts the
+ * exam (a new attempt needs a new invitation); the member is notified when invited.
+ */
 export function ExamAccessDialog({open, onOpenChange, exam, onUpdate}: ExamAccessDialogProps) {
   const {supabase, user} = useAuth();
-  const [searchTerm, setSearchTerm] = React.useState("");
-  const [allUsers, setAllUsers] = React.useState<Profile[]>([]);
-  const [overrides, setOverrides] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const [term, setTerm] = useState("");
+  const [members, setMembers] = useState<DirectoryProfile[]>([]);
+  const [overrides, setOverrides] = useState<ExamOverride[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const examId = exam?.id;
 
-  const fetchData = React.useCallback(async () => {
+  const loadOverrides = useCallback(async () => {
+    if (!examId) return;
+    const {data, error} = await supabase.from("exam_overrides").select("id, exam_id, user_id, access_type").eq("exam_id", examId);
+    if (error) {
+      toast.error("A hozzáférések betöltése nem sikerült.");
+      setOverrides([]);
+      return;
+    }
+    setOverrides((data ?? []) as ExamOverride[]);
+  }, [examId, supabase]);
+
+  useEffect(() => {
+    if (!open || !examId) return;
+    setTerm("");
+    void loadOverrides();
+    getProfileDirectory().then((list) => setMembers(list.filter((member) => member.system_role !== "pending"))).catch(() => undefined);
+  }, [open, examId, loadOverrides]);
+
+  const byId = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
+  const ruled = new Set((overrides ?? []).map((override) => override.user_id));
+  const needle = term.trim().toLowerCase();
+  const candidates = members
+    .filter((member) => !ruled.has(member.id) && (!needle || member.full_name.toLowerCase().includes(needle) || member.badge_number.includes(needle)))
+    .slice(0, 40);
+
+  const add = async (target: DirectoryProfile, type: "allow" | "deny") => {
     if (!exam) return;
-    setLoading(true);
-    try {
-      // JAVÍTÁS: profile reláció helyes behúzása (user_id -> profiles)
-      // Ha a user_id foreign key az auth.users-re mutat, akkor a profiles táblát explicit kell joinolni
-      const {data: ovData, error} = await supabase.from('exam_overrides')
-        .select('*, access_type, profile:profiles(full_name, badge_number, avatar_url, faction_rank)')
-        .eq('exam_id', exam.id);
-
-      if (error) throw error;
-      setOverrides(ovData || []);
-
-      const {data: userData} = await supabase.from('profiles')
-        .select('*')
-        .neq('system_role', 'pending')
-        .order('full_name');
-      setAllUsers(userData || []);
-
-    } catch (e: any) {
-      console.error(e);
-      toast.error("Hiba az adatok betöltésekor: " + e.message);
-    } finally {
-      setLoading(false);
+    setBusy(target.id);
+    const {error} = await supabase.from("exam_overrides").insert({exam_id: exam.id, user_id: target.id, access_type: type, granted_by: user?.id});
+    setBusy(null);
+    if (error) {
+      toast.error("Hiba: " + errorMessage(error));
+      return;
     }
-  }, [exam?.id, supabase]);
-
-  React.useEffect(() => {
-    if (open) {
-      fetchData();
-      setSearchTerm("");
-    }
-  }, [open, fetchData]);
-
-  const filteredUsers = React.useMemo(() => {
-    const existingIds = overrides.map(o => o.user_id);
-    return allUsers.filter(u =>
-      !existingIds.includes(u.id) &&
-      (u.full_name.toLowerCase().includes(searchTerm.toLowerCase()) || u.badge_number.includes(searchTerm))
-    );
-  }, [allUsers, overrides, searchTerm]);
-
-  const addOverride = async (targetUserId: string, type: 'allow' | 'deny') => {
-    if (!exam) return;
-    try {
-      const {error} = await supabase.from('exam_overrides').insert({
-        exam_id: exam.id,
-        user_id: targetUserId,
-        access_type: type,
-        granted_by: user?.id
-      });
-      if (error) throw error;
-      toast.success(`Kivétel rögzítve: ${type === 'allow' ? 'ENGEDÉLY' : 'TILTÁS'}`);
-      fetchData();
-      if (onUpdate) onUpdate();
-    } catch (e) {
-      toast.error("Hiba a mentéskor.");
-    }
+    toast.success(type === "allow" ? `${target.full_name} meghívást kapott.` : `${target.full_name} kizárva.`);
+    void loadOverrides();
+    onUpdate?.();
   };
 
-  const removeOverride = async (id: string) => {
-    try {
-      await supabase.from('exam_overrides').delete().eq('id', id);
-      toast.success("Kivétel törölve.");
-      fetchData();
-      if (onUpdate) onUpdate();
-    } catch (e) {
-      toast.error("Hiba a törléskor.");
+  const remove = async (override: ExamOverride) => {
+    setBusy(override.user_id);
+    const {error} = await supabase.from("exam_overrides").delete().eq("id", override.id);
+    setBusy(null);
+    if (error) {
+      toast.error("Hiba: " + errorMessage(error));
+      return;
     }
+    setOverrides((current) => current?.filter((item) => item.id !== override.id) ?? current);
+    onUpdate?.();
   };
 
   if (!exam) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="bg-slate-950 border-slate-800 text-white sm:max-w-xl h-[80vh] max-h-[800px] flex flex-col p-0 shadow-2xl overflow-hidden">
-
-        {/* HEADER */}
-        <div className="p-6 border-b border-slate-800 bg-slate-900/50">
-          <div className="flex items-center gap-3 mb-2">
-            <Shield className="w-6 h-6 text-sky-500"/>
-            <DialogTitle>Hozzáférési Jogosultságok</DialogTitle>
-          </div>
-          <DialogDescription className="text-slate-400">
-            {exam.title}
-          </DialogDescription>
-
-          <div className={cn("mt-4 p-3 rounded text-xs border flex items-center gap-3",
-            exam.is_invitation_only
-              ? "bg-purple-500/10 border-purple-500/30 text-purple-300"
-              : "bg-yellow-500/10 border-yellow-500/30 text-yellow-500"
-          )}>
-            {exam.is_invitation_only ? <Lock className="w-4 h-4"/> : <AlertCircle className="w-4 h-4"/>}
-            <div>
-              {exam.is_invitation_only
-                ? "Ez a vizsga MEGHÍVÁSOS. Csak a listán szereplő (Engedélyezett) személyek tölthetik ki."
-                : "Ez a vizsga NYILVÁNOS (Ranghoz kötött). Itt egyéni tiltásokat vagy kivételeket adhatsz meg."
-              }
-            </div>
-          </div>
+      <DialogContent className="flex h-[min(44rem,92dvh)] flex-col gap-0 p-0 sm:max-w-2xl">
+        <div className="border-b border-white/5 p-5">
+          <DialogTitle className="flex items-center gap-2"><ShieldCheck className="size-4 text-primary"/> Hozzáférések</DialogTitle>
+          <DialogDescription className="mt-1 wrap-anywhere">{exam.title}</DialogDescription>
+          <p className={cn("mt-3 flex items-start gap-2 rounded-xl p-3 text-xs ring-1",
+            exam.is_invitation_only ? "bg-violet-500/10 text-violet-200 ring-violet-400/25" : "bg-white/[0.03] text-slate-300 ring-white/10")}>
+            <Lock className="mt-0.5 size-3.5 shrink-0"/>
+            {exam.is_invitation_only
+              ? "Meghívásos vizsga: csak a meghívottak indíthatják el. A meghívás az indításkor felhasználódik."
+              : "A vizsga a beállított rendfokozattól és osztálytól elérhető. Itt kivételesen meghívhatsz vagy kizárhatsz valakit."}
+          </p>
         </div>
 
-        <Tabs defaultValue="add" className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <TabsList className="w-full justify-start rounded-none border-b border-slate-800 bg-slate-950 p-0 h-12">
-            <TabsTrigger value="add"
-                         className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-sky-500 data-[state=active]:bg-slate-900">Új
-              Személy</TabsTrigger>
-            <TabsTrigger value="active"
-                         className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-sky-500 data-[state=active]:bg-slate-900">
-              Aktív Szabályok <Badge className="ml-2 bg-slate-800 hover:bg-slate-800">{overrides.length}</Badge>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="add" className="flex-1 flex flex-col min-h-0 p-0 m-0">
-            <div className="p-4 border-b border-slate-800">
+        <div className="grid min-h-0 flex-1 grid-cols-1 divide-y divide-white/5 md:grid-cols-2 md:divide-x md:divide-y-0">
+          <div className="flex min-h-0 flex-col">
+            <div className="p-4 pb-2">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500"/>
-                <Input placeholder="Név vagy jelvényszám keresése..." value={searchTerm}
-                       onChange={e => setSearchTerm(e.target.value)} className="pl-10 bg-slate-900 border-slate-700"/>
+                <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500"/>
+                <Input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Név vagy jelvényszám…" className="pl-9"/>
               </div>
             </div>
-            <ScrollArea className="flex-1">
-              <div className="p-2 space-y-1">
-                {loading ?
-                  <p className="text-center py-10 text-xs text-slate-500">Betöltés...</p> : filteredUsers.length === 0 ?
-                    <p className="text-center py-10 text-xs text-slate-500">Nincs találat</p> : filteredUsers.map(u => (
-                      <div key={u.id}
-                           className="flex items-center justify-between p-3 rounded hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-all group">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8 border border-slate-700"><AvatarImage
-                            src={u.avatar_url}/><AvatarFallback
-                            className="bg-slate-900 text-[10px] font-bold">{u.full_name.charAt(0)}</AvatarFallback></Avatar>
-                          <div>
-                            <p className="text-sm font-medium text-slate-200">{u.full_name}</p>
-                            <p className="text-[10px] text-slate-500">{u.faction_rank} [#{u.badge_number}]</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline"
-                                  className="h-7 text-green-500 border-green-900/30 hover:bg-green-900/20"
-                                  onClick={() => addOverride(u.id, 'allow')}><UserCheck className="w-3 h-3 mr-1"/> Enged</Button>
-                          <Button size="sm" variant="outline"
-                                  className="h-7 text-red-500 border-red-900/30 hover:bg-red-900/20"
-                                  onClick={() => addOverride(u.id, 'deny')}><UserX
-                            className="w-3 h-3 mr-1"/> Tilt</Button>
-                        </div>
-                      </div>
-                    ))}
-              </div>
-            </ScrollArea>
-          </TabsContent>
+            <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-4 pb-4">
+              {candidates.map((member, index) => (
+                <li key={member.id} style={{"--i": Math.min(index, 10)} as CSSProperties}
+                    className="animate-fade flex items-center gap-2 rounded-xl bg-white/[0.02] p-2 ring-1 ring-white/5">
+                  <PersonAvatar person={member} size="md"/>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-white">{member.full_name}</span>
+                    <span className="block truncate text-[11px] text-slate-500">{member.faction_rank} · #{member.badge_number}</span>
+                  </span>
+                  <Button size="icon" variant="ghost" title="Meghívás" aria-label={`${member.full_name} meghívása`} disabled={busy === member.id}
+                          className="size-8 text-emerald-300 hover:bg-emerald-500/10" onClick={() => void add(member, "allow")}><UserCheck/></Button>
+                  <Button size="icon" variant="ghost" title="Kizárás" aria-label={`${member.full_name} kizárása`} disabled={busy === member.id}
+                          className="size-8 text-red-300 hover:bg-red-500/10" onClick={() => void add(member, "deny")}><Ban/></Button>
+                </li>
+              ))}
+              {!candidates.length && <li className="py-8 text-center text-xs text-slate-500">Nincs találat.</li>}
+            </ul>
+          </div>
 
-          <TabsContent value="active" className="flex-1 flex flex-col min-h-0 p-0 m-0">
-            <ScrollArea className="flex-1">
-              <div className="p-2 space-y-2">
-                {overrides.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-40 text-slate-600 opacity-50"><Shield
-                    className="w-10 h-10 mb-2"/><p className="text-[10px] uppercase">Nincsenek kivételek</p></div>
-                ) : overrides.map(ov => (
-                  <div key={ov.id}
-                       className="flex items-center justify-between p-3 bg-slate-900/50 rounded border border-slate-800">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8 border border-slate-700"><AvatarImage
-                        src={ov.profile?.avatar_url}/><AvatarFallback
-                        className="bg-slate-950 text-[10px]">{ov.profile?.full_name?.charAt(0)}</AvatarFallback></Avatar>
-                      <div>
-                        <p className="text-sm font-bold text-white">{ov.profile?.full_name}</p>
-                        <Badge variant="outline"
-                               className={cn("text-[9px]", ov.access_type === 'allow' ? "text-green-500 border-green-900/50" : "text-red-500 border-red-900/50")}>
-                          {ov.access_type === 'allow' ? 'ENGEDÉLYEZVE' : 'LETILTVA'}
-                        </Badge>
-                      </div>
-                    </div>
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-red-500"
-                            onClick={() => removeOverride(ov.id)}><UserX className="w-4 h-4"/></Button>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </TabsContent>
-        </Tabs>
-
-        <DialogFooter className="p-4 border-t border-slate-800">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Bezárás</Button>
-        </DialogFooter>
+          <div className="flex min-h-0 flex-col">
+            <p className="px-4 pt-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Szabályok ({overrides?.length ?? 0})</p>
+            <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-4 pb-4">
+              {(overrides ?? []).map((override) => {
+                const member = byId.get(override.user_id);
+                const allow = override.access_type === "allow";
+                return (
+                  <li key={override.id} className="animate-fade flex items-center gap-2 rounded-xl bg-white/[0.02] p-2 ring-1 ring-white/5">
+                    <PersonAvatar person={member} size="md"/>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-white">{member?.full_name ?? "Ismeretlen"}</span>
+                      <span className={cn("text-[11px] font-medium", allow ? "text-emerald-300" : "text-red-300")}>{allow ? "Meghívva" : "Kizárva"}</span>
+                    </span>
+                    <Button size="icon" variant="ghost" aria-label="Szabály törlése" title="Szabály törlése" disabled={busy === override.user_id}
+                            className="size-8 text-slate-400 hover:text-white" onClick={() => void remove(override)}><X/></Button>
+                  </li>
+                );
+              })}
+              {overrides !== null && !overrides.length && <li className="py-8 text-center text-xs text-slate-500">Nincs meghívás vagy kizárás.</li>}
+            </ul>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

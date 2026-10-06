@@ -1,54 +1,39 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+import {isExecutive} from "../../shared/ranks.js";
+import {handle, HttpError, json, readJsonObject, requireUuid} from "../_lib/http.js";
+import {findProfile, getSupabaseAdmin, notifyMembers, requireCaller} from "../_lib/supabase.js";
 
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+/** Executive Staff can force a new password on another member's account. */
+export const POST = handle("admin/update-password", async (request) => {
+  const caller = await requireCaller(request);
+  const body = await readJsonObject(request);
+  const targetUserId = requireUuid(body.targetUserId, "Hiányzó felhasználó azonosító.");
+  const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  },
+  if (!isExecutive(caller)) throw new HttpError(403, "Csak az Executive Staff változtathat jelszót másoknak!");
+  if (targetUserId === caller.id) throw new HttpError(400, "A saját jelszavadat a profil oldalon módosíthatod.");
+  if (newPassword.length < 6 || newPassword.length > 72) {
+    throw new HttpError(400, "A jelszónak 6 és 72 karakter közötti hosszúnak kell lennie.");
+  }
+
+  const target = await findProfile(targetUserId);
+  if (!target) throw new HttpError(404, "A felhasználó nem található.");
+  if (target.is_bureau_manager && !caller.is_bureau_manager) {
+    throw new HttpError(403, "Bureau Manager jelszavát csak Bureau Manager módosíthatja.");
+  }
+
+  const {error} = await getSupabaseAdmin().auth.admin.updateUserById(targetUserId, {password: newPassword});
+  if (error) {
+    if (error.code === "weak_password") throw new HttpError(400, "A jelszó nem felel meg a biztonsági követelményeknek.");
+    throw error;
+  }
+
+  await notifyMembers([targetUserId], {
+    title: "Jelszó módosítva",
+    message: `A jelszavadat ${caller.full_name} módosította. Ha nem tudtál róla, jelezd a vezetőségnek.`,
+    type: "warning",
+    category: "system",
+    link: "/profile",
+  }, caller.id);
+
+  return json({success: true});
 });
-
-const EXECUTIVE_RANKS = ['Commander', 'Deputy Commander'];
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-  try {
-    const { targetUserId, newPassword } = req.body;
-    const token = req.headers.authorization?.split(' ')[1];
-
-    if (!token) return res.status(401).json({ error: 'Unauthorized: No token provided.' });
-    if (!targetUserId || !newPassword) return res.status(400).json({ error: 'Hiányzó adatok.' });
-
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-    if (userError || !user) return res.status(401).json({ error: 'User not found' });
-
-    const { data: adminProfile } = await supabaseAdmin
-      .from('profiles')
-      .select('faction_rank')
-      .eq('id', user.id)
-      .single();
-
-    if (!adminProfile || !EXECUTIVE_RANKS.includes(adminProfile.faction_rank)) {
-      return res.status(403).json({ error: 'Csak az Executive Staff változtathat jelszót másoknak!' });
-    }
-
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(targetUserId, {
-      password: newPassword
-    });
-
-    if (updateError) throw updateError;
-
-    return res.status(200).json({ success: true });
-
-  } catch (err) {
-    const error = err as Error;
-    console.error('Password update error:', error.message);
-    return res.status(500).json({ error: error.message });
-  }
-}

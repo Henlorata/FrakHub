@@ -1,78 +1,61 @@
 import {useEffect, useState} from "react";
-import {useLocation, useNavigate} from "react-router-dom";
-import {Card, CardContent} from "@/components/ui/card";
-import {Button} from "@/components/ui/button";
-import {AlertTriangle, ArrowRight} from "lucide-react";
+import {useLocation, useNavigate} from "react-router";
+import {ArrowRight, Timer} from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
+import {ACTIVE_ATTEMPT_EVENT, formatDuration, readActiveAttempt} from "@/lib/exams";
 
+/**
+ * A small "your exam is still running" chip on every other page (the clock runs on the server),
+ * instead of a blocking overlay. Reads the hint the exam page keeps in this browser: no requests.
+ */
 export function ActiveExamAlert() {
   const location = useLocation();
   const navigate = useNavigate();
   const {user} = useAuth();
-  const [activeExamId, setActiveExamId] = useState<string | null>(null);
-  const [examTitle, setExamTitle] = useState<string>("");
+  const [hint, setHint] = useState(readActiveAttempt);
+  const [, setTick] = useState(0);
 
   useEffect(() => {
-    const checkActiveExam = () => {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith("exam_session_")) {
-          try {
-            const sessionData = JSON.parse(localStorage.getItem(key) || "{}");
-            const sessionUserId = user?.id || 'guest';
-            if (key.includes(sessionUserId)) {
-              if (sessionData.startTime) {
-                setActiveExamId(sessionData.examId);
-                setExamTitle(sessionData.examTitle || "Folyamatban lévő vizsga");
-                return;
-              }
-            }
-          } catch (e) {
-            console.error("Hiba a session parse-olásakor", e);
-          }
-        }
-      }
-      setActiveExamId(null);
+    // The old exam page kept its whole state under these keys; they are obsolete.
+    for (let index = localStorage.length - 1; index >= 0; index--) {
+      const key = localStorage.key(index);
+      if (key?.startsWith("exam_session_")) localStorage.removeItem(key);
+    }
+    const update = () => setHint(readActiveAttempt());
+    window.addEventListener(ACTIVE_ATTEMPT_EVENT, update);
+    window.addEventListener("storage", update);
+    return () => {
+      window.removeEventListener(ACTIVE_ATTEMPT_EVENT, update);
+      window.removeEventListener("storage", update);
     };
+  }, []);
 
-    checkActiveExam();
+  useEffect(() => {
+    if (!hint) return;
+    const timer = window.setInterval(() => {
+      if (Date.parse(hint.deadline) <= Date.now()) setHint(readActiveAttempt());
+      else setTick((tick) => tick + 1);
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [hint]);
 
-    window.addEventListener('storage', checkActiveExam);
-    return () => window.removeEventListener('storage', checkActiveExam);
-  }, [location, user]);
-
-  if (!activeExamId) return null;
-  if (location.pathname.includes(`/exam/public/${activeExamId}`)) return null;
+  // Not on the exam itself, nor on the exam centre (its card already says "continue").
+  if (!hint || hint.owner !== (user?.id ?? "guest") || location.pathname.startsWith(`/exam/public/${hint.examId}`)
+      || location.pathname === "/exams") return null;
+  const left = Date.parse(hint.deadline) - Date.now();
 
   return (
-    <div
-      className="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
-      <Card className="max-w-md w-full bg-slate-900 border-yellow-600/50 shadow-2xl border-t-4 border-t-yellow-500">
-        <CardContent className="p-8 text-center space-y-6">
-          <div
-            className="w-20 h-20 bg-yellow-900/20 rounded-full flex items-center justify-center mx-auto border border-yellow-500/30 animate-pulse">
-            <AlertTriangle className="w-10 h-10 text-yellow-500"/>
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-white">Vizsga Folyamatban!</h2>
-            <p className="text-slate-400">
-              Érzékeltük, hogy elhagytad a(z) <span
-              className="text-yellow-400 font-semibold">{examTitle}</span> kitöltését.
-            </p>
-            <p className="text-sm text-slate-500">
-              Az idő közben is telik! Kérjük, fejezd be a vizsgát, mielőtt más oldalra lépsz.
-            </p>
-          </div>
-
-          <Button
-            onClick={() => navigate(`/exam/public/${activeExamId}`)}
-            className="w-full py-6 text-lg bg-yellow-600 hover:bg-yellow-700 text-black font-bold shadow-lg shadow-yellow-900/20"
-          >
-            Vissza a vizsgához <ArrowRight className="w-5 h-5 ml-2"/>
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+    <button type="button" onClick={() => navigate(`/exam/public/${hint.examId}`)}
+            className="animate-rise fixed right-4 bottom-4 z-[60] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-2xl bg-[#0b1426]/95 px-4 py-3 text-left shadow-2xl ring-1 ring-sky-400/30 backdrop-blur-xl transition hover:ring-sky-300/60">
+      <span className="relative grid size-9 shrink-0 place-items-center rounded-xl bg-sky-500/15 text-sky-200">
+        <Timer className="size-4"/>
+        <span className="absolute -top-0.5 -right-0.5 size-2.5 animate-ping rounded-full bg-sky-400"/>
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[11px] text-sky-200/80">Folyamatban lévő vizsga</span>
+        <span className="block max-w-[14rem] truncate text-sm font-semibold text-white">{hint.title}</span>
+        <span className="flex items-center gap-1 text-[11px] text-slate-400">{formatDuration(Math.max(0, left))} van hátra · Folytatás <ArrowRight className="size-3"/></span>
+      </span>
+    </button>
   );
 }

@@ -1,256 +1,176 @@
-import {useEffect, useState, useMemo, useRef} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 import {BlockNoteSchema, defaultBlockSpecs} from "@blocknote/core";
 import {BlockNoteView} from "@blocknote/mantine";
 import {useCreateBlockNote} from "@blocknote/react";
-import {Save, Loader2} from "lucide-react";
+import {ImageUp, Loader2, Save} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {toast} from "sonner";
 import "@blocknote/mantine/style.css";
 import {EvidenceBlock} from "@/pages/mcb/components/EvidenceBlock";
-import {cn} from "@/lib/utils";
+import {cn, errorMessage} from "@/lib/utils";
+import {deleteCloudinaryAssets, getOptimizedImageUrl, uploadToCloudinary} from "@/lib/cloudinary";
+import {extractImageUrls, toInitialContent} from "@/lib/blocknote-content";
+import {countInlineImages, uploadInlineImages} from "@/lib/inline-images";
+import {hu} from "@/lib/blocknote-hu";
 
 interface AcademyEditorProps {
-  initialContent: any;
-  onSave: (content: any) => Promise<void>;
+  initialContent: unknown;
+  onSave?: (content: unknown) => Promise<void>;
   readOnly?: boolean;
   theme?: string;
-  pageId: string; // FONTOS: Ezzel azonosítjuk a mappát
+  /** Page id: images are uploaded into the academy/<pageId> Cloudinary folder. */
+  pageId: string;
+  /** Reports unsaved changes (the page asks before leaving). */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 const schema = BlockNoteSchema.create({
   blockSpecs: {...defaultBlockSpecs, evidence: EvidenceBlock()},
 });
 
-// Helper: Public ID kinyerése URL-ből a törléshez
-const getPublicIdFromUrl = (url: string) => {
-  try {
-    if (!url.includes('/upload/')) return null;
-    const splitUrl = url.split('/upload/');
-    let path = splitUrl[1];
-
-    // Verziószám eltávolítása (pl. v123456/)
-    path = path.replace(/^v\d+\//, '');
-
-    // Kiterjesztés eltávolítása
-    const lastDotIndex = path.lastIndexOf('.');
-    if (lastDotIndex !== -1) path = path.substring(0, lastDotIndex);
-
-    return path;
-  } catch (e) {
-    return null;
-  }
+/** Page looks of the material (stored per page; the keys are kept for the existing pages). */
+export const ACADEMY_THEMES: Record<string, {label: string; className: string; editorTheme: "light" | "dark"; background: string; text: string}> = {
+  default: {label: "Sötét", className: "bg-[#0b1221]/70", editorTheme: "dark", background: "transparent", text: "#e2e8f0"},
+  paper: {label: "Papír", className: "bg-[#f5f0e6]", editorTheme: "light", background: "#f5f0e6", text: "#3d342b"},
+  classic: {label: "Hivatalos (fehér)", className: "bg-white", editorTheme: "light", background: "#ffffff", text: "#0f172a"},
+  blue: {label: "Kék", className: "bg-[#0f172a]", editorTheme: "dark", background: "#0f172a", text: "#bfdbfe"},
+  terminal: {label: "Terminál", className: "bg-[#0c0c0c]", editorTheme: "dark", background: "#0c0c0c", text: "#4ade80"},
+  amber: {label: "Borostyán", className: "bg-[#1a1200]", editorTheme: "dark", background: "#1a1200", text: "#ffb000"},
 };
 
-export function AcademyEditor({
-                                initialContent,
-                                onSave,
-                                readOnly = false,
-                                theme = 'default',
-                                pageId
-                              }: AcademyEditorProps) {
+// BlockNote sets its colours on .bn-container; the page look overrides them (the font stays
+// BlockNote's, as the existing pages were written with it).
+const THEME_CSS = Object.entries(ACADEMY_THEMES).map(([key, look]) => `.academy-theme-${key} .bn-container { --bn-colors-editor-background: ${look.background} !important; --bn-colors-editor-text: ${look.text} !important;}`).join("\n");
+
+interface Block {
+  type?: string;
+  props?: Record<string, unknown>;
+  children?: Block[];
+}
+
+/** For reading: Cloudinary images in a bounded size and the browser's best format. */
+function optimizeImages(blocks: Block[]): Block[] {
+  return blocks.map((block) => ({
+    ...block,
+    props: block.type === "image" && typeof block.props?.url === "string" ? {...block.props, url: getOptimizedImageUrl(block.props.url, 1600)} : block.props,
+    children: Array.isArray(block.children) ? optimizeImages(block.children) : block.children,
+  }));
+}
+
+/**
+ * The academy's BlockNote editor (and reader). Pasted images that arrive embedded are uploaded
+ * to Cloudinary when saving, so the page JSON stays small.
+ */
+export function AcademyEditor({initialContent, onSave, readOnly = false, theme = "default", pageId, onDirtyChange}: AcademyEditorProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
-  const hasChangesRef = useRef(false);
+  // Read at upload time, so a page switch never uploads into the previous page's folder.
+  const pageIdRef = useRef(pageId);
+  useEffect(() => {
+    pageIdRef.current = pageId;
+  }, [pageId]);
 
   const safeContent = useMemo(() => {
-    if (Array.isArray(initialContent) && initialContent.length > 0) return initialContent;
-    return undefined;
-  }, [initialContent]);
-
-  // Képek URL-jeinek kinyerése
-  const extractImageUrls = (content: any[]): string[] => {
-    if (!Array.isArray(content)) return [];
-    const urls: string[] = [];
-    const traverse = (blocks: any[]) => {
-      blocks.forEach(block => {
-        if (block.type === 'image' && block.props?.url) {
-          urls.push(block.props.url);
-        }
-        if (block.children) traverse(block.children);
-      });
-    };
-    traverse(content);
-    return urls;
-  };
-
-  const uploadToCloudinary = async (file: File) => {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    // ÚJ PRESET AZ AKADÉMIÁHOZ
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_ACADEMY_UPLOAD_PRESET;
-
-    if (!cloudName || !uploadPreset) {
-      toast.error("Cloudinary konfig hiányzik (ACADEMY PRESET)!");
-      return "https://placehold.co/600x400?text=Config+Error";
-    }
-
-    const toastId = toast.loading("Kép feltöltése...");
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", uploadPreset);
-    // Mappa beállítása: academy/OLDAL_ID
-    formData.append("folder", `academy/${pageId}`);
-
-    try {
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: "POST", body: formData
-      });
-
-      if (!res.ok) throw new Error("Upload failed");
-
-      const data = await res.json();
-      toast.dismiss(toastId);
-      return data.secure_url;
-    } catch (e) {
-      console.error(e);
-      toast.dismiss(toastId);
-      toast.error("Képfeltöltés sikertelen.");
-      return "https://placehold.co/600x400?text=Upload+Error";
-    }
-  };
+    const content = toInitialContent<Block>(initialContent);
+    return content && readOnly ? optimizeImages(content) : content;
+  }, [initialContent, readOnly]);
+  const inlineImages = useMemo(() => readOnly ? 0 : countInlineImages(initialContent), [initialContent, readOnly]);
 
   const editor = useCreateBlockNote({
-    initialContent: safeContent,
-    schema: schema,
-    uploadFile: uploadToCloudinary,
+    initialContent: safeContent as never,
+    schema,
+    dictionary: hu,
+    uploadFile: async (file: File) => {
+      const toastId = toast.loading("Kép feltöltése…");
+      try {
+        // Resized and converted to WebP before upload.
+        const url = await uploadToCloudinary(file, "academy", pageIdRef.current);
+        toast.dismiss(toastId);
+        return url;
+      } catch (error) {
+        toast.error("Képfeltöltés sikertelen: " + errorMessage(error), {id: toastId});
+        // Rejecting lets BlockNote show its own "upload failed" state instead of
+        // inserting a placeholder image into the material.
+        throw error;
+      }
+    },
   });
 
   useEffect(() => {
-    if (editor && safeContent) {
-      editor.replaceBlocks(editor.document, safeContent);
-    } else if (editor && !safeContent) {
-      editor.replaceBlocks(editor.document, [{type: "paragraph", content: ""}]);
-    }
+    editor.replaceBlocks(editor.document, (safeContent ?? [{type: "paragraph", content: ""}]) as never);
+    setHasChanges(false);
   }, [safeContent, editor]);
 
   useEffect(() => {
-    if (!editor) return;
-    const unsubscribe = editor.onChange(() => {
-      if (!readOnly) {
-        setHasChanges(true);
-        hasChangesRef.current = true;
-      }
-    });
-    return unsubscribe;
+    if (readOnly) return;
+    return editor.onChange(() => setHasChanges(true));
   }, [editor, readOnly]);
 
-  const handleSaveClick = async () => {
+  useEffect(() => {
+    onDirtyChange?.(hasChanges);
+  }, [hasChanges, onDirtyChange]);
+
+  // Warn before leaving the page with unsaved material.
+  useEffect(() => {
+    if (!hasChanges) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasChanges]);
+
+  const save = async () => {
+    if (!onSave) return;
     setIsSaving(true);
+    const toastId = toast.loading("Mentés…");
     try {
-      // 1. Képek detektálása törléshez
-      const oldImages = extractImageUrls(safeContent || []);
-      const newImages = extractImageUrls(editor.document);
-      const imagesToDelete = oldImages.filter(url => !newImages.includes(url));
+      const {content: nextContent, uploaded} = await uploadInlineImages(editor.document, "academy", pageIdRef.current);
+      const kept = extractImageUrls(nextContent);
+      const removedImages = extractImageUrls(toInitialContent(initialContent) ?? []).filter((url) => !kept.includes(url));
 
-      // 2. Mentés DB-be
-      await onSave(editor.document);
-
-      // 3. Törlés a Cloudinary-ról (Régi API-val)
-      if (imagesToDelete.length > 0) {
-        imagesToDelete.forEach(async (url) => {
-          const publicId = getPublicIdFromUrl(url);
-          if (publicId) {
-            console.log("Deleting orphaned image:", publicId);
-            try {
-              await fetch('/api/delete-image', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({publicId}) // Csak publicId-t küldünk, ahogy a régi szereti
-              });
-            } catch (err) {
-              console.error("Failed to delete image:", err);
-            }
-          }
-        });
-      }
-
+      await onSave(nextContent);
+      if (uploaded > 0) editor.replaceBlocks(editor.document, nextContent as never);
       setHasChanges(false);
-      hasChangesRef.current = false;
-      toast.success("Tananyag mentve.");
-    } catch (e) {
-      console.error(e);
-      toast.error("Hiba a mentés során.");
+      toast.success(uploaded > 0 ? `Tananyag mentve (${uploaded} beágyazott kép feltöltve).` : "Tananyag mentve.", {id: toastId});
+
+      // Images dropped from the page are no longer referenced anywhere: clean them up.
+      if (removedImages.length > 0) void deleteCloudinaryAssets(removedImages);
+    } catch (error) {
+      console.error(error);
+      toast.error("Hiba a mentés során: " + errorMessage(error), {id: toastId});
     } finally {
       setIsSaving(false);
     }
   };
 
-  const getThemeAttributes = () => {
-    const baseClasses = "min-h-full font-mono";
-    switch (theme) {
-      case 'paper':
-        return {
-          className: `${baseClasses} bg-[#f5f0e6] text-[#3d342b] font-serif`,
-          editorTheme: "light" as const,
-          cssVars: {"--bn-colors-editor-background": "#f5f0e6", "--bn-colors-editor-text": "#3d342b"}
-        };
-      case 'terminal':
-        return {
-          className: `${baseClasses} bg-[#0c0c0c] text-[#00ff00] selection:bg-green-900 selection:text-white`,
-          editorTheme: "dark" as const,
-          cssVars: {"--bn-colors-editor-background": "#0c0c0c", "--bn-colors-editor-text": "#00ff00"}
-        };
-      case 'amber':
-        return {
-          className: `${baseClasses} bg-[#1a1200] text-[#ffb000] selection:bg-orange-900 selection:text-white`,
-          editorTheme: "dark" as const,
-          cssVars: {"--bn-colors-editor-background": "#1a1200", "--bn-colors-editor-text": "#ffb000"}
-        };
-      case 'blue':
-        return {
-          className: `${baseClasses} bg-[#0f172a] text-[#bfdbfe] font-sans selection:bg-blue-900 selection:text-white`,
-          editorTheme: "dark" as const,
-          cssVars: {"--bn-colors-editor-background": "#0f172a", "--bn-colors-editor-text": "#bfdbfe"}
-        };
-      case 'classic':
-        return {
-          className: `${baseClasses} bg-white text-slate-900 font-sans border-x border-slate-200 shadow-sm max-w-[800px] mx-auto my-4`,
-          editorTheme: "light" as const,
-          cssVars: {"--bn-colors-editor-background": "#ffffff", "--bn-colors-editor-text": "#0f172a"}
-        };
-      default:
-        return {className: `${baseClasses} bg-[#0b1221] text-slate-200`, editorTheme: "dark" as const, cssVars: {}};
-    }
-  };
-  const themeConfig = getThemeAttributes();
+  const themeConfig = ACADEMY_THEMES[theme] ?? ACADEMY_THEMES.default;
 
   return (
-    <div
-      className={cn("flex flex-col h-full relative group transition-colors duration-300 w-full overflow-hidden rounded-lg border border-slate-800", themeConfig.className)}
-      style={{...themeConfig.cssVars as React.CSSProperties}}
-    >
-      {theme === 'default' && (
-        <div className="absolute inset-0 pointer-events-none opacity-[0.03] z-0" style={{
-          backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
-          backgroundSize: '20px 20px'
-        }}></div>
+    <div className={cn("relative w-full overflow-hidden rounded-2xl ring-1 ring-white/10 transition-colors duration-300", themeConfig.className, `academy-theme-${ACADEMY_THEMES[theme] ? theme : "default"}`)}>
+      {!readOnly && inlineImages > 0 && !hasChanges && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-amber-500/30 bg-[#2a1f06] px-4 py-2 text-xs text-amber-100">
+          <ImageUp className="size-4 shrink-0"/>
+          Ezen az oldalon {inlineImages} kép az oldalba ágyazva van (lassú betöltés). Mentéskor feltöltjük őket.
+          <Button size="sm" variant="outline" className="ml-auto h-7 border-amber-400/40 text-amber-100" disabled={isSaving}
+                  onClick={() => void save()}>{isSaving ? <Loader2 className="animate-spin"/> : <ImageUp/>} Feltöltés most</Button>
+        </div>
       )}
-
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 md:p-12 custom-scrollbar relative z-10 w-full">
-        <BlockNoteView
-          editor={editor}
-          editable={!readOnly}
-          theme={themeConfig.editorTheme}
-          className="min-h-[500px] w-full"
-        />
+      <div className={cn("w-full overflow-x-hidden", readOnly ? "px-2 py-6 md:px-6 md:py-10" : "px-2 py-6 md:px-6")}>
+        <BlockNoteView editor={editor} editable={!readOnly} theme={themeConfig.editorTheme} className="min-h-[420px] w-full"/>
       </div>
 
       {!readOnly && hasChanges && (
-        <div className="absolute bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-2">
-          <Button
-            onClick={handleSaveClick}
-            disabled={isSaving}
-            className="bg-[#c5a065] hover:bg-[#b08d55] text-black font-bold shadow-[0_0_20px_rgba(197,160,101,0.3)] transition-all hover:scale-105 border border-[#8a6d3b]"
-          >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Save className="w-4 h-4 mr-2"/>}
-            VÁLTOZÁSOK MENTÉSE
+        <div className="animate-rise sticky bottom-4 z-30 flex justify-end px-4 pb-4">
+          <Button onClick={() => void save()} disabled={isSaving} className="bg-amber-400 text-black shadow-xl shadow-amber-900/30 hover:bg-amber-300">
+            {isSaving ? <Loader2 className="animate-spin"/> : <Save/>} Változások mentése
           </Button>
         </div>
       )}
 
       <style>{`
-            .bn-block-content[data-content-type="table"] { overflow-x: auto !important; width: 100% !important; display: block !important; padding-bottom: 12px; padding-right: 2px; }
-            .bn-block-content[data-content-type="table"] table { width: max-content !important; min-width: 100% !important; }
-        `}</style>
+        ${THEME_CSS}
+        .bn-block-content[data-content-type="table"] { overflow-x: auto !important; width: 100% !important; display: block !important; padding-bottom: 12px; padding-right: 2px; }
+        .bn-block-content[data-content-type="table"] table { width: max-content !important; min-width: 100% !important; }
+      `}</style>
     </div>
   );
 }
