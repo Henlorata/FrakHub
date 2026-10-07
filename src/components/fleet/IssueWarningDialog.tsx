@@ -244,7 +244,7 @@ export function IssueWarningDialog({open, onOpenChange, vehicles, categories, pe
                       <SelectContent className="max-h-72">
                         <SelectItem value={NO_VEHICLE}>Jármű nélkül</SelectItem>
                         {choices.map((item) => (
-                          <SelectItem key={item.id} value={item.id}>{item.plate} · {item.model}</SelectItem>
+                          <SelectItem key={item.id} value={item.id}><span className="truncate">{item.plate} · {item.model}</span></SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

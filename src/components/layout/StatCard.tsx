@@ -44,8 +44,9 @@ export function StatCard({label, value, icon: Icon, tone = "slate", hint, onClic
         <div className={cn("font-semibold tabular-nums leading-tight text-white", typeof value === "string" && value.length > 8 ? "text-xl" : "text-2xl")}>
           {typeof value === "number" ? <AnimatedNumber value={value}/> : value}
         </div>
-        <div className="truncate text-xs font-medium text-muted-foreground">{label}</div>
-        {hint && <div className="mt-0.5 truncate text-[11px] text-slate-500">{hint}</div>}
+        {/* Two lines at most: in the narrow cards of a phone one line cut most labels in half. */}
+        <div className="line-clamp-2 text-xs font-medium text-muted-foreground">{label}</div>
+        {hint && <div className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{hint}</div>}
       </div>
     </Component>
   );

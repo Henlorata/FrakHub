@@ -70,7 +70,7 @@ export function CaseDialog({members, editing, onOpenChange, onSaved}: {
                 <SelectContent>
                   <SelectItem value="none">Később jelölöm ki</SelectItem>
                   {members.map((member) => (
-                    <SelectItem key={member.id} value={member.id}>{member.full_name}{member.iab_title ? ` · ${IAB_TITLES[member.iab_title]}` : ""}</SelectItem>
+                    <SelectItem key={member.id} value={member.id}><span className="truncate">{member.full_name}{member.iab_title ? ` · ${IAB_TITLES[member.iab_title]}` : ""}</span></SelectItem>
                   ))}
                 </SelectContent>
               </Select>

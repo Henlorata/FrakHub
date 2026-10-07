@@ -166,14 +166,15 @@ export function SuspectsPage() {
               </button>
             )}
           </div>
-          <div className="flex gap-2">
+          {/* On a phone the two lists share the row; a long organisation name must not push it wider. */}
+          <div className="flex min-w-0 gap-2">
             <select value={gang} onChange={(event) => setGang(event.target.value)} aria-label="Szervezet"
-                    className="h-10 max-w-52 rounded-lg border bg-white/[0.03] px-3 text-sm text-slate-200">
+                    className="h-10 min-w-0 flex-1 rounded-lg border bg-white/[0.03] px-3 text-sm text-slate-200 sm:max-w-52 sm:flex-none">
               <option value="">Minden szervezet</option>
               {gangs.map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
             <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label="Rendezés"
-                    className="h-10 rounded-lg border bg-white/[0.03] px-3 text-sm text-slate-200">
+                    className="h-10 min-w-0 flex-1 rounded-lg border bg-white/[0.03] px-3 text-sm text-slate-200 sm:flex-none">
               <option value="recent">Legutóbb frissített</option>
               <option value="name">Név szerint</option>
               <option value="cases">Legtöbb akta</option>

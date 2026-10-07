@@ -1,7 +1,7 @@
 -- Exam attempts, scoring, grading and editing. Run with: bunx supabase test db
 -- Uses the accounts and exams from supabase/seed.sql.
 begin;
-select plan(58);
+select plan(63);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,
@@ -202,6 +202,24 @@ select throws_ok($$insert into public.exam_submissions (exam_id, user_id, applic
 select pg_temp.act_as((select admin_id from ids));
 select throws_ok($$insert into public.exam_options (question_id, option_text, order_index) values ('21000000-0000-4000-8000-000000000004', 'Oszlop', 2)$$,
   '42501', null, 'questions and options are written by save_exam() only');
+
+-- --- Linking guest sheets with their code ---------------------------------------
+-- Three guest sheets under one name: a failed retake, the claimant's passed one and someone else's passed one.
+select pg_temp.act_postgres();
+insert into public.exam_submissions (id, exam_id, applicant_name, status, max_score, total_score, claim_token, start_time, end_time) values
+  ('24000000-0000-4000-8000-000000000001', (select public_exam from ids), 'Carl Johnson', 'failed', 5, 1, 'TR-FAIL-0001', now() - interval '3 days', now() - interval '3 days'),
+  ('24000000-0000-4000-8000-000000000002', (select public_exam from ids), 'Carl Johnson', 'passed', 5, 5, 'TR-MINE-0002', now() - interval '1 day', now() - interval '1 day'),
+  ('24000000-0000-4000-8000-000000000003', (select public_exam from ids), 'Carl Johnson', 'passed', 5, 4, 'TR-THEM-0003', now() - interval '2 days', now() - interval '2 days');
+select pg_temp.act_as((select operator_id from ids));
+select is(public.claim_exam_submission('TR-MINE-0002') ->> 'success', 'true', 'a member links their sheet with its code');
+select pg_temp.act_postgres();
+select is((select user_id from public.exam_submissions where id = '24000000-0000-4000-8000-000000000001'), (select operator_id from ids),
+  'an earlier failed attempt under the same name comes along');
+select is((select user_id from public.exam_submissions where id = '24000000-0000-4000-8000-000000000003'), null,
+  'another passed sheet under the same name does not: a name proves nothing');
+select pg_temp.act_as((select deputy_id from ids));
+select is(public.claim_exam_submission('TR-THEM-0003') ->> 'success', 'true', 'its owner still links it with their own code');
+select is(public.claim_exam_submission('TR-MINE-0002') ->> 'success', 'false', 'a sheet already linked cannot be taken over');
 
 select * from finish();
 rollback;

@@ -867,7 +867,10 @@
 }
 
 /* The bureau's letterhead block: logos on the sides, the name centred, a rule below (as the Word
-   templates). Inherits the document's text colour, so it fits every look and the print view. */
+   templates). Inherits the document's text colour, so it fits every look and the print view.
+   Sized by the block's own width (container queries), not the window's: the case page's document
+   column is narrow on a laptop when both side panels are open. */
+.letterhead-frame { container-type: inline-size; }
 .letterhead {
     display: grid;
     grid-template-columns: minmax(52px, 104px) minmax(0, 1fr) minmax(52px, 104px);
@@ -883,11 +886,18 @@
 .letterhead .letterhead-title { font-size: 1.6rem; font-weight: 800; line-height: 1.15; letter-spacing: -0.01em; }
 .letterhead .letterhead-subtitle { margin-top: 0.15rem; font-size: 1.2rem; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .letterhead .letterhead-address { margin-top: 0.35rem; font-size: 0.9rem; font-style: italic; }
-@media (width < 40rem) {
+@container (width < 36rem) {
     .letterhead { grid-template-columns: 52px minmax(0, 1fr) 52px; gap: 0.5rem; }
     .letterhead .letterhead-logo { height: 52px; }
     .letterhead .letterhead-title { font-size: 1.15rem; }
     .letterhead .letterhead-subtitle { font-size: 0.95rem; }
+    .letterhead .letterhead-address { font-size: 0.8rem; }
+}
+@container (width < 20rem) {
+    .letterhead { grid-template-columns: 34px minmax(0, 1fr) 34px; gap: 0.35rem; }
+    .letterhead .letterhead-logo { height: 34px; }
+    .letterhead .letterhead-title { font-size: 1rem; }
+    .letterhead .letterhead-subtitle { font-size: 0.85rem; }
 }
 /* Phones: BlockNote keeps 54 px on both sides for its drag handles; the text needs the room. */
 @media (width < 40rem) {

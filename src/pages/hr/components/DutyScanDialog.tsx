@@ -288,7 +288,7 @@ export function DutyScanDialog({open, onOpenChange, members, months, defaultMont
                         <SelectTrigger className="h-8 w-full text-xs"><SelectValue/></SelectTrigger>
                         <SelectContent className="max-h-72">
                           <SelectItem value={NONE}>Nem tag: kihagyom ({row.name})</SelectItem>
-                          {members.map((item) => <SelectItem key={item.id} value={item.id}>{item.full_name} · #{item.badge_number}</SelectItem>)}
+                          {members.map((item) => <SelectItem key={item.id} value={item.id}><span className="truncate">{item.full_name} · #{item.badge_number}</span></SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>

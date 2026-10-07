@@ -167,4 +167,21 @@ test.describe("MCB", () => {
     await expect(page.getByRole("button", {name: /Átadás/})).toBeVisible();
     expect(mock.count("rpc", "get_mcb_overview")).toBe(1);
   });
+
+  test("the letterhead stays readable in the narrow document column of a laptop", async ({page}) => {
+    const detail = caseDetail();
+    detail.case.body = [{id: "lh", type: "letterhead", props: {left: "", right: "mcb", title: "Major Crime’s Bureau",
+      subtitle: "Detective Division", address: "San Fierro, Downtown 1257"}, content: undefined, children: []}, ...detail.case.body] as typeof detail.case.body;
+    await page.setViewportSize({width: 1440, height: 900});
+    await mockSupabase(page, {rpc: {get_case_detail: detail, get_case_list: []}});
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto(`/mcb/case/${CASE_ID}`);
+    const title = page.locator(".letterhead-title");
+    await expect(title).toHaveText("Major Crime’s Bureau");
+    // Both side panels are open: the name gets the room of the column, not a strip between the logos.
+    const box = (await title.boundingBox())!;
+    expect(box.width).toBeGreaterThan(150);
+    expect(box.height).toBeLessThan(70);
+  });
 });

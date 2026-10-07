@@ -302,7 +302,7 @@ function PeoplePanel({data, onChanged}: {data: IabCaseDetail; onChanged: () => P
             <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Tag hozzáadása…"/></SelectTrigger>
             <SelectContent>
               {candidates.filter((member) => member.id !== profile?.id || role !== "subject").map((member) => (
-                <SelectItem key={member.id} value={member.id}>{member.full_name} · {member.faction_rank}</SelectItem>
+                <SelectItem key={member.id} value={member.id}><span className="truncate">{member.full_name} · {member.faction_rank}</span></SelectItem>
               ))}
             </SelectContent>
           </Select>
