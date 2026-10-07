@@ -1,5 +1,6 @@
 import {postApi} from "./api";
 import {env} from "./env";
+import {reportError} from "./error-reporting";
 import {compressImage, type CompressOptions} from "./image-compression";
 import {sandbox} from "./sandbox/state";
 
@@ -40,7 +41,10 @@ export async function uploadToCloudinary(file: File, kind: UploadKind, scope?: s
   const {cloudName, presets} = env.cloudinary;
   const settings = UPLOAD_SETTINGS[kind];
   const preset = presets[settings.preset ?? (kind as keyof typeof presets)];
-  if (!cloudName || !preset) throw new Error("Hiányzó Cloudinary konfiguráció (.env).");
+  if (!cloudName || !preset) {
+    reportError("upload", `${kind}: missing Cloudinary configuration`);
+    throw new Error("Hiányzó Cloudinary konfiguráció (.env).");
+  }
 
   const formData = new FormData();
   formData.append("file", await compressImage(file, settings));
@@ -52,9 +56,16 @@ export async function uploadToCloudinary(file: File, kind: UploadKind, scope?: s
     body: formData,
   });
   const data = (await response.json().catch(() => ({}))) as {secure_url?: string; error?: {message?: string}};
-  if (!response.ok || !data.secure_url) throw new Error(uploadError(data.error?.message, preset));
+  if (!response.ok || !data.secure_url) {
+    const message = data.error?.message;
+    // A file the member picked is their answer to fix; anything else goes to the error log.
+    if (!message || !FILE_PROBLEM.test(message)) reportError("upload", `${kind} (${preset}): ${message ?? `HTTP ${response.status}`}`);
+    throw new Error(uploadError(message, preset));
+  }
   return data.secure_url;
 }
+
+const FILE_PROBLEM = /file size too large|invalid image file|unsupported/i;
 
 /** Cloudinary answers in English: the usual failures in the app's language. */
 function uploadError(message: string | undefined, preset: string): string {

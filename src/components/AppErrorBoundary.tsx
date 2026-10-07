@@ -1,5 +1,6 @@
 import {Component, type ErrorInfo, type ReactNode} from "react";
 import {AlertTriangle, RotateCcw} from "lucide-react";
+import {reportError} from "@/lib/error-reporting";
 
 interface State {
   error: Error | null;
@@ -15,6 +16,7 @@ export class AppErrorBoundary extends Component<{children: ReactNode}, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Unhandled render error:", error, info.componentStack);
+    reportError("crash", error, info.componentStack);
   }
 
   render() {

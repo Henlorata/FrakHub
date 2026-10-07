@@ -13,8 +13,8 @@ export function bumpCacheEpoch() {
   epoch += 1;
 }
 
-/** Reads: plain GET/HEAD requests and the read RPCs (get_*, search_*, verify_*). */
-const READ_RPC = /\/rest\/v1\/rpc\/(get_|search_|verify_)/;
+/** Reads: plain GET/HEAD requests and the read RPCs (get_*, search_*, verify_*); the error log changes no list. */
+const READ_RPC = /\/rest\/v1\/rpc\/(get_|search_|verify_|report_client_error)/;
 
 /** Called by the Supabase client's fetch for every request it sends. */
 export function noteRequest(url: string, method: string | undefined) {
