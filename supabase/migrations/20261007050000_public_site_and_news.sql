@@ -102,7 +102,7 @@ insert into public.site_content (key, value) values
   'exam_id', null)),
 ('faq', jsonb_build_array(
   jsonb_build_object('q', 'Hogyan jelentkezhetek?', 'a', 'A „Csatlakozz hozzánk” gombbal regisztrálhatsz. A Személyügy elbírálja a kérelmedet, és értesít a következő lépésekről.'),
-  jsonb_build_object('q', 'Mennyi ideig tart a felvétel?', 'a', 'A vizsga és az akadémia után következik a Trainee hét. Aki aktív, néhány hét alatt végigér az úton.'),
+  jsonb_build_object('q', 'Mennyi ideig tart a felvétel?', 'a', 'A vizsga és az akadémia után következik a Trainee hét. Aki aktív, néhány nap alatt végigér az úton.'),
   jsonb_build_object('q', 'Mi az a Trainee hét?', 'a', 'Az első heted egy tapasztalt mentor mellett: éles szolgálatban tanulsz, és ő segít a kinevezésig.'),
   jsonb_build_object('q', 'Bekerülhetek rögtön egy különleges egységbe?', 'a', 'Mindenki a járőrszolgálatban kezd. A SEB, az MCB és az egységek később, képesítéssel és tapasztalattal érhetők el.'))),
 ('gallery', '[]'::jsonb),

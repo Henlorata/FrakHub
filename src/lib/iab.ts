@@ -112,6 +112,10 @@ export interface IabCaseDetail {
 export const canSeeIab = (profile: Pick<Profile, "iab_title" | "is_bureau_manager"> | null | undefined) =>
   !!profile && (!!profile.iab_title || !!profile.is_bureau_manager);
 
+/** Who reads the IAB's mailbox (private.mail_group_member('iab')): its members, and the Bureau Managers while nobody holds a title. */
+export const readsIabMail = (overview: IabOverview, profile: Pick<Profile, "is_bureau_manager"> | null | undefined) =>
+  overview.viewer.is_member || (!!profile?.is_bureau_manager && overview.members.length === 0);
+
 const rpc = async <T>(name: string, args: Record<string, unknown> = {}): Promise<T> => {
   const {data, error} = await supabase.rpc(name, args);
   if (error) throw error;

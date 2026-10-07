@@ -42,7 +42,9 @@ export function MailPage() {
   const [composing, setComposing] = useState(() => params.get("new") === "1");
   const [refreshing, setRefreshing] = useState(false);
   const [myAddress, setMyAddress] = useState<string | null>(null);
-  const boxes = MAIL_BOXES.filter((item) => item.key !== "iab" || !!profile?.iab_title);
+  // The IAB's mailbox: its members, and the Bureau Managers while nobody holds an IAB title (the directory says).
+  const [iabReader, setIabReader] = useState(() => !!profile?.iab_title);
+  const boxes = MAIL_BOXES.filter((item) => item.key !== "iab" || iabReader);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<{query: string; hits: MailSearchHit[]} | null>(null);
   const searchTerm = query.trim();
@@ -80,14 +82,29 @@ export function MailPage() {
       setItems(list);
       setMore(list.length >= 40);
       setFailed(false);
-    }, () => active && setFailed(true));
+    }, (error) => {
+      if (!active) return;
+      // An old link to the IAB's mailbox for someone who does not read it (any more): the inbox instead.
+      if (box === "iab" && (error as {code?: string} | null)?.code === "42501") {
+        setParams((current) => {
+          const next = new URLSearchParams(current);
+          next.delete("box");
+          return next;
+        }, {replace: true});
+        return;
+      }
+      setFailed(true);
+    });
     return () => {
       active = false;
     };
-  }, [box]);
+  }, [box, setParams]);
 
   useEffect(() => {
-    mailApi.directory().then((directory) => setMyAddress(directory.me.address), () => undefined);
+    mailApi.directory().then((directory) => {
+      setMyAddress(directory.me.address);
+      setIabReader(directory.offices.some((office) => office.key === "iab"));
+    }, () => undefined);
   }, []);
 
   // Back to the tab after a while: look again (no polling).

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode} from "react";
 import {useLocation, useNavigate} from "react-router";
 import {toast} from "sonner";
 import {
@@ -26,7 +26,21 @@ export interface ReportPrefill {
 
 const draftKey = (userId: string) => `frakhub.report.draft.${userId}`;
 
-const emptyForm = (profile: {full_name: string; faction_rank: string; badge_number: string} | null): ReportForm => ({
+/** A draft comes back only on a visit within this time after the page was left; an older one is wiped. */
+const DRAFT_KEEP_MS = 10 * 60_000;
+
+/**
+ * The stored draft: the form, whether its date was typed in (otherwise it is always today), and when
+ * it was last saved (the page saves it once more when it is left).
+ */
+type Draft = Partial<ReportForm> & {dateEdited?: boolean; savedAt?: number};
+
+const storeDraft = (userId: string, draft: Draft) =>
+  localStorage.setItem(draftKey(userId), JSON.stringify({...draft, savedAt: Date.now()} satisfies Draft));
+
+type ProfileFields = {full_name: string; faction_rank: string; badge_number: string} | null;
+
+const emptyForm = (profile: ProfileFields): ReportForm => ({
   officerName: profile?.full_name ?? "",
   officerRank: profile?.faction_rank ?? "",
   badgeNumber: profile?.badge_number ?? "",
@@ -44,25 +58,42 @@ const emptyForm = (profile: {full_name: string; faction_rank: string; badge_numb
   description: "",
 });
 
+function restoreDraft(userId: string | undefined, profile: ProfileFields): {form: ReportForm; dateEdited: boolean} {
+  const fresh = emptyForm(profile);
+  if (!userId) return {form: fresh, dateEdited: false};
+  try {
+    const saved = localStorage.getItem(draftKey(userId));
+    if (saved) {
+      const {dateEdited = false, savedAt, ...fields} = JSON.parse(saved) as Draft;
+      if (typeof savedAt === "number" && Date.now() - savedAt <= DRAFT_KEEP_MS) {
+        // A date nobody typed in is the day the draft was saved: it follows today instead.
+        return {form: {...fresh, ...fields, ...(dateEdited ? {} : {date: fresh.date})}, dateEdited};
+      }
+      // An earlier report (or a draft without its time): the next visit starts an empty one.
+      localStorage.removeItem(draftKey(userId));
+    }
+  } catch {
+    // A broken draft starts a new report.
+  }
+  return {form: fresh, dateEdited: false};
+}
+
 /**
  * The forum report: a form for the template's fields, the exact BBCode (and a preview of how the
  * forum shows it), and recording the posted report for the monthly count. The draft is kept in
- * this browser until a new report is started.
+ * this browser for a visit within 10 minutes after the page was left (an older one is wiped); its
+ * date is today's unless it was typed in.
  */
 export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
   const {profile, user} = useAuth();
+  const userId = user?.id;
   const location = useLocation();
   const navigate = useNavigate();
-  const [form, setForm] = useState<ReportForm>(() => {
-    if (!user) return emptyForm(profile);
-    try {
-      const saved = localStorage.getItem(draftKey(user.id));
-      if (saved) return {...emptyForm(profile), ...JSON.parse(saved) as Partial<ReportForm>};
-    } catch {
-      // A broken draft starts a new report.
-    }
-    return emptyForm(profile);
-  });
+  const [draft] = useState(() => restoreDraft(userId, profile));
+  const [form, setForm] = useState<ReportForm>(draft.form);
+  const [dateEdited, setDateEdited] = useState(draft.dateEdited);
+  // What the page holds, for the save when the page is left.
+  const latest = useRef<Draft>({...draft.form, dateEdited: draft.dateEdited});
   const [view, setView] = useState<"preview" | "code">("preview");
   const [copied, setCopied] = useState(false);
   const [link, setLink] = useState("");
@@ -98,12 +129,29 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
     };
   }, [user]);
 
-  // Keep the draft (a long description is not lost when the page is left).
+  // Keep the draft (a long description is not lost when the page is left): shortly after a change,
+  // and when the page or the tab is left, which also stamps the time the next visit is measured from.
   useEffect(() => {
-    if (!user) return;
-    const timer = window.setTimeout(() => localStorage.setItem(draftKey(user.id), JSON.stringify(form)), 400);
+    latest.current = {...form, dateEdited};
+    if (!userId) return;
+    const timer = window.setTimeout(() => storeDraft(userId, {...form, dateEdited}), 400);
     return () => window.clearTimeout(timer);
-  }, [form, user]);
+  }, [form, dateEdited, userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const leave = () => storeDraft(userId, latest.current);
+    const hidden = () => {
+      if (document.visibilityState === "hidden") leave();
+    };
+    window.addEventListener("pagehide", leave);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      document.removeEventListener("visibilitychange", hidden);
+      leave();
+    };
+  }, [userId]);
 
   // Data handed over by the penal code calculator.
   useEffect(() => {
@@ -136,6 +184,7 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
 
   const reset = () => {
     setForm(emptyForm(profile));
+    setDateEdited(false);
     setCopied(false);
     setLoggedFor(null);
     if (user) localStorage.removeItem(draftKey(user.id));
@@ -200,7 +249,10 @@ export function ReportGenerator({onLogged}: {onLogged?: () => void}) {
         <Section index={2} number="III." title="Előállítás részletei" icon={Scale}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Időpont (nap/hónap/év)" icon={CalendarDays} hint={dateKey ? undefined : "Nem olvasható dátum: a rögzítés a mai napra kerül."}>
-              <Input value={form.date} onChange={(event) => set("date", event.target.value)} className="font-mono"/>
+              <Input value={form.date} aria-label="Időpont" onChange={(event) => {
+                set("date", event.target.value);
+                setDateEdited(true);
+              }} className="font-mono"/>
             </Field>
             <Field label="Bírság" icon={Gavel} hint="Csak a szám, vagy „-”">
               <Input value={form.fine} inputMode="numeric" placeholder="pl. 15000" onChange={(event) => setNumberOrDash("fine", event.target.value)}
