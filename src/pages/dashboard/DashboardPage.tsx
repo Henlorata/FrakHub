@@ -4,15 +4,16 @@ import {toast} from "sonner";
 import {formatDistanceToNowStrict} from "date-fns";
 import {hu} from "date-fns/locale";
 import {
-  Activity, AlertOctagon, AlertTriangle, ArrowRight, Banknote, CalendarDays, CalendarOff, CalendarPlus, Car, Check, CheckCircle2,
-  ChevronDown, ChevronRight, ClipboardCheck, Clock, EyeOff, FileSearch, FileText, Fingerprint, Gavel, GraduationCap, Handshake,
-  HelpCircle, Info, MapPin, Megaphone, Pin, Plus, Radio, Receipt, RefreshCw, ScrollText, Shield, Target, Ticket, Trash2, Truck,
-  UserPlus, Users, X, BookCheck, BrainCircuit, HeartHandshake, ListTodo, Medal, MessageSquareLock, UsersRound, Vote,
+  Activity, AlertOctagon, AlertTriangle, ArrowRight, Banknote, BookCheck, BrainCircuit, CalendarDays, CalendarOff, CalendarPlus, Car, Check,
+  CheckCircle2, ChevronDown, ChevronRight, ClipboardCheck, Clock, Database, EyeOff, FileSearch, FileText, Fingerprint, Gavel, GraduationCap,
+  Handshake, HeartHandshake, HelpCircle, Info, ListTodo, Mail, MapPin, Medal, Megaphone, MessageSquareLock, Pin, Plus, Radar, Radio, Receipt,
+  RefreshCw, Scale, ScrollText, Shield, Target, Ticket, Trash2, Truck, UserPlus, Users, UsersRound, Vote, X,
 } from "lucide-react";
 import {MonthlyRecapDialog} from "@/components/recap/MonthlyRecapDialog";
 import {progressionApi, type Trainee} from "@/lib/progression";
 import {TRAINEE_RANK} from "@shared/ranks";
 import {RECAP_SEEN_KEY} from "@/lib/recognition";
+import {dbUsedPercent} from "@/lib/system";
 import {useAuth} from "@/context/AuthContext";
 import {useSystemStatus} from "@/context/SystemStatusContext";
 import {Button} from "@/components/ui/button";
@@ -66,6 +67,12 @@ interface DashboardSummary {
   recap_month?: string | null;
   /** The member's joining day in the HR registry (null: not recorded, the account's creation counts). */
   joined_on?: string | null;
+  /** Active BOLO alerts (the briefing). */
+  active_bolos?: number;
+  mail_unread?: number;
+  iab_open?: number | null;
+  /** The database's size (Executive Staff and Bureau Manager). */
+  db_health?: {bytes: number; limit_bytes: number} | null;
 }
 
 /** The member's month against the requirements (duty time is recorded by staff at the meetings). */
@@ -163,6 +170,9 @@ export function DashboardPage() {
 
   // Only what needs attention right now; zero counters stay hidden.
   const tasks: {label: string; value: number | null | undefined; icon: typeof Info; tone: Tone; to: string}[] = [
+    {label: "Aktív BOLO az eligazításon", value: summary?.active_bolos, icon: Radar, tone: "red", to: "/briefing"},
+    {label: "Olvasatlan levél", value: summary?.mail_unread, icon: Mail, tone: "blue", to: "/mail"},
+    {label: "Nyitott belső vizsgálat", value: summary?.iab_open, icon: Scale, tone: "violet", to: "/iab"},
     {label: "Javítandó vizsgalap", value: summary?.pending_exam_sheets, icon: ClipboardCheck, tone: "violet", to: "/exams?tab=grading"},
     {label: "Jóváhagyásra váró parancs", value: summary?.pending_warrants, icon: Gavel, tone: "red", to: "/mcb/warrants"},
     {label: "Új regisztráció", value: summary?.pending_registrations, icon: UserPlus, tone: "emerald", to: "/hr?tab=requests"},
@@ -182,6 +192,9 @@ export function DashboardPage() {
     {label: "Mentor nélküli Trainee", value: summary?.trainees_without_mentor, icon: HeartHandshake, tone: "orange", to: "/hr?tab=trainees"},
     {label: "Mentorált Trainee-m", value: summary?.mentees, icon: HeartHandshake, tone: "cyan", to: "/hr?tab=trainees"},
     {label: "Új névtelen visszajelzés", value: summary?.feedback_new, icon: MessageSquareLock, tone: "violet", to: "/community?tab=feedback&box=inbox"},
+    // Only near the free plan's limit.
+    {label: "% adatbázis-tárhely foglalt", value: (dbUsedPercent(summary?.db_health) ?? 0) >= 70 ? dbUsedPercent(summary?.db_health) : 0, icon: Database,
+      tone: "orange", to: "/stats#rendszer"},
   ];
   const openTasks = tasks.filter((task) => (task.value ?? 0) > 0);
 
@@ -320,7 +333,7 @@ function Hero({summary, openTasks}: {summary: DashboardSummary | null; openTasks
           <div className="absolute inset-0 rounded-full border border-dashed border-yellow-500/30 motion-safe:animate-[spin_60s_linear_infinite]"/>
           <div className="absolute inset-4 rounded-full border-2 border-yellow-500/15 border-t-yellow-400/60 border-b-transparent motion-safe:animate-[spin_14s_linear_infinite_reverse]"/>
           <div className="absolute inset-10 rounded-full bg-yellow-500/15 blur-2xl motion-safe:animate-[backdrop-breathe_6s_ease-in-out_infinite]"/>
-          <SheriffStar className="relative size-28 drop-shadow-[0_8px_30px_rgb(234_179_8/0.45)] motion-safe:animate-[float-y_7s_ease-in-out_infinite] sm:size-36 md:size-40"/>
+          <SheriffStar className="relative size-28 drop-shadow-[0_14px_28px_rgb(0_0_0/0.55)] motion-safe:animate-[float-y_7s_ease-in-out_infinite] sm:size-36 md:size-40"/>
         </div>
       </div>
     </section>

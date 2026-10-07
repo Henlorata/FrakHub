@@ -1,12 +1,14 @@
 import {useEffect, useSyncExternalStore} from "react";
 import {onClientCachesCleared} from "./cache";
 import {supabase} from "./supabaseClient";
+import {createVersionedLoader} from "./versioned-cache";
 import type {FleetCategory, FleetHolder, FleetTuningPreset, FleetVehicle} from "@/types/supabase";
 
 /**
  * The vehicle stock with its key holders and categories, loaded once and shared by the
- * fleet pages, the vehicle request approval and the HR registry (two requests per
- * session, refreshed after five minutes). Changes made in the app update it in place.
+ * fleet pages, the vehicle request approval and the HR registry (two requests, refreshed after
+ * five minutes). Kept between visits and downloaded again only when the fleet changed
+ * (versioned-cache.ts). Changes made in the app update it in place.
  */
 
 export const VEHICLE_COLUMNS =
@@ -23,6 +25,16 @@ interface FleetState {
 }
 
 let state: FleetState = {vehicles: null, categories: [], error: false};
+
+const stock = createVersionedLoader("fleet", ["fleet"], async () => {
+  const [vehicleResult, categoryResult] = await Promise.all([
+    supabase.from("fleet_vehicles").select(VEHICLE_COLUMNS).eq("is_active", true).order("plate"),
+    supabase.from("fleet_categories").select(CATEGORY_COLUMNS).order("sort_order"),
+  ]);
+  if (vehicleResult.error) throw vehicleResult.error;
+  if (categoryResult.error) throw categoryResult.error;
+  return {vehicles: (vehicleResult.data ?? []) as unknown as FleetVehicle[], categories: (categoryResult.data ?? []) as FleetCategory[]};
+});
 let loadedAt = 0;
 let pending: Promise<void> | null = null;
 /** Bumped when the caches are cleared, so a load already running does not refill the store. */
@@ -42,21 +54,14 @@ export function loadFleet(force = false): Promise<void> {
   if (pending) return pending;
   const request: Promise<void> = (async () => {
     const started = generation;
-    const [vehicleResult, categoryResult] = await Promise.all([
-      supabase.from("fleet_vehicles").select(VEHICLE_COLUMNS).eq("is_active", true).order("plate"),
-      supabase.from("fleet_categories").select(CATEGORY_COLUMNS).order("sort_order"),
-    ]);
-    if (started !== generation) return;
-    if (vehicleResult.error || categoryResult.error) {
-      update({error: true, vehicles: state.vehicles ?? []});
-      return;
+    try {
+      const loaded = await stock.get(force);
+      if (started !== generation) return;
+      loadedAt = Date.now();
+      update({error: false, vehicles: sortVehicles(loaded.vehicles), categories: loaded.categories});
+    } catch {
+      if (started === generation) update({error: true, vehicles: state.vehicles ?? []});
     }
-    loadedAt = Date.now();
-    update({
-      error: false,
-      vehicles: sortVehicles((vehicleResult.data ?? []) as unknown as FleetVehicle[]),
-      categories: (categoryResult.data ?? []) as FleetCategory[],
-    });
   })().finally(() => {
     if (pending === request) pending = null;
   });

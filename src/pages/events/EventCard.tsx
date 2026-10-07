@@ -1,7 +1,7 @@
 import {useState, type CSSProperties} from "react";
 import {
-  Ban, Check, ChevronDown, ClipboardCheck, Clock, HelpCircle, MapPin, MessageSquareText, MoreHorizontal, Pencil, RotateCcw, Trash2, UserRound, Users,
-  X,
+  Ban, Check, ChevronDown, ClipboardCheck, ClipboardList, Clock, HelpCircle, MapPin, MessageSquareText, MoreHorizontal, Pencil, RotateCcw, Trash2,
+  UserRound, Users, X,
 } from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -29,7 +29,7 @@ function timeRange(event: FactionEvent) {
   return `${start}–${sameDay ? "" : `${formatDate(event.ends_at)} `}${formatTime(event.ends_at)}`;
 }
 
-export function EventCard({event, index, now, highlighted, busy, inAudience, onRespond, onEdit, onToggleCancel, onDelete, onAttendance}: {
+export function EventCard({event, index, now, highlighted, busy, inAudience, onRespond, onEdit, onToggleCancel, onDelete, onAttendance, onOperation}: {
   event: FactionEvent;
   index: number;
   /** The time of the page's last load (what counts as past). */
@@ -43,6 +43,7 @@ export function EventCard({event, index, now, highlighted, busy, inAudience, onR
   onToggleCancel: () => void;
   onDelete: () => void;
   onAttendance: () => void;
+  onOperation: () => void;
 }) {
   const look = EVENT_KINDS[event.kind] ?? EVENT_KINDS.other;
   const [expanded, setExpanded] = useState(false);
@@ -157,6 +158,24 @@ export function EventCard({event, index, now, highlighted, busy, inAudience, onR
                   <Users className="size-3.5"/>{event.counts.going} jön{event.counts.maybe ? ` · ${event.counts.maybe} talán` : ""}
                   <ChevronDown className={cn("size-3.5 transition-transform", showPeople && "rotate-180")}/>
                 </button>
+              )}
+            </div>
+          )}
+
+          {(event.operation || (event.can_manage && !event.cancelled_at)) && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Button size="sm" variant="outline" className="h-7" onClick={onOperation}>
+                <ClipboardList className="size-3.5"/> {event.operation ? "Műveleti terv" : "Műveleti terv készítése"}
+              </Button>
+              {event.operation && (
+                <span className="text-slate-500">
+                  {event.operation.roles} csapat · {event.operation.assigned} fő{event.operation.report ? " · értékelve" : ""}
+                </span>
+              )}
+              {event.operation?.my_role && (
+                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-100 ring-1 ring-amber-400/30 wrap-anywhere">
+                  Szereped: {event.operation.my_role}
+                </span>
               )}
             </div>
           )}

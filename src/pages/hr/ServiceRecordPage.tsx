@@ -8,14 +8,18 @@ import {formatDate, formatDateTime} from "@/lib/datetime";
 import {formatDuty, monthLabel} from "@/lib/registry";
 import {CERTIFICATE_KIND, certificateTitle, recognitionApi, type ServiceRecord} from "@/lib/recognition";
 import {UNIT_LABELS} from "@/lib/fleet";
-import {errorMessage} from "@/lib/utils";
+import {cn, errorMessage} from "@/lib/utils";
 import {daysSince, formatSpan} from "./hr-utils";
+import {SignatureLine} from "@/components/signature/SignatureLine";
+import {useAuth} from "@/context/AuthContext";
+import {useSignatures} from "@/lib/signature/api";
 
 const HISTORY_LABEL: Record<string, string> = {
   joined: "Felvétel",
   rank: "Rendfokozat",
   division: "Osztály",
   division_rank: "Alosztály rang",
+  division_title: "Osztály cím",
   qualifications: "Képesítés",
   bureau_role: "Iroda",
 };
@@ -30,6 +34,8 @@ export function ServiceRecordPage() {
   const navigate = useNavigate();
   const [record, setRecord] = useState<ServiceRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const {profile: viewer} = useAuth();
+  const signatureOf = useSignatures([userId, viewer?.id]);
 
   useEffect(() => {
     recognitionApi.serviceRecord(userId).then(setRecord).catch((reason) => setError(errorMessage(reason, "A szolgálati lap nem tölthető be.")));
@@ -94,7 +100,7 @@ export function ServiceRecordPage() {
             <Field label="Név" value={member.full_name}/>
             <Field label="Jelvényszám" value={`#${member.badge_number}`}/>
             <Field label="Rendfokozat" value={member.faction_rank}/>
-            <Field label="Osztály" value={[member.division, member.division_rank].filter(Boolean).join(" · ")}/>
+            <Field label="Osztály" value={[member.division, member.division_rank, ...(member.division_titles ?? [])].filter(Boolean).join(" · ")}/>
             <Field label="Csatlakozott" value={`${formatDate(joined)} (${formatSpan(daysSince(joined))})`}/>
             <Field label="Utolsó rangváltás" value={member.last_promotion_date ? formatDate(member.last_promotion_date) : "–"}/>
             <Field label="Képesítések" value={(member.qualifications ?? []).map((unit) => UNIT_LABELS[unit as keyof typeof UNIT_LABELS] ?? unit).join(", ") || "–"}/>
@@ -235,9 +241,18 @@ export function ServiceRecordPage() {
           </Section>
         </div>
 
-        <footer className="mt-10 flex items-end justify-between gap-6 border-t border-slate-300 pt-4 text-xs text-slate-500 print-break-avoid">
-          <span>A szolgálati lap a FrakHub adataiból készült; a belső feljegyzéseket nem tartalmazza.</span>
-          <span className="w-48 border-t border-slate-400 pt-1 text-center">Aláírás</span>
+        <footer className="mt-10 border-t border-slate-300 pt-6 print-break-avoid">
+          <div className={cn("grid grid-cols-1 gap-8", viewer && viewer.id !== member.id ? "sm:grid-cols-2" : "sm:max-w-xs")}>
+            <SignatureLine signature={signatureOf(member.id)} name={member.full_name} role="A tag"
+                           detail={`${member.faction_rank} · #${member.badge_number}`}/>
+            {viewer && viewer.id !== member.id && (
+              <SignatureLine signature={signatureOf(viewer.id)} name={viewer.full_name} role="Kiállította"
+                             detail={`${viewer.faction_rank} · #${viewer.badge_number}`} date={formatDate(record.generated_at)}/>
+            )}
+          </div>
+          <p className="mt-5 text-[11px] text-slate-500">
+            A szolgálati lap a San Fierro Sheriff's Department Intranet adataiból készült; a belső feljegyzéseket nem tartalmazza.
+          </p>
         </footer>
       </article>
       <p className="mt-4 text-center text-xs text-slate-500 print:hidden">

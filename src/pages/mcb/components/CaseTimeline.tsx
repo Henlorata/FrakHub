@@ -2,7 +2,7 @@ import {useEffect, useState} from "react";
 import type {LucideIcon} from "lucide-react";
 import {
   ArrowRightLeft, Boxes, FilePen, FilePlus2, FolderArchive, Gavel, History, Hourglass, ImageMinus, ImagePlus, ListChecks, ListTodo, ListX,
-  Loader2, Lock, PackageCheck, Pencil, ShieldPlus, ShieldX, Tag, TriangleAlert, Unlock, UserMinus, UserPlus, Users,
+  Loader2, Lock, PackageCheck, Pencil, ShieldPlus, ShieldX, Tag, Trash2, TriangleAlert, Undo2, Unlock, UserMinus, UserPlus, Users,
 } from "lucide-react";
 import {EmptyState} from "@/components/layout/EmptyState";
 import {formatAgo, formatDateTime} from "@/lib/datetime";
@@ -43,6 +43,10 @@ export function describeCaseEvent(event: Pick<CaseEvent, "kind" | "details" | "a
       return {icon: FilePen, tone: "text-sky-300 bg-sky-500/10",
         text: `szerkesztette a dokumentumot${saves > 1 ? ` (${saves} mentés)` : ""}`};
     }
+    case "trashed":
+      return {icon: Trash2, tone: "text-red-300 bg-red-500/10", text: "a lomtárba helyezte az aktát"};
+    case "restored":
+      return {icon: Undo2, tone: "text-emerald-300 bg-emerald-500/10", text: "visszaállította az aktát a lomtárból"};
     case "collaborator_added":
       return {icon: UserPlus, tone: "text-sky-300 bg-sky-500/10",
         text: `hozzáadta a csapathoz: ${str(d.name)} (${COLLABORATOR_ROLE[str(d.role) as "editor" | "viewer"]?.label.toLowerCase() ?? str(d.role)})`};

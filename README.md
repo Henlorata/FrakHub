@@ -1,21 +1,43 @@
-# FrakHub
+# SFSD Intranet
 
-Management hub ("MDT") for the San Fierro Sheriff's Department roleplay faction: MCB case
-management (case templates, tasks with due dates, an optional register of seized items with
+The San Fierro Sheriff's Department Intranet (repository and domain name: FrakHub; the product is
+never called FrakHub in the interface).
+
+
+Management hub ("MDT") for the San Fierro Sheriff's Department roleplay faction, with a public
+front page (news and press releases edited by the Sheriff's Information Bureau, the divisions,
+the leadership and recruitment) for visitors, who can also send a complaint, a tip or a
+question and follow the answers with a tracking code (no e-mail involved); internal mail in the department's old
+"public-mails" format (letters to members and to shared addresses such as all@sfsd.org or
+internal.affairs.bureau@sfsd.org), the Internal Affairs Bureau's investigations with printable,
+signed closures, a personal signature on every printable document (drawn, traced from a photo,
+a script style or generated), a shift briefing with BOLO alerts and a plate lookup, department
+statistics, MCB case
+management (case templates with letterheads, scene sketches drawn in the case document, evidence
+pictures marked and redacted in the browser, a trash that keeps deleted cases for 30 days, a
+register of crime organisations, a relationship graph of persons, organisations, cases, plates and
+addresses, tasks with due dates, an optional register of seized items with
 their chain of custody, warrants that lapse and can be renewed, related-case suggestions and an
-informant register for the leadership), HR (roster with one-click promotions and an org chart,
+informant register for the leadership), HR (roster with one-click promotions and an org chart, quarterly
+performance reviews that members acknowledge, bureau ranks and titles that each
+Bureau Commander edits for their own division,
 promotion criteria and nominations, the trainee week with a mentor, an activity watch based on
 recorded duty time, workload and recruitment charts, printable service records, monthly duty
-time sheet, former members, the old Google Sheet's registry columns), logistics (requests, the
+time sheet, former members, the old Google Sheet's registry columns, printable signed award
+certificates), logistics (requests, the
 vehicle fleet with key holders and a utilisation view, registration renewals read from a
 screenshot of the in-game licence, vehicle warnings and tuning) and finance (payroll with a
-what-if view, payslips with history, reimbursements, a treasury forecast), penal code calculator
+what-if view, payslips with history and a signed printable payslip, reimbursements, a treasury
+forecast), penal code calculator
 with a change log, report generator (with the person's data read from an in-game screenshot, in
-the browser), exams and academy training, practice (spaced-repetition decks, branching
+the browser), mail search, read receipts and letter templates, exams and academy training, practice (spaced-repetition decks, branching
 scenarios), certificates with a public verification code, an opt-in leaderboard and a monthly
 recap, a policy library with acknowledgements, polls, a suggestion board, anonymous feedback to
-the leadership, an events calendar with attendance and absences, a radio code book, a "who can
-do what" page, release notes, plus interactive guided trainings per rank that run on demo data.
+the leadership, an events calendar with attendance, absences and operation plans (teams, vehicles,
+call signs, after-action reports), a radio code book, a "who can
+do what" page, release notes, optional two-factor sign-in and signing out every other device,
+plus interactive guided trainings
+per rank that run on demo data.
 The user interface is Hungarian.
 
 **Stack:** React 19 · Vite 8 (Rolldown) · TypeScript 6 · Tailwind CSS 4 · shadcn/Radix ·
@@ -148,6 +170,21 @@ tooling/             Build tooling (dev-server middleware for api/, penal code c
   records what changed; the calculator highlights it and the daily job notifies every member once.
 - **"Ki mit tehet?"** (`/permissions`) evaluates the same permission helpers the pages use on
   sample members, so the table follows the rules.
+- **Lists kept between visits**: the member directory, HR registry, fleet stock, suspect list,
+  bureau catalogue and case templates are stored in the browser and reused until the server's
+  version stamp for their tables changes (`get_cache_versions()`, one small call), which keeps
+  the free-tier egress low.
+- **Reports from the public page** never use e-mail: the visitor gets a tracking code (only the
+  hash of its secret half is stored), the report arrives as a mail thread for the IAB, the MCB or
+  the Command Staff, and the staff choose which answers the visitor may read. A hidden field, a
+  minimum writing time and a per-address daily limit (a salted hash, never the address) keep bots
+  out.
+- **Signatures** are stored as vector outlines (SVG path data, a few KB): a drawing becomes pen
+  strokes, a photo of a signature on paper is traced in the browser and only the outline is kept,
+  the script styles are rendered from bundled OFL fonts. Nothing but the path reaches the database.
+- **Bundled assets**: the division emblems and the signature fonts are imported from
+  `src/assets/` (hashed file names, one-year immutable cache on Vercel), not served from
+  `public/`; member uploads go to Cloudinary.
 - **Images** are resized and converted to WebP in the browser before upload
   (`src/lib/image-compression.ts`) and delivered through Cloudinary transformations
   (`f_auto,q_auto`, bounded sizes). Files that are no longer referenced are deleted through
@@ -159,7 +196,10 @@ tooling/             Build tooling (dev-server middleware for api/, penal code c
   (client `VITE_*` variables are baked in at build time: redeploy after changing them).
 - `vercel.json` sets the install/build commands, SPA rewrites, long-lived caching for hashed
   assets, security headers, a 30 s cap for functions and the daily cleanup cron
-  (`/api/cron/daily-cleanup`, 03:00 UTC, authenticated with `CRON_SECRET`).
+  (`/api/cron/daily-cleanup`, 03:00 UTC, authenticated with `CRON_SECRET`). Link-preview
+  bots (Discord, Facebook, ...) asking for `/news/<slug>` are rewritten to
+  `/api/news-preview`, which answers with the article's title, lead and cover (edge-cached);
+  everyone else gets the app.
 - The build runs `tsc -b` first, so type errors fail the deployment.
 
 ## Database (Supabase)
@@ -204,6 +244,10 @@ it. Before applying a migration, replay the deployed client's queries against it
   changed through `/api/admin/update-role`, which calls `hr_apply_member_update()`, a
   `service_role`-only function that also records the member history. (The legacy
   `hr_update_user_profile_v2()` RPC was removed by the post-deploy lockdown.)
+- Two-factor sign-in (optional, TOTP): once a member sets up an authenticator app, the Data API
+  (`pgrst.db_pre_request` = `private.check_request()`), Realtime and Storage (restrictive
+  `mfa_session` policies) and the Vercel functions refuse sessions that did not give the code.
+  Executive Staff can switch it off for a member who lost the phone.
 - Notifications are created by database triggers (cases, warrants, requests, exams, HR,
   ribbons, announcements), with categories, actor and de-duplication; clients cannot insert
   them. Users can mute categories (`notification_preferences`).
@@ -331,8 +375,11 @@ burn free-tier quota.
 - Supabase: no polling; Realtime only for signed-in users; list queries select only needed
   columns; member and ribbon lists are cached in memory; pages with several data sources load
   through one RPC (dashboard, exams, payroll, academy, practice, HR boards); practice sessions
-  are saved once at the end, not per answer; rich text never stores embedded images; the daily cron prunes old proofs, closed vehicle requests and old activity logs
-  (and keeps the free project from pausing).
+  are saved once at the end, not per answer; rich text never stores embedded images; the daily cron prunes old proofs, read and old
+  notifications, closed vehicle requests, old calculator logs and closed alerts in one
+  `run_housekeeping()` call, records the database size against the 500 MB limit (shown to the
+  leadership on the statistics page and as a dashboard task from 70 %) and keeps the free project
+  from pausing.
 - Cloudinary: client-side compression, transformation-based delivery, server-side cleanup of
   replaced and deleted assets. Recommended upload preset settings are in `.env.example`.
 - Vercel: hashed assets are cached for a year; the initial page load is about 210 KB of

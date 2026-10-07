@@ -70,6 +70,8 @@ export interface BoardMember {
   on_leave: boolean;
   activity_status: string | null;
   nomination: Nomination | null;
+  /** The latest shared performance review. */
+  last_review?: {period: string; overall: number | null} | null;
 }
 
 export interface PromotionBoard {

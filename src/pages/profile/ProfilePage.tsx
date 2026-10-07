@@ -2,11 +2,12 @@ import * as React from "react";
 import {Link, useNavigate, useSearchParams} from "react-router";
 import {toast} from "sonner";
 import {
-  AlertTriangle, Award, BellRing, Briefcase, CalendarClock, CalendarOff, CalendarPlus, Camera, Car, CheckCircle2, Clock, FlaskConical, History,
+  AlertTriangle, Award, BellRing, Briefcase, CalendarClock, CalendarOff, CalendarPlus, Camera, Car, CheckCircle2, ClipboardCheck, Clock, FlaskConical, History,
   Hourglass, Key, Landmark, Loader2, Medal, NotebookPen, Printer, RefreshCw, Save, ShieldCheck, Sparkles, ThumbsUp, TrendingUp, UploadCloud, UserCog, X,
 } from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {Button} from "@/components/ui/button";
+import {DivisionTitleBadges} from "@/components/hr/DivisionTitleBadges";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
@@ -32,6 +33,11 @@ import type {
 import {IdCard} from "./IdCard";
 import {TrainingCenter} from "./TrainingCenter";
 import {CertificatesTab} from "./CertificatesTab";
+import {ReviewList} from "@/components/reviews/ReviewList";
+import {TwoFactorCard} from "./TwoFactorCard";
+import {SignatureCard} from "./SignatureCard";
+import {SessionsCard} from "./SessionsCard";
+import {awardHref} from "@/lib/documents";
 import {MonthlyRecapDialog} from "@/components/recap/MonthlyRecapDialog";
 import {StrikeDots} from "@/components/hr/StrikeDots";
 import {RegistrationDialog} from "@/components/fleet/RegistrationDialog";
@@ -41,6 +47,8 @@ import {addMonths, monthKey, todayKey} from "@/lib/datetime";
 
 interface AwardedRibbon extends Ribbon {
   awarded_at: string;
+  /** The user_ribbons row (the certificate's address). */
+  award_id: string;
 }
 
 const RECORD_META: Record<HrRecord["kind"], {label: string; icon: typeof AlertTriangle; tone: string}> = {
@@ -98,13 +106,13 @@ export function ProfilePage() {
     // Four requests: the registry RPC bundles details, duty time, vehicles, warnings and bank account.
     const [closed, ribbonResult, recordResult, registryResult] = await Promise.all([
       supabase.from("cases").select("id", {count: "exact", head: true}).eq("owner_id", profileId).eq("status", "closed"),
-      supabase.from("user_ribbons").select("awarded_at, ribbons (id, name, description, color_hex, image_url)").eq("user_id", profileId),
+      supabase.from("user_ribbons").select("id, awarded_at, ribbons (id, name, description, color_hex, image_url)").eq("user_id", profileId),
       supabase.from("hr_records").select("*").eq("user_id", profileId).order("created_at", {ascending: false}),
       supabase.rpc("get_hr_registry", {_since: since, _user_id: profileId}),
     ]);
     const registry = (registryResult.data ?? null) as HrRegistry | null;
-    const awarded = (ribbonResult.data ?? []) as unknown as {awarded_at: string; ribbons: Ribbon | null}[];
-    setRibbons(awarded.flatMap((row) => (row.ribbons ? [{...row.ribbons, awarded_at: row.awarded_at}] : []))
+    const awarded = (ribbonResult.data ?? []) as unknown as {id: string; awarded_at: string; ribbons: Ribbon | null}[];
+    setRibbons(awarded.flatMap((row) => (row.ribbons ? [{...row.ribbons, awarded_at: row.awarded_at, award_id: row.id}] : []))
       .sort((a, b) => a.awarded_at.localeCompare(b.awarded_at)));
     setClosedCases(closed.count || 0);
     setRecords((recordResult.data ?? []) as HrRecord[]);
@@ -222,6 +230,7 @@ export function ProfilePage() {
               <span className={cn("rounded-full px-2.5 py-1 ring-1", DIVISION_META[profile.division]?.pill)}>
                 {profile.division}{profile.division_rank ? ` · ${profile.division_rank}` : ""}
               </span>
+              <DivisionTitleBadges ids={profile.division_titles} size="md"/>
               {currentLeave ? (
                 <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-sky-300 ring-1 ring-sky-500/30">Szabadságon {formatDate(currentLeave.ends_on)}-ig</span>
               ) : (
@@ -269,6 +278,7 @@ export function ProfilePage() {
             <NotebookPen className="size-4"/> Feljegyzéseim
             {activeWarnings.length > 0 && <span className="rounded-full bg-red-500/20 px-1.5 text-[11px] text-red-300">{activeWarnings.length}</span>}
           </TabsTrigger>
+          <TabsTrigger value="reviews"><ClipboardCheck className="size-4"/> Értékeléseim</TabsTrigger>
           <TabsTrigger value="trainings"><FlaskConical className="size-4"/> Képzések</TabsTrigger>
           <TabsTrigger value="certificates"><Award className="size-4"/> Okleveleim</TabsTrigger>
           <TabsTrigger value="settings"><UserCog className="size-4"/> Fiók</TabsTrigger>
@@ -335,6 +345,10 @@ export function ProfilePage() {
           </div>
         </TabsContent>
 
+        <TabsContent value="reviews" className="mt-0">
+          {tab === "reviews" && <ReviewList/>}
+        </TabsContent>
+
         <TabsContent value="trainings" className="mt-0">
           <TrainingCenter/>
         </TabsContent>
@@ -355,11 +369,14 @@ export function ProfilePage() {
                     {ribbon.image_url
                       ? <img src={ribbon.image_url} alt={ribbon.name} className="h-10 w-16 shrink-0 object-contain"/>
                       : <RibbonRack ribbons={[ribbon]} className="shrink-0 scale-150"/>}
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-white">{ribbon.name}</p>
                       {ribbon.description && <p className="line-clamp-2 text-xs text-slate-400">{ribbon.description}</p>}
                       <p className="mt-1 text-[11px] text-slate-500">{formatDate(ribbon.awarded_at)}</p>
                     </div>
+                    <Button size="icon-sm" variant="ghost" asChild className="shrink-0 text-slate-400 hover:text-white">
+                      <Link to={awardHref("ribbon", ribbon.award_id)} aria-label={`${ribbon.name}: okirat nyomtatása`} title="Okirat nyomtatása"><Printer/></Link>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -404,6 +421,11 @@ export function ProfilePage() {
                           {` · ${formatDate(record.created_at)}`}
                         </p>
                       </div>
+                      {record.kind === "commendation" && record.status === "active" && (
+                        <Button size="sm" variant="ghost" className="text-slate-400" asChild>
+                          <Link to={awardHref("commendation", record.id)}><Printer/> Oklevél</Link>
+                        </Button>
+                      )}
                       {record.kind === "leave" && record.status === "pending" && (
                         <Button size="sm" variant="ghost" className="text-slate-400" onClick={() => void cancelLeave(record)}>
                           <X/> Visszavonás
@@ -611,6 +633,10 @@ function AccountSettings({profile, bankAccount, onBankAccountChange, uploading, 
           {busy === "password" ? <Loader2 className="animate-spin"/> : <Key/>} Jelszó frissítése
         </Button>
       </form>
+
+      <SignatureCard profile={profile}/>
+      <TwoFactorCard profile={profile}/>
+      <SessionsCard/>
     </div>
   );
 }

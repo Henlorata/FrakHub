@@ -7,25 +7,28 @@ import {
 } from "@blocknote/react";
 import "@blocknote/mantine/style.css";
 import {
-  AlertTriangle, BadgeCheck, Check, CloudOff, FileClock, FolderOpen, History, ImagePlus, Loader2, Palette, RotateCcw, Save,
-  ScrollText, ShieldAlert,
+  AlertTriangle, BadgeCheck, Check, CloudOff, FileClock, FolderOpen, History, ImagePlus, Loader2, Palette, PencilRuler, RotateCcw, Save,
+  ScrollText, ShieldAlert, Stamp,
 } from "lucide-react";
 import {toast} from "sonner";
 import {Button} from "@/components/ui/button";
 import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger} from "@/components/ui/dropdown-menu";
+import {useAuth} from "@/context/AuthContext";
 import {useSuspects} from "@/context/SuspectCacheContext";
 import {useProfileDirectory} from "@/lib/profile-directory";
 import {toInitialContent} from "@/lib/blocknote-content";
-import {templateIcon, useCaseTemplates} from "@/lib/case-templates";
+import {fillTemplateTokens, templateIcon, useCaseTemplates} from "@/lib/case-templates";
 import {uploadToCloudinary} from "@/lib/cloudinary";
 import {uploadInlineImages} from "@/lib/inline-images";
 import {hu} from "@/lib/blocknote-hu";
-import {formatAgo, formatDateTime, formatTime} from "@/lib/datetime";
+import {formatAgo, formatDateTime, formatTime, todayKey} from "@/lib/datetime";
 import {documentReferences, mcbApi, type CaseListItem} from "@/lib/mcb";
 import {cn, errorMessage} from "@/lib/utils";
 import type {CaseEvidence} from "@/types/supabase";
 import {CaseEditorProvider, useCaseEditorContext, type MentionRole} from "./CaseEditorContext";
 import {EvidenceBlock} from "./EvidenceBlock";
+import {LetterheadBlock} from "./LetterheadBlock";
+import {requestSketchEditor, SketchBlock} from "./SketchBlock";
 
 // --- Schema (stored format: never rename types or props) -------------------------
 
@@ -71,7 +74,7 @@ const Mention = createReactInlineContentSpec({
 // BlockNote replaces (does not merge) the default inline content when custom specs are
 // given, so text and links must be listed explicitly next to the mention.
 const schema = BlockNoteSchema.create({
-  blockSpecs: {...defaultBlockSpecs, evidence: EvidenceBlock()},
+  blockSpecs: {...defaultBlockSpecs, evidence: EvidenceBlock(), letterhead: LetterheadBlock(), sketch: SketchBlock()},
   inlineContentSpecs: {...defaultInlineContentSpecs, mention: Mention},
 });
 type CaseBlock = PartialBlock<typeof schema.blockSchema, typeof schema.inlineContentSchema, typeof schema.styleSchema>;
@@ -148,6 +151,8 @@ export interface CaseEditorHandle {
 
 interface CaseEditorProps {
   caseId: string;
+  /** Fills the {{ügyszám}} placeholder of snippets. */
+  caseNumber: string;
   content: unknown;
   version: number;
   updatedAt: string;
@@ -174,9 +179,10 @@ interface CaseEditorProps {
 const AUTOSAVE_MS = 20_000;
 
 export function CaseEditor({
-  caseId, content, version, updatedAt, updatedByName, readOnly, theme, canChangeTheme, onThemeChange, evidence, numbers,
+  caseId, caseNumber, content, version, updatedAt, updatedByName, readOnly, theme, canChangeTheme, onThemeChange, evidence, numbers,
   onOpenEvidence, onMention, remote, onReload, onSaved, onDirtyChange, onDocument, ref,
 }: CaseEditorProps) {
+  const {profile} = useAuth();
   const {suspects} = useSuspects();
   const {profiles: officers} = useProfileDirectory();
   // The leadership's ready-made blocks for the "/" menu (cached; editors only).
@@ -359,6 +365,25 @@ export function CaseEditor({
       icon: <ImagePlus size={18}/>,
       onItemClick: () => editor.insertBlocks([{type: "evidence", props: {evidenceId: ""}}], editor.getTextCursorPosition().block, "after"),
     },
+    {
+      title: "Fejléc",
+      subtext: "Az iroda hivatalos fejléce logókkal",
+      aliases: ["fejlec", "letterhead", "logo", "cimer"],
+      group: "Nyomozás",
+      icon: <Stamp size={18}/>,
+      onItemClick: () => editor.insertBlocks([{type: "letterhead"}], editor.getTextCursorPosition().block, "before"),
+    },
+    {
+      title: "Helyszínrajz",
+      subtext: "Járművek, személyek, utak és nyilak a helyszínről",
+      aliases: ["helyszinrajz", "rajz", "vazlat", "sketch", "baleset", "terkep"],
+      group: "Nyomozás",
+      icon: <PencilRuler size={18}/>,
+      onItemClick: () => {
+        const [inserted] = editor.insertBlocks([{type: "sketch"}], editor.getTextCursorPosition().block, "after");
+        if (inserted) requestSketchEditor(inserted.id);
+      },
+    },
     ...(snippets ?? []).map<DefaultReactSuggestionItem>((snippet) => {
       const Icon = templateIcon(snippet.icon);
       return {
@@ -367,11 +392,13 @@ export function CaseEditor({
         aliases: snippet.aliases,
         group: "Nyomozás",
         icon: <Icon size={18}/>,
-        onItemClick: () => editor.insertBlocks(structuredClone(snippet.blocks) as CaseBlock[], editor.getTextCursorPosition().block, "after"),
+        onItemClick: () => editor.insertBlocks(fillTemplateTokens(structuredClone(snippet.blocks), {
+          caseNumber, author: profile?.full_name ?? "", date: todayKey().replace(/-/g, "."),
+        }) as CaseBlock[], editor.getTextCursorPosition().block, "after"),
       };
     }),
     ...getDefaultReactSlashMenuItems(editor).filter((item) => !HIDDEN_SLASH_ITEMS.has((item as {key?: string}).key ?? "")),
-  ], [editor, snippets]);
+  ], [caseNumber, editor, profile?.full_name, snippets]);
 
   const mentionItems = useCallback((): DefaultReactSuggestionItem[] => {
     const insert = (props: {user: string; id: string; role: MentionRole}) => () => {

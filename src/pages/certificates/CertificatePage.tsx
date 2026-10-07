@@ -10,6 +10,7 @@ import {useAuth} from "@/context/AuthContext";
 import {CERTIFICATE_KIND, certificateTitle, certificateUrl, normalizeCertificateCode, recognitionApi, type VerifiedCertificate} from "@/lib/recognition";
 import {formatDate} from "@/lib/datetime";
 import {cn} from "@/lib/utils";
+import {SIGNATURE_INK, SignatureMark} from "@/components/signature/SignatureMark";
 
 const INTRO: Record<VerifiedCertificate["kind"], string> = {
   exam: "sikeres vizsgát tett:",
@@ -66,7 +67,7 @@ export function CertificatePage() {
       <div className="relative mx-auto flex min-h-dvh w-full max-w-4xl flex-col gap-6 px-4 py-8 print:p-0">
         <header className="flex flex-wrap items-center gap-3 print:hidden">
           <Link to={user ? "/dashboard" : "/login"} className="flex items-center gap-3">
-            <SheriffStar className="size-9 drop-shadow-[0_0_14px_rgb(234_179_8/0.45)]"/>
+            <SheriffStar className="size-9 drop-shadow-[0_2px_4px_rgb(0_0_0/0.55)]"/>
             <span className="text-sm font-semibold text-white">SFSD Intranet</span>
           </Link>
           <form onSubmit={submit} className="ml-auto flex w-full gap-2 sm:w-auto">
@@ -129,7 +130,7 @@ export function CertificateSheet({certificate}: {certificate: VerifiedCertificat
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgb(176_141_60/0.10),transparent_60%)]"/>
       <div className="relative flex h-full flex-col items-center justify-between gap-5 px-[6%] py-[6%] text-center sm:gap-0 sm:py-[4%]">
         <div className="flex flex-col items-center">
-          <SheriffStar className="size-[clamp(48px,9vw,84px)] drop-shadow-[0_4px_12px_rgb(176_141_60/0.45)]"/>
+          <SheriffStar className="size-[clamp(48px,9vw,84px)] drop-shadow-[0_3px_6px_rgb(60_40_10/0.35)]"/>
           <p className="mt-2 text-[clamp(9px,1.4vw,13px)] font-semibold tracking-[0.35em] text-[#7c6a3c] uppercase">San Fierro Sheriff&apos;s Department</p>
           <h1 className="mt-1 font-serif text-[clamp(22px,4.6vw,46px)] font-bold tracking-[0.12em] text-[#1c1917] uppercase">{kind.label}</h1>
         </div>
@@ -145,8 +146,20 @@ export function CertificateSheet({certificate}: {certificate: VerifiedCertificat
         </div>
         <div className="grid w-full grid-cols-3 items-end gap-4 text-[clamp(8px,1.2vw,12px)] text-[#57534e]">
           <div className="text-left">
-            <p className="font-semibold text-[#1c1917]">{formatDate(certificate.issued_at)}</p>
-            <p className="border-t border-[#a8a29e] pt-0.5">Kiállítás napja</p>
+            {certificate.signer && (
+              <div className="mb-[clamp(6px,1.4vw,14px)] flex h-[clamp(30px,6vw,58px)] items-end">
+                {certificate.signer.signature && (
+                  <SignatureMark signature={certificate.signer.signature} title={`${certificate.signer.full_name} aláírása`}
+                                 className="h-full max-w-full" style={{color: SIGNATURE_INK}}/>
+                )}
+              </div>
+            )}
+            {certificate.signer && (
+              <p className="border-t border-[#a8a29e] pt-0.5"><span className="font-semibold text-[#1c1917]">{certificate.signer.full_name}</span> · {certificate.signer.title}</p>
+            )}
+            <p className={cn(!certificate.signer && "border-t border-[#a8a29e] pt-0.5")}>
+              Kiállítva: <span className="font-semibold text-[#1c1917]">{formatDate(certificate.issued_at)}</span>
+            </p>
           </div>
           <div className="flex justify-center">
             <div className={cn("grid size-[clamp(56px,10vw,96px)] place-items-center rounded-full border-2 text-center font-bold tracking-wider uppercase",

@@ -3,14 +3,14 @@ import {
   Camera, Car, ClipboardList, Clock, FileSearch, FileText, Fingerprint, Gavel, ListChecks, MapPin, MessagesSquare, Package, Quote, Scale,
   ScrollText, SeparatorHorizontal, ShieldAlert, Siren, Users, type LucideIcon,
 } from "lucide-react";
-import {createCachedLoader} from "./cache";
 import {BUILTIN_TEMPLATES} from "./case-templates-builtin";
 import {supabase} from "./supabaseClient";
+import {createVersionedLoader} from "./versioned-cache";
 
 /**
  * Case templates: the starting documents of a new case ("document") and the ready-made blocks
- * of the editor's "/" menu ("snippet"). Everyone who works with cases reads them (one cached
- * request per session); the MCB leadership edits them on /mcb/templates.
+ * of the editor's "/" menu ("snippet"). Everyone who works with cases reads them (kept between
+ * visits, read again only when they change); the MCB leadership edits them on /mcb/templates.
  */
 
 export type TemplateKind = "document" | "snippet";
@@ -73,12 +73,13 @@ export const builtinTemplates = (): CaseTemplate[] => {
   }));
 };
 
-const list = createCachedLoader(async () => {
+// Kept between visits; read again only when the leadership changes a template.
+const list = createVersionedLoader("case-templates", ["templates"], async () => {
   const {data, error} = await supabase.from("case_templates").select(COLUMNS).order("kind").order("sort_order");
   if (error) throw error;
   return ((data ?? []) as CaseTemplate[]).map((row) => ({...row, aliases: row.aliases ?? [], blocks: Array.isArray(row.blocks) ? row.blocks : []}))
     .sort(byOrder);
-}, 10 * 60_000);
+});
 
 /** The stored templates; the starter set (marked `fallback`) when they cannot be loaded. */
 export async function loadCaseTemplates(force = false): Promise<{templates: CaseTemplate[]; fallback: boolean}> {
@@ -120,6 +121,37 @@ export function templateProblem(draft: TemplateDraft): string | null {
   if (size > TEMPLATE_LIMITS.bytes) return "A sablon túl hosszú (legfeljebb kb. 200 kB).";
   if (JSON.stringify(draft.blocks).includes("data:image")) return "Kép nem lehet a sablonban.";
   return null;
+}
+
+/**
+ * Placeholders a template may hold. A new case's document gets them filled by the database
+ * (private.fill_case_template_tokens); a snippet when it is inserted into a case.
+ */
+export const TEMPLATE_TOKENS: {token: string; label: string}[] = [
+  {token: "{{ügyszám}}", label: "az akta ügyszáma"},
+  {token: "{{létrehozta}}", label: "aki az aktát megnyitja (blokknál: aki beszúrja)"},
+  {token: "{{dátum}}", label: "a mai nap, pl. 2026.10.07"},
+];
+
+const TOKEN_PATTERNS: [RegExp, keyof TokenValues][] = [
+  [/\{\{\s*(?:ügyszám|ugyszam)\s*\}\}/giu, "caseNumber"],
+  [/\{\{\s*(?:létrehozta|letrehozta)\s*\}\}/giu, "author"],
+  [/\{\{\s*(?:dátum|datum)\s*\}\}/giu, "date"],
+];
+
+interface TokenValues {
+  caseNumber: string;
+  author: string;
+  /** "2026.10.07" */
+  date: string;
+}
+
+/** The blocks with the placeholders replaced (the same mapping as the database trigger). */
+export function fillTemplateTokens<T>(blocks: T, values: TokenValues): T {
+  let json = JSON.stringify(blocks);
+  if (!json.includes("{{")) return blocks;
+  for (const [pattern, key] of TOKEN_PATTERNS) json = json.replace(pattern, JSON.stringify(values[key]).slice(1, -1));
+  return JSON.parse(json) as T;
 }
 
 /** "lefoglalt, tárgyak" -> ["lefoglalt", "tárgyak"] (lower case, no duplicates). */

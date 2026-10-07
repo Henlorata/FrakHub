@@ -1,4 +1,5 @@
 import type {LucideIcon} from "lucide-react";
+import {isPrivilegedRank} from "./bureaus";
 import {
   Banknote, Car, CheckCircle2, CircleDot, Crosshair, Eye, FileSearch, FolderArchive, FolderOpen, Gavel, Handshake, HelpCircle,
   Home, Lock, Network, Pill, Scale, ScrollText, ShieldAlert, Siren, Skull, Swords, UserX, XCircle,
@@ -212,7 +213,8 @@ export type CaseEventKind =
   | "person_linked" | "person_updated" | "person_unlinked"
   | "warrant_requested" | "warrant_status" | "warrant_renewal_requested" | "warrant_renewed"
   | "task_added" | "task_done" | "task_reopened" | "task_removed"
-  | "item_added" | "item_custody" | "item_removed";
+  | "item_added" | "item_custody" | "item_removed"
+  | "trashed" | "restored";
 
 export interface CaseEvent {
   id: number;
@@ -295,6 +297,23 @@ export interface McbOverview {
     details: CaseEvent["details"]; created_at: string; actor_name: string | null}[];
 }
 
+/** A case in the trash (get_case_trash): deleted for good 30 days after it went there. */
+export interface TrashedCase {
+  id: string;
+  case_number: string;
+  title: string;
+  status: CaseStatus;
+  priority: CasePriority;
+  owner_id: string | null;
+  owner_name: string | null;
+  deleted_at: string;
+  deleted_by_name: string | null;
+  purge_at: string;
+  evidence: number;
+  people: number;
+  warrants: number;
+}
+
 // --- API -------------------------------------------------------------------------
 
 async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {
@@ -316,6 +335,10 @@ export const mcbApi = {
   list: (force = false) => caseList.get(force),
   invalidateList: () => caseList.invalidate(),
   listArchived: async () => (await rpc<CaseListItem[] | null>("get_case_list", {_include_archived: true})) ?? [],
+  /** Into the trash (the owner and the MCB's leadership); restorable for 30 days. */
+  trash: (caseId: string) => rpc<{purge_at: string}>("trash_case", {_case_id: caseId}),
+  restore: (caseId: string) => rpc<null>("restore_case", {_case_id: caseId}),
+  trashList: async () => (await rpc<TrashedCase[] | null>("get_case_trash")) ?? [],
   detail: (caseId: string) => rpc<CaseDetail>("get_case_detail", {_case_id: caseId}),
   search: async (query: string) => (await rpc<CaseSearchHit[] | null>("search_cases", {_query: query})) ?? [],
   saveDocument: (caseId: string, body: unknown, baseVersion: number) =>
@@ -408,7 +431,7 @@ type Subject = RankSubject & {division_rank?: string | null};
 
 /** private.sees_all_cases(): may open every case. */
 export const seesAllCases = (p?: Subject | null) =>
-  !!p && (!!p.is_bureau_manager || (p.division === "MCB" && (!!p.is_bureau_commander || p.division_rank === "Investigator III."))
+  !!p && (!!p.is_bureau_manager || (p.division === "MCB" && (!!p.is_bureau_commander || isPrivilegedRank(p.division, p.division_rank)))
     || p.system_role === "admin" || isHighCommand(p));
 
 /** private.is_mcb_lead(): bureau manager or the MCB bureau commander. */
@@ -417,12 +440,12 @@ export const isMcbLead = (p?: Subject | null) => !!p && (!!p.is_bureau_manager |
 /** private.can_view_mcb_overview(). */
 export const canViewMcbOverview = (p?: Subject | null) =>
   !!p && (p.system_role === "admin" || p.system_role === "supervisor" || !!p.is_bureau_manager
-    || (p.division === "MCB" && (!!p.is_bureau_commander || p.division_rank === "Investigator III.")));
+    || (p.division === "MCB" && (!!p.is_bureau_commander || isPrivilegedRank(p.division, p.division_rank))));
 
 /** private.can_approve_warrants(). */
 export const canApproveWarrants = (p?: Subject | null) =>
   !!p && (p.system_role === "admin" || p.system_role === "supervisor" || isSupervisory(p) || isHighCommand(p)
-    || !!p.is_bureau_manager || (p.division === "MCB" && p.division_rank === "Investigator III."));
+    || !!p.is_bureau_manager || (p.division === "MCB" && isPrivilegedRank(p.division, p.division_rank)));
 
 // --- Labels and looks --------------------------------------------------------------
 

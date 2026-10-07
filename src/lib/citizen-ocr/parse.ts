@@ -125,16 +125,19 @@ export function cleanDocumentNumber(raw: string): string | null {
 }
 
 /**
- * A first or last name: "Adolf", "De La Cruz", "O'Neil". Null when it does not look like one
- * (digits or symbols inside are misreadings: another pass, or the member, has to supply it).
+ * A first or last name: "Adolf", "De La Cruz", "O'Neil", "D Young". Null when it does not look
+ * like one (digits or symbols inside are misreadings: another pass, or the member, has to supply it).
  */
 export function cleanName(raw: string): string | null {
   const name = raw.replace(/\s+/g, " ").trim().replace(/^[^\p{L}]+|[^\p{L}.]+$/gu, "");
   if (!/^\p{L}[\p{L}' .-]*$/u.test(name) || name.length > 40) return null;
   const words = name.split(" ");
   if (words.length > 4 || name.replace(/[^\p{L}]/gu, "").length < 2) return null;
-  // Single letters left from noise ("Adolf l") are not part of a name (initials have a dot).
-  if (words.length > 1 && words.some((word) => word.replace(/[^\p{L}]/gu, "").length < 2 && !/^\p{Lu}\.$/u.test(word))) return null;
+  // Single letters left from noise ("Adolf l") are not part of a name. Initials are: with a dot
+  // anywhere ("John F. Kennedy"), or a capital before another word ("D Young"); noise trails.
+  const stray = (word: string, index: number) => word.replace(/[^\p{L}]/gu, "").length < 2
+    && !/^\p{Lu}\.$/u.test(word) && !(/^\p{Lu}$/u.test(word) && index < words.length - 1);
+  if (words.length > 1 && words.some(stray)) return null;
   if (labelKind(name) || words.some((word) => labelKind(word))) return null;
   return name;
 }

@@ -78,7 +78,7 @@ export function MonthlyRecapDialog({month, open, onOpenChange}: {month: string |
           {celebrate && <Confetti/>}
           <div className="relative p-6 sm:p-8">
             <div className="animate-rise flex items-center gap-4" style={{"--i": 0} as CSSProperties}>
-              <SheriffStar className="size-14 shrink-0 drop-shadow-[0_6px_24px_rgb(234_179_8/0.5)] motion-safe:animate-[float-y_6s_ease-in-out_infinite]"/>
+              <SheriffStar className="size-14 shrink-0 drop-shadow-[0_6px_14px_rgb(0_0_0/0.5)] motion-safe:animate-[float-y_6s_ease-in-out_infinite]"/>
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold tracking-[0.25em] text-yellow-400/80 uppercase">Havi összefoglaló</p>
                 <DialogTitle className="text-2xl font-black tracking-tight text-white sm:text-3xl">{month ? monthLabel(month) : ""}</DialogTitle>

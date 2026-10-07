@@ -11,6 +11,10 @@ import {
 } from "@/lib/mcb";
 import {errorMessage} from "@/lib/utils";
 import {CaseDocumentReader} from "./components/CaseEditor";
+import {BRAND_IMAGES} from "@/lib/brand";
+import {SignatureLine} from "@/components/signature/SignatureLine";
+import {useAuth} from "@/context/AuthContext";
+import {useSignatures} from "@/lib/signature/api";
 
 /**
  * The whole case as a printable file (browser print or "Save as PDF"): data sheet, people,
@@ -21,6 +25,8 @@ export function CasePrintPage() {
   const {caseId = ""} = useParams<{caseId: string}>();
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const {profile: viewer} = useAuth();
+  const signatureOf = useSignatures([detail?.owner?.id, viewer?.id]);
 
   useEffect(() => {
     mcbApi.detail(caseId).then(setDetail).catch((reason) => setError(errorMessage(reason)));
@@ -57,7 +63,7 @@ export function CasePrintPage() {
             <h1 className="text-2xl font-bold tracking-tight wrap-anywhere">{item.title}</h1>
             <p className="font-mono text-sm text-slate-600">{item.case_number}</p>
           </div>
-          <img src="/mcb.png" alt="" className="size-14 shrink-0 object-contain"/>
+          <img src={BRAND_IMAGES.mcb} alt="" className="size-14 shrink-0 object-contain"/>
         </header>
 
         <section className="mt-5 grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm sm:grid-cols-3 print-break-avoid">
@@ -148,8 +154,17 @@ export function CasePrintPage() {
           </section>
         )}
 
+        <section className="mt-10 grid grid-cols-1 gap-8 sm:grid-cols-2 print-break-avoid">
+          <SignatureLine signature={signatureOf(detail.owner?.id)} name={detail.owner?.full_name} role="Vezető nyomozó"
+                         detail={detail.owner ? `${detail.owner.faction_rank ?? ""}${detail.owner.badge_number ? ` · #${detail.owner.badge_number}` : ""}` : null}/>
+          {viewer && viewer.id !== detail.owner?.id && (
+            <SignatureLine signature={signatureOf(viewer.id)} name={viewer.full_name} role="Kinyomtatta"
+                           detail={`${viewer.faction_rank} · #${viewer.badge_number}`} date={formatDateTime(new Date())}/>
+          )}
+        </section>
+
         <footer className="mt-8 border-t border-slate-300 pt-2 text-[10px] text-slate-500">
-          Kinyomtatva: {formatDateTime(new Date())} · SFSD Intranet · Belső használatra
+          Kinyomtatva: {formatDateTime(new Date())} · San Fierro Sheriff&apos;s Department Intranet · Belső használatra
         </footer>
       </article>
     </div>

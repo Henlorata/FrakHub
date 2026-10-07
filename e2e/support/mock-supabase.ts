@@ -19,7 +19,13 @@ export interface MockOptions {
   rpc?: Record<string, unknown>;
   /** Credentials accepted by the password login. */
   credentials?: {email: string; password: string};
+  /** The member set up an authenticator app: the code `MFA_CODE` passes the second step. */
+  mfa?: boolean;
 }
+
+/** The authenticator code the mock accepts when `mfa` is set. */
+export const MFA_CODE = "123456";
+const MFA_FACTOR_ID = "f0000000-0000-4000-8000-000000000001";
 
 export interface RecordedRequest {
   method: string;
@@ -57,19 +63,21 @@ export const testProfile = (overrides: Row = {}): Row => ({
   onboarding_completed: true,
   created_at: "2025-01-01T00:00:00Z",
   last_promotion_date: null,
+  // The embedded member_signatures row of the profile read (null: no signature yet).
+  signature: {updated_at: "2026-10-01T10:00:00Z"},
   ...overrides,
 });
 
 const base64url = (value: string) => Buffer.from(value).toString("base64url");
 
 /** Unsigned JWT: the browser client only decodes it, the mock never verifies it. */
-function fakeJwt(userId: string, email: string) {
+function fakeJwt(userId: string, email: string, aal = "aal1") {
   const now = Math.floor(Date.now() / 1000);
-  const payload = {sub: userId, email, role: "authenticated", aud: "authenticated", iat: now, exp: now + 3600};
+  const payload = {sub: userId, email, role: "authenticated", aud: "authenticated", aal, iat: now, exp: now + 3600};
   return `${base64url(JSON.stringify({alg: "HS256", typ: "JWT"}))}.${base64url(JSON.stringify(payload))}.signature`;
 }
 
-function authUser(email: string) {
+function authUser(email: string, mfa = false) {
   return {
     id: TEST_USER_ID,
     aud: "authenticated",
@@ -78,18 +86,22 @@ function authUser(email: string) {
     app_metadata: {provider: "email"},
     user_metadata: {},
     created_at: "2025-01-01T00:00:00Z",
+    ...(mfa ? {factors: [{
+      id: MFA_FACTOR_ID, factor_type: "totp", status: "verified", friendly_name: "Teszt",
+      created_at: "2026-10-01T10:00:00Z", updated_at: "2026-10-01T10:00:00Z",
+    }]} : {}),
   };
 }
 
-function session(email: string) {
+function session(email: string, mfa = false, aal = "aal1") {
   const now = Math.floor(Date.now() / 1000);
   return {
-    access_token: fakeJwt(TEST_USER_ID, email),
+    access_token: fakeJwt(TEST_USER_ID, email, aal),
     token_type: "bearer",
     expires_in: 3600,
     expires_at: now + 3600,
     refresh_token: "e2e-refresh-token",
-    user: authUser(email),
+    user: authUser(email, mfa),
   };
 }
 
@@ -119,16 +131,21 @@ export class MockSupabase {
   private readonly tables: Record<string, Row[]>;
   private readonly rpc: Record<string, unknown>;
   private readonly credentials: {email: string; password: string};
+  private readonly mfa: boolean;
 
   constructor(options: MockOptions = {}) {
     this.tables = {
       profiles: [testProfile()],
       system_status: [{id: "global", alert_level: "normal", recruitment_open: true}],
       training_progress: playedTrainings(),
+      // A stored signature, so the signature reminder stays out of the other tests.
+      member_signatures: [{user_id: TEST_USER_ID, path: "M2 50Q20 10 40 50T80 50Z", width: 82, height: 100, method: "draw", style: null,
+        updated_at: "2026-10-01T10:00:00Z"}],
       ...options.tables,
     };
     this.rpc = options.rpc ?? {};
     this.credentials = options.credentials ?? {email: "deputy@sfsd.test", password: "correct-password"};
+    this.mfa = options.mfa ?? false;
   }
 
   /** Requests of one kind/name, e.g. `count("rest", "suspects")`. */
@@ -192,7 +209,7 @@ export class MockSupabase {
     if (endpoint.startsWith("token")) {
       const body = request.postDataJSON() as {email?: string; password?: string} | null;
       if (body?.email === this.credentials.email && body.password === this.credentials.password) {
-        return route.fulfill({json: session(body.email)});
+        return route.fulfill({json: session(body.email, this.mfa)});
       }
       return route.fulfill({
         status: 400,
@@ -202,7 +219,15 @@ export class MockSupabase {
     if (endpoint.startsWith("logout")) {
       return route.fulfill({status: 204, body: ""});
     }
-    if (endpoint.startsWith("user")) return route.fulfill({json: authUser(this.credentials.email)});
+    if (endpoint.startsWith("user")) return route.fulfill({json: authUser(this.credentials.email, this.mfa)});
+    if (endpoint.startsWith(`factors/${MFA_FACTOR_ID}/challenge`)) {
+      return route.fulfill({json: {id: "c0000000-0000-4000-8000-000000000001", type: "totp", expires_at: Math.floor(Date.now() / 1000) + 300}});
+    }
+    if (endpoint.startsWith(`factors/${MFA_FACTOR_ID}/verify`)) {
+      const body = request.postDataJSON() as {code?: string} | null;
+      if (body?.code === MFA_CODE) return route.fulfill({json: session(this.credentials.email, true, "aal2")});
+      return route.fulfill({status: 422, json: {code: 422, error_code: "mfa_verification_failed", msg: "Invalid TOTP code entered"}});
+    }
     return route.fulfill({json: {}});
   }
 

@@ -1,5 +1,5 @@
-import {useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent} from "react";
-import {CheckCircle2, FileText, ImagePlus, Loader2, UploadCloud, X, XCircle} from "lucide-react";
+import {lazy, Suspense, useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent} from "react";
+import {Brush, CheckCircle2, FileText, ImagePlus, Loader2, UploadCloud, X, XCircle} from "lucide-react";
 import {toast} from "sonner";
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
@@ -22,6 +22,9 @@ interface UploadItem {
 
 const baseName = (file: File) => file.name.replace(/\.[^.]+$/, "") || "Bizonyíték";
 
+// The drawing tool loads only when it is opened.
+const ImageAnnotator = lazy(() => import("@/components/annotate/ImageAnnotator").then((module) => ({default: module.ImageAnnotator})));
+
 interface UploadEvidenceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -37,6 +40,7 @@ export function UploadEvidenceDialog({open, onOpenChange, caseId, initialFiles, 
   const [items, setItems] = useState<UploadItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [annotating, setAnnotating] = useState<UploadItem | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback((files: File[]) => {
@@ -73,6 +77,16 @@ export function UploadEvidenceDialog({open, onOpenChange, caseId, initialFiles, 
 
   const update = (key: string, patch: Partial<UploadItem>) =>
     setItems((list) => list.map((item) => (item.key === key ? {...item, ...patch} : item)));
+
+  /** The drawn picture replaces the chosen file (the original is never uploaded). */
+  const annotated = (key: string, file: File) => {
+    setItems((list) => list.map((item) => {
+      if (item.key !== key) return item;
+      if (item.preview) URL.revokeObjectURL(item.preview);
+      return {...item, file, preview: URL.createObjectURL(file)};
+    }));
+    setAnnotating(null);
+  };
 
   const upload = async () => {
     if (!user) return;
@@ -174,6 +188,13 @@ export function UploadEvidenceDialog({open, onOpenChange, caseId, initialFiles, 
                     {item.status === "error" ? <span className="text-red-300">{item.error}</span> : `${Math.max(1, Math.round(item.file.size / 1024))} KB`}
                   </p>
                 </div>
+                {item.preview && (item.status === "ready" || item.status === "error") && (
+                  <button type="button" aria-label="Jelölés a képen" title="Nyíl, keret, felirat, kitakarás a képen" disabled={busy}
+                          onClick={() => setAnnotating(item)}
+                          className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-amber-300">
+                    <Brush className="size-4"/>
+                  </button>
+                )}
                 {item.status === "uploading" ? <Loader2 className="size-4 shrink-0 animate-spin text-sky-300"/>
                   : item.status === "done" ? <CheckCircle2 className="size-4 shrink-0 text-emerald-400"/>
                     : item.status === "error" ? <XCircle className="size-4 shrink-0 text-red-400"/>
@@ -187,6 +208,13 @@ export function UploadEvidenceDialog({open, onOpenChange, caseId, initialFiles, 
               </li>
             ))}
           </ul>
+        )}
+
+        {annotating?.preview && (
+          <Suspense fallback={null}>
+            <ImageAnnotator src={annotating.preview} name={annotating.file.name} onCancel={() => setAnnotating(null)}
+                            onSave={(file) => annotated(annotating.key, file)}/>
+          </Suspense>
         )}
 
         <DialogFooter>

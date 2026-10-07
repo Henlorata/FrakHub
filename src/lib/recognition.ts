@@ -1,5 +1,6 @@
 import {supabase} from "@/lib/supabaseClient";
 import {UNIT_LABELS} from "@/lib/fleet";
+import type {SignatureData} from "@/lib/signature/geometry";
 
 /**
  * Certificates (issued by the database, checked by code), the opt-in leaderboard, the monthly
@@ -30,6 +31,8 @@ export interface VerifiedCertificate {
   valid: boolean;
   revoked_at: string | null;
   holder: {full_name: string; badge_number: string; faction_rank: string};
+  /** The department head at the time of issue (Bureau Manager, or a Commander). */
+  signer?: {full_name: string; faction_rank: string; title: string; signature: SignatureData | null} | null;
 }
 
 export const CERTIFICATE_KIND: Record<CertificateKind, {label: string; tone: string}> = {
@@ -111,6 +114,8 @@ export interface ServiceRecord {
     id: string; full_name: string; badge_number: string; faction_rank: string; division: string; division_rank: string | null;
     qualifications: string[] | null; avatar_url: string | null; is_bureau_manager: boolean | null; is_bureau_commander: boolean | null;
     commanded_divisions: string[] | null; created_at: string; last_promotion_date: string | null;
+    /** Names of the bureau titles held now (missing before the bureau titles release). */
+    division_titles?: string[];
   };
   details: {station: string | null; joined_on: string | null; join_type: string | null; activity_status: string | null} | null;
   history: {kind: string; from_value: string | null; to_value: string | null; detail: string | null; created_at: string; actor_name: string | null}[];

@@ -13,7 +13,7 @@ const FILTERS: {value: string; label: string; kinds: MemberEvent["kind"][] | nul
   {value: "all", label: "Minden változás", kinds: null},
   {value: "rank", label: "Előléptetések, lefokozások", kinds: ["rank"]},
   {value: "joined", label: "Új tagok", kinds: ["joined"]},
-  {value: "division", label: "Osztály és képesítés", kinds: ["division", "division_rank", "qualifications", "bureau_role"]},
+  {value: "division", label: "Osztály és képesítés", kinds: ["division", "division_rank", "division_title", "qualifications", "bureau_role"]},
   {value: "award", label: "Kitüntetések", kinds: ["award", "award_revoked"]},
 ];
 
@@ -65,7 +65,7 @@ export function HistoryFeed({members, onOpenMember}: {members: HrMember[]; onOpe
             const label = event.kind === "rank"
               ? (event.detail === "promotion" ? "előléptetve" : "lefokozva")
               : {
-                joined: "csatlakozott", division: "osztályt váltott", division_rank: "új alosztály rang",
+                joined: "csatlakozott", division: "osztályt váltott", division_rank: "új alosztály rang", division_title: "osztály cím változás",
                 qualifications: "képesítés változás", bureau_role: "vezetői kinevezés", name: "névváltozás",
                 badge: "új jelvényszám", award: "kitüntetést kapott", award_revoked: "kitüntetés visszavonva", rank: "",
               }[event.kind];

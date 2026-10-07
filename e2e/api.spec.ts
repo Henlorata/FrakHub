@@ -43,6 +43,22 @@ test.describe("api functions", () => {
     }
   });
 
+  test("news link previews answer with plain meta tags and never echo the address unescaped", async ({request}) => {
+    let response = await request.get("/api/news-preview?slug=%3Cscript%3E");
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain("text/html");
+    let html = await response.text();
+    expect(html).toContain('<meta property="og:site_name" content="San Fierro Sheriff&#39;s Department">');
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("/news\"");
+
+    // Without a reachable database the preview is the general one (the bot still gets a card).
+    response = await request.get("/api/news-preview?slug=sikeres-akcio");
+    html = await response.text();
+    expect(html).toContain('<meta property="og:url" content="http://127.0.0.1:4317/news/sikeres-akcio">');
+    expect(response.headers()["cache-control"]).toContain("s-maxage=60");
+  });
+
   test("the cron job refuses requests without the secret", async ({request}) => {
     let response = await request.get("/api/cron/daily-cleanup");
     expect(response.status()).toBe(401);

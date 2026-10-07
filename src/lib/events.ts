@@ -56,7 +56,97 @@ export interface FactionEvent {
   i_attended?: boolean | null;
   /** Who was there: organisers only. */
   attendee_ids?: string[] | null;
+  /** The event's operation plan in brief (null: none). */
+  operation?: OperationSummary | null;
 }
+
+export type OperationOutcome = "success" | "partial" | "failed" | "cancelled";
+
+export interface OperationSummary {
+  roles: number;
+  assigned: number;
+  /** The reader's role in the plan. */
+  my_role: string | null;
+  /** The after-action report is written. */
+  report: boolean;
+}
+
+export interface OperationMember {
+  user_id: string;
+  full_name: string;
+  faction_rank: string | null;
+  badge_number: string | null;
+  avatar_url: string | null;
+  callsign: string | null;
+  note: string | null;
+  vehicle: {id: string; plate: string; model: string; callsign: string | null} | null;
+}
+
+export interface OperationRole {
+  id: string;
+  name: string;
+  task: string | null;
+  callsign: string | null;
+  sort_order: number;
+  members: OperationMember[];
+}
+
+export interface OperationReport {
+  outcome: OperationOutcome;
+  summary: string | null;
+  went_well: string | null;
+  improve: string | null;
+  at: string;
+  by_name: string | null;
+}
+
+/** An event's operation plan (get_event_operation): the organisers write it, the audience reads it. */
+export interface OperationPlan {
+  event_id: string;
+  objective: string | null;
+  situation: string | null;
+  execution: string | null;
+  radio_channel: string | null;
+  rally_point: string | null;
+  rally_at: string | null;
+  updated_at: string;
+  updated_by_name: string | null;
+  /** Only for those who may see the MCB's cases. */
+  case: {id: string; case_number: string; title: string; can_open: boolean} | null;
+  roles: OperationRole[];
+  report: OperationReport | null;
+}
+
+export interface OperationDraft {
+  objective: string;
+  situation: string;
+  execution: string;
+  radio_channel: string;
+  rally_point: string;
+  rally_at: string | null;
+  case_id: string | null;
+  roles: {id?: string; name: string; task: string; callsign: string;
+    members: {user_id: string; vehicle_id: string | null; callsign: string; note: string}[]}[];
+}
+
+export interface OperationReportDraft {
+  outcome: OperationOutcome;
+  summary: string;
+  went_well: string;
+  improve: string;
+}
+
+export const OPERATION_OUTCOMES: Record<OperationOutcome, {label: string; tone: string}> = {
+  success: {label: "Sikeres", tone: "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"},
+  partial: {label: "Részben sikeres", tone: "bg-amber-500/15 text-amber-100 ring-amber-500/30"},
+  failed: {label: "Sikertelen", tone: "bg-red-500/15 text-red-200 ring-red-500/30"},
+  cancelled: {label: "Elmaradt", tone: "bg-white/5 text-slate-300 ring-white/10"},
+};
+
+/** Teams an organiser adds with one click. */
+export const OPERATION_ROLE_PRESETS = [
+  "Vezetés", "Behatoló csapat", "Külső biztosítás", "Mesterlövész", "Tárgyaló", "Egészségügy", "Forgalomirányítás", "Tartalék",
+];
 
 /** Approved leave in the calendar (dates only, like the roster). */
 export interface Absence {
@@ -185,4 +275,16 @@ export const eventsApi = {
     const {error} = await supabase.from("events").delete().eq("id", id);
     if (error) throw error;
   },
+  operation: (eventId: string) => rpc<OperationPlan | null>("get_event_operation", {_event_id: eventId}),
+  saveOperation: (eventId: string, plan: OperationDraft) => rpc<OperationPlan>("save_event_operation", {_event_id: eventId, _plan: plan}),
+  deleteOperation: (eventId: string) => rpc<null>("delete_event_operation", {_event_id: eventId}),
+  saveReport: (eventId: string, report: OperationReportDraft) => rpc<OperationPlan>("save_operation_report", {_event_id: eventId, _report: report}),
 };
+
+/** The plan in brief, as the events list carries it. */
+export const operationSummary = (plan: OperationPlan | null, myId: string): OperationSummary | null => plan ? {
+  roles: plan.roles.length,
+  assigned: plan.roles.reduce((sum, role) => sum + role.members.length, 0),
+  my_role: plan.roles.find((role) => role.members.some((member) => member.user_id === myId))?.name ?? null,
+  report: !!plan.report,
+} : null;

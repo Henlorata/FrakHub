@@ -1,6 +1,9 @@
 import {useEffect, useState, type CSSProperties} from "react";
-import {Check, ChevronDown, Clock, Target, Wallet} from "lucide-react";
+import {Link} from "react-router";
+import {Check, ChevronDown, Clock, Printer, Target, Wallet} from "lucide-react";
+import {Button} from "@/components/ui/button";
 import {EmptyState} from "@/components/layout/EmptyState";
+import {payslipHref} from "@/lib/documents";
 import {financeApi, formatMoney} from "@/lib/finance";
 import {formatDate} from "@/lib/datetime";
 import {formatDuty, monthLabel} from "@/lib/registry";
@@ -59,6 +62,11 @@ export function MyPayslips() {
               <ChevronDown className={cn("size-4 shrink-0 text-slate-500 transition-transform", expanded && "rotate-180")}/>
             </button>
             {expanded && <TierHint slip={slip}/>}
+            {expanded && (
+              <div className="flex justify-end border-t border-white/5 px-4 pt-3">
+                <Button size="sm" variant="outline" asChild><Link to={payslipHref(slip.month)}><Printer/> Fizetési papír nyomtatása</Link></Button>
+              </div>
+            )}
             {expanded && (
               <dl className="animate-fade grid grid-cols-1 gap-1 border-t border-white/5 p-4 sm:grid-cols-2">
                 {PAY_PARTS.map((part) => (

@@ -11,6 +11,7 @@ import {QUALIFICATIONS, type Profile} from "@/types/supabase";
 import {CATEGORY_META, daysSince, DIVISION_META, formatDate, formatSpan} from "../hr-utils";
 import {StrikeDots} from "@/components/hr/StrikeDots";
 import {LeadershipBadges} from "@/components/hr/LeadershipBadges";
+import {DivisionTitleBadges} from "@/components/hr/DivisionTitleBadges";
 import {ACTIVITY_META, formatDuty, recentMonths, registrationStatus} from "@/lib/registry";
 import {RankStepper} from "./RankControls";
 import type {HrMember} from "../useHrData";
@@ -261,6 +262,7 @@ function MemberRow({member, viewer, staff, busy, onRankChange, onOpen}: {
           <span className={cn("inline-flex h-6 items-center rounded-md px-2 text-xs font-semibold ring-1", division.pill)}>{division.label}</span>
           {member.division_rank && <span className="text-xs text-slate-400">{member.division_rank}</span>}
         </div>
+        <DivisionTitleBadges ids={member.division_titles} className="mt-1"/>
       </td>
       <td className="px-3 py-2.5 text-xs">
         {member.details?.station ? (

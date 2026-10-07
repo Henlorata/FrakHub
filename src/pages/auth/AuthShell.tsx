@@ -53,8 +53,8 @@ export function AuthShell({children, tone = "gold", aside, asideLast = false, em
            style={{background: `radial-gradient(60% 55% at 70% 45%, ${TONE_GLOW[tone]}, transparent 70%)`} as CSSProperties}/>
 
       <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-4 px-5 pt-5 sm:px-8">
-        <Link to="/login" className="flex items-center gap-3">
-          <SheriffStar className="size-10 drop-shadow-[0_0_14px_rgb(234_179_8/0.45)]"/>
+        <Link to="/home" className="flex items-center gap-3" title="A nyilvános főoldal">
+          <SheriffStar className="size-10 drop-shadow-[0_2px_4px_rgb(0_0_0/0.55)]"/>
           <span>
             <span className="block text-sm font-semibold tracking-wide text-white">SFSD Intranet</span>
             <span className="hidden text-[11px] text-slate-500 sm:block">San Fierro Sheriff&apos;s Department</span>

@@ -4,7 +4,9 @@ import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {MemberAvatar} from "@/pages/finance/components/MemberAvatar";
 import {LeadershipBadges} from "@/components/hr/LeadershipBadges";
-import {INVESTIGATOR_RANKS, OPERATOR_RANKS, QUALIFICATIONS} from "@shared/ranks";
+import {DivisionTitleBadges} from "@/components/hr/DivisionTitleBadges";
+import {divisionRanks, useBureauCatalog, type BureauCatalog} from "@/lib/bureaus";
+import {QUALIFICATIONS} from "@shared/ranks";
 import {cn, getDepartmentLabel, getRankPriority, getStaffCategory, type StaffCategory} from "@/lib/utils";
 import {CATEGORY_META} from "../hr-utils";
 import type {HrMember} from "../useHrData";
@@ -38,12 +40,12 @@ interface Node {
   groups: Group[];
 }
 
-/** SEB and MCB by their bureau ranks, the others by staff level. */
-function divisionGroups(division: string, members: HrMember[]): Group[] {
-  const ranks = division === "SEB" ? OPERATOR_RANKS : division === "MCB" ? INVESTIGATOR_RANKS : null;
-  if (ranks) {
+/** A division with bureau ranks by those (the bureau's own list), the others by staff level. */
+function divisionGroups(division: string, members: HrMember[], catalog: BureauCatalog): Group[] {
+  const ranks = divisionRanks(division, catalog).map((rank) => rank.name);
+  if (ranks.length) {
     return [...ranks.map((rank) => ({label: rank, members: members.filter((member) => member.division_rank === rank)})),
-      {label: "Besorolás nélkül", members: members.filter((member) => !member.division_rank || !(ranks as readonly string[]).includes(member.division_rank))}]
+      {label: "Besorolás nélkül", members: members.filter((member) => !member.division_rank || !ranks.includes(member.division_rank))}]
       .filter((group) => group.members.length > 0);
   }
   return CATEGORY_ORDER.map((category) => ({label: CATEGORY_META[category].label,
@@ -60,6 +62,7 @@ export function OrgChart({members, onOpen}: {members: HrMember[]; onOpen: (membe
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const term = fold(search.trim());
   const matches = (member: HrMember) => !term || fold(member.full_name).includes(term) || member.badge_number.includes(term);
+  const catalog = useBureauCatalog();
 
   const {managers, leadership, divisions, units} = useMemo(() => {
     const sorted = [...members].sort(byRank);
@@ -72,7 +75,7 @@ export function OrgChart({members, onOpen}: {members: HrMember[]; onOpen: (membe
           : "text-slate-200 bg-slate-500/10 ring-slate-400/30",
         // TSB has a commander slot only when someone leads it.
         leaders: division === "TSB" && !commanders.length ? null : commanders, leaderLabel: "Bureau Commander",
-        groups: divisionGroups(division, own.filter((member) => !member.is_bureau_commander)),
+        groups: divisionGroups(division, own.filter((member) => !member.is_bureau_commander), catalog),
       };
     });
     const unitNodes: Node[] = QUALIFICATIONS.map((unit) => {
@@ -89,7 +92,7 @@ export function OrgChart({members, onOpen}: {members: HrMember[]; onOpen: (membe
       divisions: divisionNodes,
       units: unitNodes,
     };
-  }, [members]);
+  }, [catalog, members]);
 
   const toggle = (id: string) => setExpanded((current) => {
     const next = new Set(current);
@@ -270,8 +273,12 @@ function Person({member, onOpen, size = "md", dimmed, framed}: {
       <MemberAvatar name={member.full_name} avatarUrl={member.avatar_url} size={size === "lg" ? 40 : 28}/>
       <span className="min-w-0">
         <span className={cn("block truncate font-medium text-slate-100", size === "lg" ? "text-sm" : "text-xs")}>{member.full_name}</span>
-        <span className="block truncate text-[11px] text-slate-500">{member.faction_rank}{member.onLeaveNow ? " · szabadságon" : ""}</span>
+        <span className="flex min-w-0 items-center gap-1 text-[11px] text-slate-500">
+          <span className="truncate">{member.faction_rank}{member.onLeaveNow ? " · szabadságon" : ""}</span>
+          {size !== "lg" && <DivisionTitleBadges ids={member.division_titles} compact/>}
+        </span>
         {size === "lg" && <LeadershipBadges member={member} className="mt-1"/>}
+        {size === "lg" && <DivisionTitleBadges ids={member.division_titles} className="mt-1"/>}
       </span>
     </button>
   );

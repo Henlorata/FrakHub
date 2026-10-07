@@ -52,7 +52,10 @@ test.describe("case templates", () => {
     await page.goto("/mcb?new=case");
 
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("button", {name: /Nyomozati akta/})).toHaveAttribute("aria-pressed", "true");
+    // The MCB's official file (with its letterhead) leads the starter set.
+    await expect(dialog.getByRole("button", {name: /MCB Investigative File/})).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.getByRole("button", {name: /Operation Safe Street File/})).toBeVisible();
+    await expect(dialog.getByRole("button", {name: /Nyomozati akta/})).toBeVisible();
     await expect(dialog.getByRole("button", {name: /Kihallgatási jegyzőkönyv/})).toBeVisible();
   });
 

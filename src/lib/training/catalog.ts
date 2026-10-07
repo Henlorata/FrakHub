@@ -30,7 +30,7 @@ const leadsDivision = (profile: Profile) => !!profile.is_bureau_commander || (pr
 export const TRAININGS: readonly TrainingInfo[] = [
   {
     id: "basic", title: "Alapképzés", icon: Compass, tone: "gold", minutes: 7, version: 1,
-    summary: "Körbevezet az oldalon: menü, kereső, értesítések, kalkulátor, jelentések, járművek, pénzügy, akadémia, vizsgák, gyakorlás, események, kódtár és szabályzatok.",
+    summary: "Körbevezet az oldalon: menü, kereső, értesítések, kalkulátor, jelentések, járművek, pénzügy, akadémia, vizsgák, gyakorlás, események, kódtár, szabályzatok, levelezés és az aláírásod.",
     requirement: "Minden tagnak", eligible: () => true,
   },
   {
@@ -50,7 +50,7 @@ export const TRAININGS: readonly TrainingInfo[] = [
   },
   {
     id: "command", title: "Command Staff képzés", icon: Star, tone: "red", minutes: 4, version: 1,
-    summary: "Készültségi szint, hirdetmények, előléptetések és elbocsátás, a flotta és a vizsgák kezelése.",
+    summary: "Készültségi szint, hirdetmények, előléptetések és elbocsátás, a flotta, a pénzügyek, az akták és a nyilvános főoldal hírei.",
     requirement: "Command Staff (Lieutenant I. rangtól)", eligible: (profile) => isHighCommand(profile),
   },
   {
@@ -65,7 +65,7 @@ export const TRAININGS: readonly TrainingInfo[] = [
   },
   {
     id: "bureau_manager", title: "Bureau Manager képzés", icon: Landmark, tone: "rose", minutes: 3, version: 1,
-    summary: "A Bureau Manager teljes jogkörei: Bureau Commanderek kinevezése, fizetés és minden beállítás.",
+    summary: "A Bureau Manager teljes jogkörei: Bureau Commanderek kinevezése, fizetés, belső vizsgálatok és minden beállítás.",
     requirement: "A Bureau Managernek", eligible: (profile) => !!profile.is_bureau_manager,
   },
 ];

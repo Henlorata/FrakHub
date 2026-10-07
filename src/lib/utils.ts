@@ -39,7 +39,6 @@ export {
   outranks,
   canManageRecords,
   canManageMemberDetails,
-  getDivisionRanks,
 } from "@shared/ranks";
 
 export type StaffCategory = "executive" | "command" | "supervisory" | "field";
@@ -59,7 +58,6 @@ export const STAFF_CATEGORY_LABELS: Record<StaffCategory, string> = {
   field: "Field Staff",
 };
 
-export const isInvestigatorIII = (p?: Profile | null) => p?.division === "MCB" && p?.division_rank === "Investigator III.";
 export const isMcbMember = (p?: Profile | null) => p?.division === "MCB";
 
 // --- EGYÉB JOGOSULTSÁGOK ---

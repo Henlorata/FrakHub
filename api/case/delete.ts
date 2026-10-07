@@ -1,10 +1,12 @@
-import {destroyAssets, toOwnAssets} from "../_lib/cloudinary.js";
+import {purgeCase} from "../_lib/cases.js";
 import {handle, HttpError, json, readJsonObject, requireUuid} from "../_lib/http.js";
 import {getSupabaseAdmin, notifyMembers, requireCaller} from "../_lib/supabase.js";
 
-const CHILD_TABLES = ["case_evidence", "case_notes", "case_suspects", "case_collaborators", "case_warrants"] as const;
-
-/** Permanently deletes an MCB case with every attachment and related row. */
+/**
+ * Deletes a trashed MCB case for good, with every attachment and related row ("Végleges törlés"
+ * in the trash). A case is put into the trash first (trash_case); the daily job deletes what has
+ * been there for 30 days.
+ */
 export const POST = handle("case/delete", async (request) => {
   const caller = await requireCaller(request);
   const body = await readJsonObject(request);
@@ -13,7 +15,7 @@ export const POST = handle("case/delete", async (request) => {
 
   const {data: caseRow, error: caseError} = await supabase
     .from("cases")
-    .select("owner_id, case_number, title")
+    .select("owner_id, case_number, title, deleted_at")
     .eq("id", caseId)
     .maybeSingle();
   if (caseError) throw caseError;
@@ -24,42 +26,21 @@ export const POST = handle("case/delete", async (request) => {
   if (!isOwner && !caller.is_bureau_manager && !isMcbCommander) {
     throw new HttpError(403, "Nincs jogosultságod törölni ezt az aktát.");
   }
+  if (!caseRow.deleted_at) throw new HttpError(409, "Véglegesen csak a lomtárban lévő akta törölhető.");
 
   // People to tell afterwards (read before the rows are gone).
   const {data: collaborators} = await supabase.from("case_collaborators").select("user_id").eq("case_id", caseId);
   const participants = [caseRow.owner_id as string | null, ...(collaborators ?? []).map((row) => row.user_id as string)];
 
-  // 1. Attachments: Cloudinary assets and legacy Supabase Storage objects.
-  const {data: evidence, error: evidenceError} = await supabase
-    .from("case_evidence")
-    .select("file_path")
-    .eq("case_id", caseId);
-  if (evidenceError) throw evidenceError;
-
-  const filePaths: string[] = (evidence ?? []).map((row) => row.file_path).filter(Boolean);
-  const {failed} = await destroyAssets(toOwnAssets(filePaths.filter((path) => path.startsWith("http"))));
-  const storagePaths = filePaths.filter((path) => !path.startsWith("http"));
-  if (storagePaths.length > 0) {
-    const {error} = await supabase.storage.from("case_evidence").remove(storagePaths);
-    if (error) console.error("[api/case/delete] storage clean-up failed", error);
-  }
-
-  // 2. Rows: children first, then the case itself.
-  const childResults = await Promise.all(CHILD_TABLES.map((table) => supabase.from(table).delete().eq("case_id", caseId)));
-  childResults.forEach(({error}, index) => {
-    if (error) console.error(`[api/case/delete] deleting ${CHILD_TABLES[index]} failed`, error);
-  });
-
-  const {error: deleteError} = await supabase.from("cases").delete().eq("id", caseId);
-  if (deleteError) throw deleteError;
+  const {failedAssets} = await purgeCase(supabase, caseId);
 
   await notifyMembers(participants, {
-    title: "Akta törölve",
+    title: "Akta véglegesen törölve",
     message: `${caseRow.case_number} – ${caseRow.title} (törölte: ${caller.full_name})`,
     type: "warning",
     category: "mcb",
     link: "/mcb",
   }, caller.id);
 
-  return json({success: true, message: "Akta és minden adat véglegesen törölve.", failedAssets: failed.length});
+  return json({success: true, message: "Akta és minden adat véglegesen törölve.", failedAssets});
 });

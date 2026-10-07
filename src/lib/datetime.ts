@@ -64,6 +64,14 @@ export function formatLongDate(value: DateInput = new Date()): string {
   return date ? longDate.format(date) : "–";
 }
 
+const monthDate = new Intl.DateTimeFormat("hu-HU", {timeZone: HUNGARIAN_TIME_ZONE, year: "numeric", month: "long", day: "numeric"});
+
+/** "2026. október 5." (articles, documents). */
+export function formatMonthDate(value: DateInput = new Date()): string {
+  const date = toDate(value);
+  return date ? monthDate.format(date) : "–";
+}
+
 /** The standard Hungarian short form, "2026. 10. 05." (used in texts copied to the forum). */
 export function formatStandardDate(value: DateInput = new Date()): string {
   const date = toDate(value);

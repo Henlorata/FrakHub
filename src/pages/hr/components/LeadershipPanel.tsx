@@ -1,5 +1,6 @@
 import {useMemo, type CSSProperties} from "react";
-import {Crown, Flag, Star} from "lucide-react";
+import {ChevronDown, Crown, Flag, Star} from "lucide-react";
+import {useLocalStorage} from "@/hooks/use-local-storage";
 import {MemberAvatar} from "@/pages/finance/components/MemberAvatar";
 import {QUALIFICATIONS} from "@shared/ranks";
 import {cn} from "@/lib/utils";
@@ -10,9 +11,11 @@ const DIVISION_GROUPS = ["SEB", "MCB"];
 
 /**
  * Who leads what, for everyone: the bureau manager, the bureau commanders of the divisions and
- * the leaders of the units. A click opens the leader's sheet.
+ * the leaders of the units. A click opens the leader's sheet. It can be folded away (remembered
+ * on the device).
  */
 export function LeadershipPanel({members, onOpen}: {members: HrMember[]; onOpen: (member: HrMember) => void}) {
+  const [collapsed, setCollapsed] = useLocalStorage("frakhub:hr-leaders-collapsed", false);
   const slots = useMemo(() => [
     {key: "manager", label: "Bureau Manager", hint: "Az állomány vezetője", icon: Crown, tone: "text-violet-300 bg-violet-500/10 ring-violet-500/30",
       leaders: members.filter((member) => member.is_bureau_manager)},
@@ -26,12 +29,24 @@ export function LeadershipPanel({members, onOpen}: {members: HrMember[]; onOpen:
     })),
   ], [members]);
 
+  const leaders = new Set(slots.flatMap((slot) => slot.leaders.map((leader) => leader.id))).size;
+
   return (
-    <section data-tour="hr-leaders" className="panel animate-rise p-4" aria-label="Vezetőség">
-      <header className="mb-3 flex flex-wrap items-baseline gap-x-2">
-        <h2 className="text-sm font-semibold text-white">Vezetőség</h2>
-        <p className="text-xs text-slate-500">Kihez fordulj: az iroda, a divíziók és az alegységek vezetői.</p>
+    <section data-tour="hr-leaders" className={cn("panel animate-rise", collapsed ? "px-4 py-2.5" : "p-4")} aria-label="Vezetőség">
+      <header className={cn("flex items-center gap-x-2", !collapsed && "mb-3")}>
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+          <h2 className="text-sm font-semibold text-white">Vezetőség</h2>
+          <p className="text-xs text-slate-500">
+            {collapsed ? `${leaders} vezető` : "Kihez fordulj: az iroda, a divíziók és az alegységek vezetői."}
+          </p>
+        </div>
+        <button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-white">
+          {collapsed ? "Megjelenítés" : "Elrejtés"}
+          <ChevronDown className={cn("size-3.5 transition-transform", !collapsed && "rotate-180")}/>
+        </button>
       </header>
+      {!collapsed && (
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         {slots.map((slot, index) => (
           <li key={slot.key} style={{"--i": Math.min(index, 8)} as CSSProperties}
@@ -58,6 +73,7 @@ export function LeadershipPanel({members, onOpen}: {members: HrMember[]; onOpen:
           </li>
         ))}
       </ul>
+      )}
     </section>
   );
 }

@@ -83,6 +83,52 @@ export function upcomingEvents(world: World) {
     }));
 }
 
+/** A demo plan member (the stored plan keeps the names, like the server's JSON). */
+function planMember(world: World, userId: string, vehicleId: string | null, callsign: string, note = ""): Row {
+  const who = world.person(userId);
+  const vehicle = vehicleId ? (world.tables.fleet_vehicles ?? []).find((row) => row.id === vehicleId) : undefined;
+  return {
+    user_id: userId, full_name: who?.full_name ?? "Ismeretlen", faction_rank: who?.faction_rank ?? null, badge_number: who?.badge_number ?? null,
+    avatar_url: who?.avatar_url ?? null, callsign: callsign || null, note: note || null,
+    vehicle: vehicle ? {id: vehicle.id, plate: vehicle.plate, model: vehicle.model, callsign: vehicle.callsign ?? null} : null,
+  };
+}
+
+/** The past joint action has a plan and a report, so the dialog shows something in practice mode. */
+export function seedOperations(world: World) {
+  const plan: Row = {
+    event_id: DEMO.event(5), objective: "A kikötői raktár átvizsgálása és a fegyverszállítmány lefoglalása.",
+    situation: "Három-négy fegyveres a raktárban, egy kisteherautó a hátsó kapunál. A MCB megfigyelése szerint 21:30-kor rakodnak.",
+    execution: "1. Gyülekezés a 3-as kapunál.\n2. A külső biztosítás lezárja a két kijáratot.\n3. A behatoló csapat a főbejáraton megy be.\n4. Elfogás után átvizsgálás, lefoglalás.",
+    radio_channel: "3", rally_point: "Kikötő, 3-as kapu", rally_at: world.ago(3 * DAY + 30), updated_at: world.ago(3 * DAY + 120),
+    updated_by_name: world.person(person(5))?.full_name ?? null, case: null,
+    roles: [
+      {id: world.id(), name: "Behatoló csapat", task: "Belépés a főbejáraton, a raktér biztosítása.", callsign: "ADAM", sort_order: 1,
+        members: [planMember(world, person(5), null, "2-ADAM-1"), planMember(world, world.me.id, null, "2-ADAM-2")]},
+      {id: world.id(), name: "Külső biztosítás", task: "A két kijárat lezárása, a kisteherautó megállítása.", callsign: "BOY", sort_order: 2,
+        members: [planMember(world, person(2), null, "2-BOY-1"), planMember(world, person(9), null, "2-BOY-2")]},
+    ],
+    report: {outcome: "partial", summary: "Két gyanúsított elfogva, egy elmenekült a hátsó kerítésen át. Hat fegyver lefoglalva.",
+      went_well: "Gyors behatolás, tiszta rádióforgalmazás.", improve: "A hátsó kerítéshez is kell egy egység.",
+      at: world.ago(2 * DAY), by_name: world.person(person(5))?.full_name ?? null},
+  };
+  world.tables.event_operations = [{event_id: DEMO.event(5), plan}];
+}
+
+const storedPlan = (world: World, eventId: unknown) =>
+  ((world.tables.event_operations ?? []).find((row) => row.event_id === eventId)?.plan as Row | undefined) ?? null;
+
+const planSummary = (plan: Row | null, myId: string) => {
+  if (!plan) return null;
+  const roles = (plan.roles as Row[]) ?? [];
+  return {
+    roles: roles.length,
+    assigned: roles.reduce((sum, role) => sum + ((role.members as Row[]) ?? []).length, 0),
+    my_role: (roles.find((role) => ((role.members as Row[]) ?? []).some((member) => member.user_id === myId))?.name as string) ?? null,
+    report: !!plan.report,
+  };
+};
+
 export const eventsRpc: Record<string, RpcHandler> = {
   get_events: (args, world) => {
     const from = Date.parse(String(args._from));
@@ -107,6 +153,7 @@ export const eventsRpc: Record<string, RpcHandler> = {
           my_status: mine?.status ?? null,
           my_note: mine?.note ?? null,
           counts: countsOf(world, row.id),
+          operation: planSummary(storedPlan(world, row.id), world.me.id),
           responses: answers.map((answer) => {
             const who = world.person(answer.user_id as string);
             return {
@@ -117,6 +164,46 @@ export const eventsRpc: Record<string, RpcHandler> = {
           }).sort((a, b) => String(a.status).localeCompare(String(b.status)) || String(a.full_name).localeCompare(String(b.full_name), "hu")),
         };
       });
+  },
+
+  get_event_operation: (args, world) => {
+    const row = (world.tables.events ?? []).find((item) => item.id === args._event_id);
+    if (!row || !visible(world, row)) throw new SandboxError("Az esemény nem található.", "P0002");
+    return storedPlan(world, row.id);
+  },
+
+  save_event_operation: (args, world) => {
+    const row = (world.tables.events ?? []).find((item) => item.id === args._event_id);
+    if (!row) throw new SandboxError("Az esemény nem található.", "P0002");
+    if (!canManage(world, row)) throw new SandboxError("A műveleti tervet az esemény szervezői írják.", "42501");
+    const draft = (args._plan ?? {}) as Row;
+    const previous = storedPlan(world, row.id);
+    const plan: Row = {
+      event_id: row.id, objective: draft.objective || null, situation: draft.situation || null, execution: draft.execution || null,
+      radio_channel: draft.radio_channel || null, rally_point: draft.rally_point || null, rally_at: draft.rally_at || null,
+      updated_at: world.stamp(), updated_by_name: world.me.full_name, case: null, report: previous?.report ?? null,
+      roles: ((draft.roles as Row[]) ?? []).map((role, index) => ({
+        id: (role.id as string) || world.id(), name: role.name, task: role.task || null, callsign: role.callsign || null, sort_order: index + 1,
+        members: ((role.members as Row[]) ?? []).map((member) =>
+          planMember(world, member.user_id as string, (member.vehicle_id as string) ?? null, String(member.callsign ?? ""), String(member.note ?? ""))),
+      })),
+    };
+    world.tables.event_operations = [...(world.tables.event_operations ?? []).filter((item) => item.event_id !== row.id), {event_id: row.id, plan}];
+    return plan;
+  },
+
+  delete_event_operation: (args, world) => {
+    world.tables.event_operations = (world.tables.event_operations ?? []).filter((item) => item.event_id !== args._event_id);
+    return null;
+  },
+
+  save_operation_report: (args, world) => {
+    const plan = storedPlan(world, args._event_id);
+    if (!plan) throw new SandboxError("Előbb készíts műveleti tervet.");
+    const report = (args._report ?? {}) as Row;
+    plan.report = {outcome: report.outcome, summary: report.summary || null, went_well: report.went_well || null, improve: report.improve || null,
+      at: world.stamp(), by_name: world.me.full_name};
+    return plan;
   },
 
   respond_to_event: (args, world) => {

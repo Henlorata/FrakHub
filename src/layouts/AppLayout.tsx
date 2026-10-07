@@ -8,6 +8,7 @@ import {useSystemStatus} from "@/context/SystemStatusContext";
 import {NotificationsProvider, useNotifications} from "@/context/NotificationsContext";
 import {LoadingScreen} from "@/components/ui/loading-screen";
 import {PendingApprovalPage} from "@/pages/auth/PendingApprovalPage";
+import {MfaChallengePage} from "@/pages/auth/MfaChallenge";
 import {PageErrorBoundary} from "@/components/PageErrorBoundary";
 import {Button} from "@/components/ui/button";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
@@ -18,6 +19,7 @@ import {Sheet, SheetContent, SheetTitle} from "@/components/ui/sheet";
 import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
 import {NotificationBell} from "@/components/notifications/NotificationBell";
 import {CommandPalette} from "@/components/layout/CommandPalette";
+import {SignaturePrompt} from "@/components/signature/SignaturePrompt";
 import {SystemStatusMenu} from "@/components/layout/SystemStatusMenu";
 import {AppBackdrop} from "@/components/layout/AppBackdrop";
 import {SheriffStar} from "@/components/brand/SheriffStar";
@@ -38,9 +40,10 @@ export const PageLoader = () => (
 );
 
 export function AppLayout() {
-  const {profile, signOut, loading, profileError, refreshProfile} = useAuth();
+  const {profile, signOut, loading, profileError, refreshProfile, mfaRequired} = useAuth();
 
   if (loading) return <LoadingScreen/>;
+  if (mfaRequired) return <MfaChallengePage/>;
   if (profileError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6">
@@ -187,6 +190,7 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
       </Sheet>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen}/>
+      <SignaturePrompt/>
     </div>
   );
 }
@@ -196,7 +200,7 @@ function Brand({collapsed}: {collapsed: boolean}) {
   const level = ALERT_LEVELS[alertLevel];
   return (
     <Link to="/dashboard" className={cn("group/brand flex h-14 shrink-0 items-center gap-3 border-b px-5", collapsed && "justify-center px-0")}>
-      <SheriffStar className="size-9 shrink-0 drop-shadow-[0_0_10px_rgb(234_179_8/0.35)] transition-transform duration-500 group-hover/brand:rotate-[51deg]"/>
+      <SheriffStar className="size-9 shrink-0 drop-shadow-[0_2px_4px_rgb(0_0_0/0.55)] transition-transform duration-500 group-hover/brand:rotate-[51deg]"/>
       {!collapsed && (
         <div className="min-w-0 leading-tight">
           <p className="truncate text-sm font-bold tracking-tight text-white">SFSD Intranet</p>

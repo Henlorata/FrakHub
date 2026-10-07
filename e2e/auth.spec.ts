@@ -1,5 +1,5 @@
 import {expect, test} from "@playwright/test";
-import {login, mockSupabase, testProfile} from "./support/mock-supabase";
+import {login, MFA_CODE, mockSupabase, testProfile} from "./support/mock-supabase";
 
 test.describe("authentication", () => {
   test("valid credentials open the dashboard", async ({page}) => {
@@ -16,6 +16,35 @@ test.describe("authentication", () => {
 
     await expect(page.getByText("Belépés megtagadva")).toBeVisible();
     await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test("an authenticator app adds a second step before any data loads", async ({page}) => {
+    const mock = await mockSupabase(page, {mfa: true});
+    await login(page);
+
+    await expect(page.getByRole("heading", {name: "Hitelesítő kód"})).toBeVisible();
+    expect(mock.count("rest", "profiles")).toBe(0);
+
+    const code = page.getByLabel("Hitelesítő kód");
+    await code.fill("000000");
+    await expect(page.getByText(/hibás kód/i)).toBeVisible();
+    expect(mock.count("rest", "profiles")).toBe(0);
+
+    await page.getByLabel("Hitelesítő kód").fill(MFA_CODE);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("heading", {name: /,\s*john\.$/i})).toBeVisible();
+  });
+
+  test("a stored session without the second step shows the code screen", async ({page}) => {
+    const mock = await mockSupabase(page, {mfa: true});
+    await login(page);
+    await expect(page.getByRole("heading", {name: "Hitelesítő kód"})).toBeVisible();
+
+    await page.goto("/hr");
+    await expect(page.getByRole("heading", {name: "Hitelesítő kód"})).toBeVisible();
+    expect(mock.count("rest", "profiles")).toBe(0);
+    await page.getByRole("button", {name: "Kilépés"}).click();
+    await expect(page.getByPlaceholder("badge@sfsd.com")).toBeVisible();
   });
 
   test("pending accounts see the approval screen", async ({page}) => {

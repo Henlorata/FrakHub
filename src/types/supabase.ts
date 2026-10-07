@@ -10,10 +10,9 @@ export {FACTION_RANKS, DIVISIONS, QUALIFICATIONS} from "@shared/ranks";
 export type {FactionRank, DepartmentDivision, Qualification, SystemRole} from "@shared/ranks";
 import type {DepartmentDivision, FactionRank, Qualification, SystemRole} from "@shared/ranks";
 
-// Alosztály rangok
-export type InvestigatorRank = "Investigator III." | "Investigator II." | "Investigator I.";
-export type OperatorRank = "Operator III." | "Operator II." | "Operator I.";
-export type DivisionRank = InvestigatorRank | OperatorRank | null; // null, ha csak TSB
+// Alosztály rang: the name of one of the division's ranks (division_ranks, edited by the bureau);
+// null without one (TSB).
+export type DivisionRank = string | null;
 
 // --- PROFIL ---
 
@@ -23,7 +22,7 @@ export type DivisionRank = InvestigatorRank | OperatorRank | null; // null, ha c
  */
 export const PROFILE_COLUMNS =
   "id, full_name, badge_number, faction_rank, division, division_rank, qualifications, is_bureau_manager, " +
-  "is_bureau_commander, commanded_divisions, system_role, avatar_url, onboarding_completed, created_at, last_promotion_date";
+  "is_bureau_commander, commanded_divisions, division_titles, iab_title, system_role, avatar_url, onboarding_completed, created_at, last_promotion_date";
 
 export interface Profile {
   id: string;
@@ -38,6 +37,10 @@ export interface Profile {
   is_bureau_manager?: boolean;
   is_bureau_commander?: boolean;
   commanded_divisions?: Qualification[];
+  /** Ids of the division's titles the member holds (division_titles: Medic, Marksman, ...). */
+  division_titles?: string[];
+  /** The member's title in the Internal Affairs Bureau (Sheriff, Agent, ...); null when not in it. */
+  iab_title?: "sheriff" | "assistant_sheriff" | "chief_deputy" | "notary" | "agent" | null;
   system_role: SystemRole;
   avatar_url?: string | null;
   onboarding_completed?: boolean;
@@ -260,7 +263,9 @@ export interface CaseWarrant {
 }
 
 export type NotificationType = "info" | "success" | "warning" | "alert";
-export type NotificationCategory = "system" | "hr" | "mcb" | "logistics" | "finance" | "exam" | "academy" | "announcement" | "event";
+export type NotificationCategory =
+  | "system" | "hr" | "mcb" | "logistics" | "finance" | "exam" | "academy" | "announcement" | "event" | "community" | "patrol"
+  | "mail" | "iab";
 
 export interface Notification {
   id: string;
@@ -280,7 +285,7 @@ export const NOTIFICATION_COLUMNS = "id, title, message, type, category, is_read
 
 // --- HR ---
 export type MemberEventKind =
-  | "joined" | "rank" | "division" | "division_rank" | "qualifications" | "bureau_role"
+  | "joined" | "rank" | "division" | "division_rank" | "division_title" | "qualifications" | "bureau_role"
   | "name" | "badge" | "award" | "award_revoked";
 
 /** One entry of a member's service history (written by database triggers). */

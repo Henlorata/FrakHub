@@ -2,11 +2,14 @@ import {useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
 import {Link} from "react-router";
 import {toast} from "sonner";
 import {
-  AlertTriangle, Award, CalendarCheck, CalendarOff, Check, ClipboardList, Crown, History, KeyRound, Loader2, Medal, NotebookPen, Plus, Printer, Save,
-  ShieldCheck, ThumbsUp, Trash2, UserMinus, X,
+  AlertTriangle, Award, CalendarCheck, CalendarOff, Check, ClipboardCheck, ClipboardList, Crown, History, KeyRound, Loader2, Medal, NotebookPen, Plus,
+  Printer, Save,
+  ShieldCheck, ShieldOff, ThumbsUp, Trash2, UserMinus, X,
 } from "lucide-react";
 import {Sheet, SheetContent, SheetDescription, SheetTitle} from "@/components/ui/sheet";
+import {ReviewList} from "@/components/reviews/ReviewList";
 import {LeadershipBadges} from "@/components/hr/LeadershipBadges";
+import {DivisionTitleBadges} from "@/components/hr/DivisionTitleBadges";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {Button} from "@/components/ui/button";
@@ -16,15 +19,18 @@ import {Textarea} from "@/components/ui/textarea";
 import {Switch} from "@/components/ui/switch";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {EmptyState} from "@/components/layout/EmptyState";
+import {useConfirm} from "@/components/ConfirmDialog";
 import {useAuth} from "@/context/AuthContext";
 import {postApi} from "@/lib/api";
+import {divisionRanks, divisionTitles, titleIcon, titleTone, useBureauCatalog} from "@/lib/bureaus";
 import {eventsApi, type MemberAttendance} from "@/lib/events";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import {useProfileDirectory} from "@/lib/profile-directory";
 import {getRibbonCatalogue} from "@/lib/ribbons";
+import {awardHref} from "@/lib/documents";
 import {
   canAssignRank, canAwardRibbon, canEditUser, canManageRecords, canManageUserDivision, canManageUserQualification,
-  canManageUserRank, cn, errorMessage, getAllowedPromotionRanks, getDivisionRanks, isExecutive, isStaff,
+  canManageUserRank, cn, errorMessage, getAllowedPromotionRanks, isExecutive, isStaff,
 } from "@/lib/utils";
 import {
   DIVISIONS, QUALIFICATIONS, type HrRecord, type HrRecordKind, type MemberEvent, type Profile, type Ribbon,
@@ -92,6 +98,7 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
               )}
             </SheetDescription>
             <LeadershipBadges member={member} size="md" className="mt-2"/>
+            <DivisionTitleBadges ids={member.division_titles} size="md" className="mt-1.5"/>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className={cn("inline-flex h-6 items-center rounded-md px-2 text-xs font-semibold ring-1", division.pill)}>
                 {division.label}{member.division_rank ? ` · ${member.division_rank}` : ""}
@@ -143,6 +150,9 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
           <TabsTrigger value="history"><History className="size-3.5"/> Előzmények</TabsTrigger>
           <TabsTrigger value="records"><NotebookPen className="size-3.5"/> Feljegyzések</TabsTrigger>
           <TabsTrigger value="awards"><Medal className="size-3.5"/> Kitüntetések</TabsTrigger>
+          {(isStaff(viewer) || viewer.id === member.id) && (
+            <TabsTrigger value="reviews"><ClipboardCheck className="size-3.5"/> Értékelések</TabsTrigger>
+          )}
         </TabsList>
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <TabsContent value="profile" className="mt-0">
@@ -161,6 +171,14 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
           </TabsContent>
           <TabsContent value="awards" className="mt-0">
             <AwardsTab member={member} viewer={viewer} onAwardsChanged={onAwardsChanged}/>
+          </TabsContent>
+          <TabsContent value="reviews" className="mt-0">
+            {tab === "reviews" && (
+              <ReviewList compact key={member.id} member={viewer.id === member.id ? undefined : {
+                id: member.id, full_name: member.full_name, faction_rank: member.faction_rank, badge_number: member.badge_number,
+                avatar_url: member.avatar_url ?? null,
+              }}/>
+            )}
           </TabsContent>
         </div>
       </Tabs>
@@ -192,7 +210,12 @@ function ProfileTab({member, viewer, onUpdate, onRemove}: {
   const [saving, setSaving] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordBusy, setPasswordBusy] = useState(false);
+  const [mfaBusy, setMfaBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const confirm = useConfirm();
+  const catalog = useBureauCatalog();
+  const rankOptions = divisionRanks(form.division, catalog);
+  const titleOptions = divisionTitles(form.division, catalog);
 
   useEffect(() => {
     setForm(toForm(member));
@@ -224,6 +247,27 @@ function ProfileTab({member, viewer, onUpdate, onRemove}: {
       toast.error(errorMessage(error, "A jelszó módosítása nem sikerült."));
     } finally {
       setPasswordBusy(false);
+    }
+  };
+
+  // Lost phone: the member signs in with the password again and may set the app up anew.
+  const resetMfa = async () => {
+    const ok = await confirm({
+      title: `Kikapcsolod ${member.full_name} kétlépcsős azonosítását?`,
+      description: "Csak akkor tedd, ha a tag elvesztette a hitelesítő alkalmazást, és meggyőződtél róla, hogy tényleg ő kéri. Utána a jelszavával lép be, és újra bekapcsolhatja.",
+      confirmLabel: "Kikapcsolás",
+      destructive: true,
+    });
+    if (!ok) return;
+    setMfaBusy(true);
+    try {
+      const result = await postApi<{removed: number}>("/api/admin/update-password", {targetUserId: member.id, resetMfa: true});
+      if (result.removed > 0) toast.success("A kétlépcsős azonosítás kikapcsolva. A tag értesítést kapott.");
+      else toast.info("A tagnak nincs bekapcsolva kétlépcsős azonosítás.");
+    } catch (error) {
+      toast.error(errorMessage(error, "A kikapcsolás nem sikerült."));
+    } finally {
+      setMfaBusy(false);
     }
   };
 
@@ -264,7 +308,10 @@ function ProfileTab({member, viewer, onUpdate, onRemove}: {
             <div className="space-y-1.5">
               <Label>Osztály</Label>
               <Select value={form.division} disabled={!divisionRight}
-                      onValueChange={(value) => setForm({...form, division: value, division_rank: value === "TSB" ? "" : form.division_rank})}>
+                      onValueChange={(value) => setForm({...form, division: value,
+                        // The bureau rank and titles of another division do not move with the member.
+                        division_rank: divisionRanks(value, catalog).some((rank) => rank.name === form.division_rank) ? form.division_rank : "",
+                        division_titles: form.division_titles.filter((id) => divisionTitles(value, catalog).some((title) => title.id === id))})}>
                 <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
                 <SelectContent>
                   {DIVISIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
@@ -273,16 +320,43 @@ function ProfileTab({member, viewer, onUpdate, onRemove}: {
             </div>
             <div className="space-y-1.5">
               <Label>Alosztály rang</Label>
-              <Select value={form.division_rank || "none"} disabled={!divisionRight || form.division === "TSB"}
+              <Select value={form.division_rank || "none"} disabled={!divisionRight || rankOptions.length === 0}
                       onValueChange={(value) => setForm({...form, division_rank: value === "none" ? "" : value})}>
                 <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nincs</SelectItem>
-                  {getDivisionRanks(form.division).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
+                  {rankOptions.map((rank) => <SelectItem key={rank.id} value={rank.name}>{rank.name}</SelectItem>)}
+                  {/* A rank the bureau has removed meanwhile stays visible until it is changed. */}
+                  {form.division_rank && !rankOptions.some((rank) => rank.name === form.division_rank) && (
+                    <SelectItem value={form.division_rank}>{form.division_rank}</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
           </div>
+
+          {titleOptions.length > 0 && (
+            <div className="space-y-2">
+              <Label>Címek a(z) {form.division} osztályon</Label>
+              <div className="flex flex-wrap gap-2">
+                {titleOptions.map((title) => {
+                  const active = form.division_titles.includes(title.id);
+                  const Icon = titleIcon(title.icon);
+                  return (
+                    <button key={title.id} type="button" disabled={!divisionRight} title={title.description ?? undefined} aria-pressed={active}
+                            onClick={() => setForm((prev) => ({...prev, division_titles: active
+                              ? prev.division_titles.filter((id) => id !== title.id) : [...prev.division_titles, title.id]}))}
+                            className={cn("inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ring-1 transition-colors",
+                              active ? titleTone(title.tone).chip : "bg-white/[0.03] text-slate-400 ring-white/10",
+                              divisionRight ? "hover:ring-white/30" : "cursor-not-allowed opacity-50")}>
+                      <Icon className="size-3.5"/>{title.name}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-500">A bureau rang mellett viselt címek; a listát az osztály Bureau Commandere szerkeszti.</p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Képesítések</Label>
@@ -363,6 +437,11 @@ function ProfileTab({member, viewer, onUpdate, onRemove}: {
               </Button>
             </div>
           )}
+          {isExecutive(viewer) && viewer.id !== member.id && (!member.is_bureau_manager || isManager) && (
+            <Button variant="outline" disabled={mfaBusy} onClick={() => void resetMfa()}>
+              {mfaBusy ? <Loader2 className="animate-spin"/> : <ShieldOff/>} Kétlépcsős azonosítás kikapcsolása
+            </Button>
+          )}
           {canDismiss && (
             <Button variant="outline" className="text-red-300 hover:text-red-200" onClick={() => setConfirmRemove(true)}>
               <UserMinus/> Távozás / elbocsátás
@@ -382,6 +461,7 @@ interface FormState {
   badge_number: string;
   division: string;
   division_rank: string;
+  division_titles: string[];
   qualifications: string[];
   is_bureau_manager: boolean;
   is_bureau_commander: boolean;
@@ -393,6 +473,7 @@ const toForm = (member: Profile): FormState => ({
   badge_number: member.badge_number,
   division: member.division,
   division_rank: member.division_rank ?? "",
+  division_titles: [...(member.division_titles ?? [])],
   qualifications: [...(member.qualifications ?? [])],
   is_bureau_manager: !!member.is_bureau_manager,
   is_bureau_commander: !!member.is_bureau_commander,
@@ -409,6 +490,7 @@ function diffForm(member: Profile, form: FormState): MemberChanges {
   if ((form.division_rank || null) !== (member.division_rank ?? null) || form.division !== member.division) {
     changes.division_rank = form.division_rank || null;
   }
+  if (!sameSet(form.division_titles, member.division_titles ?? [])) changes.division_titles = form.division_titles;
   if (!sameSet(form.qualifications, member.qualifications ?? [])) changes.qualifications = form.qualifications;
   if (form.is_bureau_manager !== !!member.is_bureau_manager) changes.is_bureau_manager = form.is_bureau_manager;
   if (form.is_bureau_commander !== !!member.is_bureau_commander) changes.is_bureau_commander = form.is_bureau_commander;
@@ -423,6 +505,7 @@ const EVENT_LABELS: Record<MemberEvent["kind"], string> = {
   rank: "Rendfokozat változás",
   division: "Osztályváltás",
   division_rank: "Alosztály rang",
+  division_title: "Osztály címek",
   qualifications: "Képesítések",
   bureau_role: "Vezetői kinevezés",
   name: "Névváltozás",
@@ -442,6 +525,7 @@ export function describeEvent(event: MemberEvent): string {
     case "division_rank":
       return event.to_value ?? "Nincs alosztály rang";
     case "qualifications":
+    case "division_title":
       return [event.to_value && `+ ${event.to_value}`, event.from_value && `− ${event.from_value}`].filter(Boolean).join("   ");
     case "bureau_role":
       return event.to_value || "Kinevezések visszavonva";
@@ -693,6 +777,11 @@ function RecordsTab({member, viewer, onRecordChanged}: {member: HrMember; viewer
                       {record.created_by && record.created_by !== record.user_id && ` · ${names.get(record.created_by) ?? "ismeretlen"}`}
                     </p>
                   </div>
+                  {record.kind === "commendation" && record.status === "active" && (
+                    <Button size="icon-sm" variant="ghost" asChild className="shrink-0 text-slate-400 hover:text-white">
+                      <Link to={awardHref("commendation", record.id)} title="Oklevél nyomtatása" aria-label="Oklevél nyomtatása"><Printer className="size-4"/></Link>
+                    </Button>
+                  )}
                   {canWrite && (
                     <div className="flex shrink-0 gap-1">
                       {record.status === "pending" && (
@@ -793,6 +882,9 @@ function AwardsTab({member, viewer, onAwardsChanged}: {
                 <p className="truncate text-sm font-medium text-slate-100">{award.name}</p>
                 <p className="text-xs text-slate-500">{formatDate(award.awarded_at)}</p>
               </div>
+              <Button size="icon-sm" variant="ghost" asChild className="text-slate-500 hover:text-white">
+                <Link to={awardHref("ribbon", award.id)} title="Okirat nyomtatása" aria-label={`${award.name}: okirat nyomtatása`}><Printer className="size-4"/></Link>
+              </Button>
               {canAwardRibbon(viewer) && (
                 <Button size="icon-sm" variant="ghost" title="Visszavonás" className="text-slate-500 opacity-0 group-hover:opacity-100 hover:text-red-400"
                         onClick={() => void revoke(award)}><Trash2 className="size-4"/></Button>

@@ -1,4 +1,4 @@
-import {getRankPriority, isAcademyInstructor, isStaff, TRAINEE_RANK, FACTION_RANKS} from "@shared/ranks";
+import {canManageRecords, getRankPriority, isAcademyInstructor, isStaff, TRAINEE_RANK, FACTION_RANKS} from "@shared/ranks";
 import type {Row} from "../postgrest";
 import {DAY, SandboxError, type RpcHandler, type World} from "./context";
 import {person} from "./people";
@@ -94,7 +94,103 @@ const requireStaff = (world: World) => {
   if (!isStaff(world.me)) throw new SandboxError("Nincs jogosultságod.", "42501");
 };
 
+// --- Performance reviews (practice mode) ------------------------------------------------------------
+
+const quarterKey = (date = new Date()) => `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`;
+
+function reviewPerson(world: World, id: unknown) {
+  const who = world.person(id as string);
+  return who ? {id: who.id, full_name: who.full_name, faction_rank: who.faction_rank, badge_number: who.badge_number, avatar_url: who.avatar_url} : null;
+}
+
+function reviewJson(world: World, row: Row) {
+  const target = world.person(row.user_id as string);
+  const canWrite = !!target && canManageRecords(world.me, target as never);
+  return {
+    ...row, member: reviewPerson(world, row.user_id), reviewer: reviewPerson(world, row.reviewer_id),
+    can_edit: row.status === "draft" && canWrite && (row.reviewer_id === world.me.id || !row.reviewer_id),
+    can_delete: (row.status === "draft" && row.reviewer_id === world.me.id) || isStaff(world.me),
+    can_acknowledge: row.status === "shared" && row.user_id === world.me.id,
+  };
+}
+
+const readable = (world: World, row: Row) =>
+  (row.user_id === world.me.id && row.status !== "draft") || row.reviewer_id === world.me.id || (isStaff(world.me) && row.status !== "draft");
+
+const average = (scores: Record<string, number>) => {
+  const values = Object.values(scores);
+  return values.length ? Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 100) / 100 : null;
+};
+
 export const progressionRpc: Record<string, RpcHandler> = {
+  get_reviews: (args, world) => {
+    const target = (args._user_id as string | null) ?? world.me.id;
+    const member = world.person(target);
+    return {
+      can_write: !!member && canManageRecords(world.me, member as never),
+      current_period: quarterKey(),
+      reviews: (world.tables.performance_reviews ?? []).filter((row) => row.user_id === target && readable(world, row))
+        .sort((a, b) => String(b.period).localeCompare(String(a.period))).map((row) => reviewJson(world, row)),
+    };
+  },
+
+  get_review_overview: (args, world) => {
+    if (!isStaff(world.me)) throw new SandboxError("Az értékeléseket a Supervisory Staff és felette látja.", "42501");
+    const period = (args._period as string | null) || quarterKey();
+    return {
+      period, current_period: quarterKey(),
+      members: (world.tables.profiles ?? []).filter((row) => row.system_role !== "pending" && row.faction_rank !== TRAINEE_RANK)
+        .sort((a, b) => getRankPriority(a.faction_rank as string) - getRankPriority(b.faction_rank as string)).map((row) => {
+          const review = (world.tables.performance_reviews ?? []).find((item) => item.user_id === row.id && item.period === period && readable(world, item));
+          return {
+            user_id: row.id, full_name: row.full_name, faction_rank: row.faction_rank, badge_number: row.badge_number, avatar_url: row.avatar_url,
+            division: row.division, can_write: canManageRecords(world.me, row as never), review: review ? reviewJson(world, review) : null, last: null,
+          };
+        }),
+    };
+  },
+
+  save_review: (args, world) => {
+    const draft = (args._review ?? {}) as Row;
+    const scores = Object.fromEntries(Object.entries((draft.scores ?? {}) as Record<string, number>)
+      .filter(([, value]) => Number.isInteger(value) && value >= 1 && value <= 5));
+    const fields = {scores, overall: average(scores), strengths: draft.strengths || null, improvements: draft.improvements || null,
+      goals: draft.goals || null, updated_at: world.stamp()};
+    let row = (world.tables.performance_reviews ?? []).find((item) => item.id === args._id);
+    if (row) {
+      Object.assign(row, fields, {reviewer_id: world.me.id});
+    } else {
+      const target = world.person(args._user_id as string);
+      if (!target || !canManageRecords(world.me, target as never)) {
+        throw new SandboxError("Értékelést a Supervisory Staff és felette ír, a nála alacsonyabb rangúakról.", "42501");
+      }
+      row = {id: world.id(), user_id: target.id, reviewer_id: world.me.id, period: args._period, status: "draft", shared_at: null,
+        acknowledged_at: null, member_comment: null, created_at: world.stamp(), ...fields};
+      world.tables.performance_reviews = [...(world.tables.performance_reviews ?? []), row];
+    }
+    return reviewJson(world, row);
+  },
+
+  share_review: (args, world) => {
+    const row = (world.tables.performance_reviews ?? []).find((item) => item.id === args._id);
+    if (!row) throw new SandboxError("Az értékelés nem található.", "P0002");
+    if (Object.keys((row.scores ?? {}) as object).length < 6) throw new SandboxError("Megosztás előtt pontozd mind a hat szempontot.");
+    Object.assign(row, {status: "shared", shared_at: world.stamp()});
+    return reviewJson(world, row);
+  },
+
+  acknowledge_review: (args, world) => {
+    const row = (world.tables.performance_reviews ?? []).find((item) => item.id === args._id && item.user_id === world.me.id);
+    if (!row) throw new SandboxError("Az értékelés nem található.", "P0002");
+    Object.assign(row, {status: "acknowledged", acknowledged_at: world.stamp(), member_comment: args._comment || null});
+    return reviewJson(world, row);
+  },
+
+  delete_review: (args, world) => {
+    world.tables.performance_reviews = (world.tables.performance_reviews ?? []).filter((item) => item.id !== args._id);
+    return null;
+  },
+
   get_promotion_board: (_args, world) => {
     requireStaff(world);
     const members = (world.tables.profiles ?? []).filter((row) => row.system_role !== "pending" && row.id !== world.me.id)

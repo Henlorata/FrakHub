@@ -245,12 +245,13 @@ export const mcbRpc: Record<string, RpcHandler> = {
   },
 
   get_case_list: (args, world) => (world.tables.cases ?? [])
-    .filter((item) => args._include_archived || item.status !== "archived")
+    .filter((item) => !item.deleted_at && (args._include_archived || item.status !== "archived"))
     .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
     .map((item) => listItem(world, item)),
 
   get_case_detail: (args, world) => {
     const item = findCase(world, args._case_id);
+    if (item.deleted_at) throw new SandboxError("Az akta nem található.", "P0002");
     if (!canOpen(world, item)) throw new SandboxError("Ezt az aktát csak a tulajdonosa, a közreműködői és az MCB vezetése nyithatja meg.", "42501");
     const role = roleIn(world, item);
     const owner = world.person(item.owner_id as string);
@@ -284,7 +285,7 @@ export const mcbRpc: Record<string, RpcHandler> = {
   search_cases: (args, world) => {
     const needle = String(args._query ?? "").trim().toLowerCase();
     if (needle.length < 2) return [];
-    return (world.tables.cases ?? []).flatMap((item) => {
+    return (world.tables.cases ?? []).filter((item) => !item.deleted_at).flatMap((item) => {
       const owner = world.person(item.owner_id as string);
       const head = [item.title, item.case_number, item.description].join(" ").toLowerCase();
       const open = canOpen(world, item);
@@ -451,6 +452,35 @@ export const mcbRpc: Record<string, RpcHandler> = {
       }),
     };
   },
+
+  trash_case: (args, world) => {
+    const item = findCase(world, args._case_id);
+    if (!(isMcbLead(world.me) || item.owner_id === world.me.id)) {
+      throw new SandboxError("Aktát a tulajdonosa és az MCB vezetése helyezhet a lomtárba.", "42501");
+    }
+    item.deleted_at = world.stamp();
+    item.deleted_by = world.me.id;
+    return {purge_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()};
+  },
+
+  restore_case: (args, world) => {
+    const item = findCase(world, args._case_id);
+    item.deleted_at = null;
+    item.deleted_by = null;
+    return null;
+  },
+
+  get_case_trash: (_args, world) => (world.tables.cases ?? [])
+    .filter((item) => item.deleted_at && (isMcbLead(world.me) || item.owner_id === world.me.id))
+    .map((item) => ({
+      id: item.id, case_number: item.case_number, title: item.title, status: item.status, priority: item.priority, owner_id: item.owner_id,
+      owner_name: world.person(item.owner_id as string)?.full_name ?? null, deleted_at: item.deleted_at,
+      deleted_by_name: world.person(item.deleted_by as string)?.full_name ?? null,
+      purge_at: new Date(new Date(String(item.deleted_at)).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      evidence: (world.tables.case_evidence ?? []).filter((row) => row.case_id === item.id).length,
+      people: (world.tables.case_suspects ?? []).filter((row) => row.case_id === item.id).length,
+      warrants: (world.tables.case_warrants ?? []).filter((row) => row.case_id === item.id).length,
+    })),
 
   delete_suspect_safely: (args, world) => {
     if ((world.tables.case_suspects ?? []).some((row) => row.suspect_id === args._suspect_id)) {

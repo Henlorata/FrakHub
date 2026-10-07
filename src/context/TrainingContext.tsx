@@ -28,6 +28,11 @@ interface TrainingContextValue {
   start: (id: TrainingId) => void;
   /** A training is open (intro, running or finished card). */
   busy: boolean;
+  /**
+   * A training is open or may still start by itself in this session: other popups (the signature
+   * reminder) wait until it is over, they never come before it.
+   */
+  autoOfferPending: boolean;
 }
 
 interface TourControls {
@@ -48,7 +53,8 @@ const TourControlsContext = createContext<TourControls | undefined>(undefined);
 /** "Later" holds the automatic start back until the next visit (new tab or browser session). */
 const LATER_KEY = "frakhub.training.later";
 /** Pages where an automatic start would interrupt work (writing, grading, onboarding, exams). */
-const QUIET_ROUTES = [/^\/onboarding/, /^\/login/, /^\/register/, /^\/exam\//, /^\/mcb\/case\//, /^\/exams\/(editor|grading)/];
+const QUIET_ROUTES = [/^\/onboarding/, /^\/login/, /^\/register/, /^\/exam\//, /^\/mcb\/case\//, /^\/exams\/(editor|grading)/, /\/print$/,
+  /^\/hr\/(record|award)\//, /^\/finance\/payslip\//];
 
 const isDone = (record: TrainingRecord | undefined, training: TrainingInfo) => !!record && record.version >= training.version;
 
@@ -259,7 +265,8 @@ export function TrainingProvider({children}: {children: ReactNode}) {
     refreshProgress,
     start,
     busy: phase.kind !== "idle",
-  }), [trainings, progress, refreshProgress, start, phase.kind]);
+    autoOfferPending: phase.kind !== "idle" || (!later && pending.length > 0),
+  }), [trainings, progress, refreshProgress, start, phase.kind, later, pending.length]);
 
   return (
     <TrainingContext.Provider value={value}>

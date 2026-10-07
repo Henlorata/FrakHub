@@ -73,9 +73,22 @@ test.describe("citizen record reading", () => {
     expect(cleanName("O'Neil |")).toBe("O'Neil");
     expect(cleanName("Garc1a")).toBeNull();
     expect(cleanName("Adolf l")).toBeNull();
+    expect(cleanName("Adolf I")).toBeNull();
     expect(cleanName("Keresztnév")).toBeNull();
     expect(fullName("Adolf", "Garcia")).toBe("Adolf Garcia");
     expect(fullName(null, "Garcia")).toBe("Garcia");
+  });
+
+  test("an initial before a name stays part of it (reported: only the first name was filled in)", () => {
+    expect(cleanName("D Young")).toBe("D Young");
+    expect(cleanName("John F Kennedy")).toBe("John F Kennedy");
+    expect(cleanName("John F. Kennedy")).toBe("John F. Kennedy");
+    const page = PAGE.flatMap((item) => (item.text === "Doe" && item.bbox.x0 === 1242
+      ? [word("D", 1242, 409, 1250), word("Young", 1255, 409, 1291)]
+      : item.text === "John" && item.bbox.x0 === 948 ? [word("Hinata", 948, 409, 990)] : [item]));
+    const values = parseCitizen(page).values;
+    expect(values.lastName).toBe("D Young");
+    expect(fullName(values.firstName, values.lastName)).toBe("Hinata D Young");
   });
 
   test("readings vote; disagreement is reported", () => {

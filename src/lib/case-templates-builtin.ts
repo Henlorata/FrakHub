@@ -32,6 +32,13 @@ const quote = (...content: Inline[]): TemplateBlock => ({
 });
 const divider = (): TemplateBlock => ({type: "divider", props: {}, children: []});
 
+/** The bureau's letterhead (LetterheadBlock): logo keys, never pictures. */
+const letterhead = (left: string, right: string): TemplateBlock => ({
+  type: "letterhead",
+  props: {left, right, title: "Major Crime’s Bureau", subtitle: "Detective Division", address: "San Fierro, Downtown 1257"},
+  children: [],
+});
+
 /** A two-column form table: bold labels on the left, empty cells to fill in on the right. */
 const fieldTable = (labels: string[]): TemplateBlock => ({
   type: "table",
@@ -59,6 +66,39 @@ const listTable = (headers: string[], rows = 3): TemplateBlock => ({
 });
 
 export const BUILTIN_TEMPLATES: TemplateDraft[] = [
+  // The MCB's official files (from its Word templates). {{ügyszám}}, {{létrehozta}} and {{dátum}}
+  // are filled in when the case opens (TEMPLATE_TOKENS).
+  {
+    kind: "document",
+    label: "MCB Investigative File",
+    description: "Az MCB hivatalos aktája fejléccel: ügyszám, létrehozó, közreműködők, tárgy és az első bejegyzés.",
+    icon: "scroll",
+    aliases: [],
+    blocks: [
+      letterhead("", "mcb"),
+      paragraph(text("Ügyszám: "), text("{{ügyszám}}")),
+      paragraph(text("Létrehozta: "), text("{{létrehozta}}"), text("   Közreműködött: "), hint("xy személy")),
+      paragraph(text("Tárgy: "), hint("nyomozás tárgya")),
+      paragraph(),
+      paragraph(text("{{dátum}}, ", {bold: true}), text("cím", {bold: true, italic: true, textColor: "gray"})),
+      paragraph(),
+    ],
+  },
+  {
+    kind: "document",
+    label: "Operation Safe Street File",
+    description: "Bandaügyek aktája az Operation Safe Street (GANGS) fejlécével.",
+    icon: "shield",
+    aliases: [],
+    blocks: [
+      letterhead("gangs", "mcb"),
+      paragraph(text("Ügyszám: "), text("{{ügyszám}}")),
+      paragraph(text("Létrehozta: "), text("{{létrehozta}}")),
+      paragraph(text("Közreműködött: ")),
+      paragraph(text("Tárgy: ")),
+      paragraph(),
+    ],
+  },
   {
     kind: "document",
     label: "Nyomozati akta",

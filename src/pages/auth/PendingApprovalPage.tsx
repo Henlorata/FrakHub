@@ -26,7 +26,7 @@ export function PendingApprovalPage() {
         <div className="relative mx-auto mb-8 size-28">
           <span className="absolute inset-0 rounded-full bg-amber-400/15 blur-2xl emblem-breathe"/>
           <span className="absolute inset-[-14%] rounded-full border border-dashed border-amber-300/25 emblem-turn"/>
-          <SheriffStar className="relative size-full drop-shadow-[0_0_30px_rgb(234_179_8/0.45)]"/>
+          <SheriffStar className="relative size-full drop-shadow-[0_12px_26px_rgb(0_0_0/0.55)]"/>
           <span className="absolute -right-1 -bottom-1 grid size-9 place-items-center rounded-full bg-[#0b1220] ring-1 ring-amber-400/40">
             <Clock3 className="size-4 text-amber-300 animate-pulse"/>
           </span>

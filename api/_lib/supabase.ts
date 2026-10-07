@@ -20,12 +20,14 @@ export function getSupabaseAdmin(): SupabaseClient {
 /** Profile columns the permission rules (and HR updates) need. */
 export const PERMISSION_COLUMNS =
   "id, full_name, badge_number, faction_rank, system_role, division, division_rank, qualifications, " +
-  "is_bureau_manager, is_bureau_commander, commanded_divisions";
+  "is_bureau_manager, is_bureau_commander, commanded_divisions, division_titles";
 
 export interface PermissionProfile extends RankSubject {
   full_name: string;
   badge_number: string;
   division_rank: string | null;
+  /** Ids of the division's titles (division_titles). */
+  division_titles: string[] | null;
   system_role: SystemRole;
 }
 
@@ -40,11 +42,26 @@ export async function requireCaller(request: Request): Promise<PermissionProfile
   const supabase = getSupabaseAdmin();
   const {data, error} = await supabase.auth.getUser(token);
   if (error || !data.user) throw new HttpError(401, "Érvénytelen vagy lejárt munkamenet. Jelentkezz be újra.");
+  // Two-factor sign-in: a member with an authenticator app needs a session that passed the second
+  // step, as the database requires for the Data API (private.check_request).
+  if (data.user.factors?.some((factor) => factor.status === "verified") && tokenAssurance(token) !== "aal2") {
+    throw new HttpError(401, "Kétlépcsős azonosítás szükséges: add meg a hitelesítő alkalmazás kódját.");
+  }
 
   const profile = await findProfile(data.user.id);
   if (!profile) throw new HttpError(403, "A felhasználói profilod nem található.");
   if (profile.system_role === "pending") throw new HttpError(403, "A fiókod még jóváhagyásra vár.");
   return profile;
+}
+
+/** The assurance level claim of an access token (verified by getUser() before it is read). */
+function tokenAssurance(token: string): string | null {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")) as {aal?: string};
+    return payload.aal ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function findProfile(userId: string): Promise<PermissionProfile | null> {

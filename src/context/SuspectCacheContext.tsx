@@ -4,6 +4,8 @@ import {useAuth} from "./AuthContext";
 import type {Suspect} from "@/types/supabase";
 import {SuspectDetailDialog} from "@/pages/mcb/components/SuspectDetailDialog";
 import {getProfileDirectory} from "@/lib/profile-directory";
+import {supabase as client} from "@/lib/supabaseClient";
+import {createVersionedLoader} from "@/lib/versioned-cache";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -39,6 +41,32 @@ interface CaseLinkRow {
 
 const EMPTY: SuspectData = {suspects: [], caseMap: {}, cases: {}, creators: {}};
 
+/** The list with the case links and creators; kept between visits until a person or link changes. */
+const suspectList = createVersionedLoader("suspects", ["suspects", "profiles"], async (): Promise<SuspectData> => {
+  const [suspectResult, linkResult] = await Promise.all([
+    client.from("suspects").select(SUSPECT_COLUMNS).order("created_at", {ascending: false}),
+    client.from("case_suspects").select("suspect_id, case_id, cases!inner(id, title, case_number)"),
+  ]);
+  if (suspectResult.error) throw suspectResult.error;
+  if (linkResult.error) throw linkResult.error;
+
+  const suspects = ((suspectResult.data ?? []) as Omit<Suspect, "description">[]).map((row) => ({...row, description: null}));
+  const caseMap: Record<string, string[]> = {};
+  const cases: Record<string, string> = {};
+  for (const link of (linkResult.data ?? []) as unknown as CaseLinkRow[]) {
+    if (!link.cases) continue;
+    (caseMap[link.suspect_id] ??= []).push(link.case_id);
+    cases[link.case_id] = `${link.cases.case_number} · ${link.cases.title}`;
+  }
+
+  const creatorIds = new Set(suspects.map((suspect) => suspect.created_by).filter(Boolean));
+  const creators: Record<string, string> = {};
+  for (const member of await getProfileDirectory()) {
+    if (creatorIds.has(member.id)) creators[member.id] = member.full_name;
+  }
+  return {suspects, caseMap, cases, creators};
+});
+
 const SuspectCacheContext = createContext<SuspectCacheContextType | undefined>(undefined);
 
 /**
@@ -46,7 +74,7 @@ const SuspectCacheContext = createContext<SuspectCacheContextType | undefined>(u
  * open the investigative pages never download the suspect list.
  */
 export function SuspectCacheProvider({children}: {children: React.ReactNode}) {
-  const {supabase, user} = useAuth();
+  const {user} = useAuth();
   const userId = user?.id ?? null;
   const [data, setData] = useState<SuspectData>(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -63,29 +91,7 @@ export function SuspectCacheProvider({children}: {children: React.ReactNode}) {
       const run = async () => {
         setLoading(true);
         try {
-          const [suspectResult, linkResult] = await Promise.all([
-            supabase.from("suspects").select(SUSPECT_COLUMNS).order("created_at", {ascending: false}),
-            supabase.from("case_suspects").select("suspect_id, case_id, cases!inner(id, title, case_number)"),
-          ]);
-          if (suspectResult.error) throw suspectResult.error;
-          if (linkResult.error) throw linkResult.error;
-
-          const suspects = ((suspectResult.data ?? []) as Omit<Suspect, "description">[]).map((row) => ({...row, description: null}));
-          const caseMap: Record<string, string[]> = {};
-          const cases: Record<string, string> = {};
-          for (const link of (linkResult.data ?? []) as unknown as CaseLinkRow[]) {
-            if (!link.cases) continue;
-            (caseMap[link.suspect_id] ??= []).push(link.case_id);
-            cases[link.case_id] = `${link.cases.case_number} · ${link.cases.title}`;
-          }
-
-          const creatorIds = new Set(suspects.map((suspect) => suspect.created_by).filter(Boolean));
-          const creators: Record<string, string> = {};
-          for (const member of await getProfileDirectory()) {
-            if (creatorIds.has(member.id)) creators[member.id] = member.full_name;
-          }
-
-          setData({suspects, caseMap, cases, creators});
+          setData(await suspectList.get(force));
           lastFetchRef.current = Date.now();
         } catch (error) {
           console.error(error);
@@ -100,7 +106,7 @@ export function SuspectCacheProvider({children}: {children: React.ReactNode}) {
       });
       return inFlightRef.current;
     },
-    [supabase, userId],
+    [userId],
   );
 
   useEffect(() => {
@@ -108,6 +114,7 @@ export function SuspectCacheProvider({children}: {children: React.ReactNode}) {
   }, [refreshSuspects]);
 
   const deleteSuspectFromCache = useCallback((id: string) => {
+    suspectList.invalidate();
     setData((prev) => ({...prev, suspects: prev.suspects.filter((suspect) => suspect.id !== id)}));
   }, []);
 
