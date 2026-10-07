@@ -35,7 +35,7 @@ Bun is the only package manager (`bun.lock`; `packageManager` is pinned in packa
 ## Environment
 
 Documented in `.env.example` (copy to `.env`). Client (`VITE_*`, public, baked in at build time):
-`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (fallback `VITE_SUPABASE_ANON_KEY`), `VITE_CLOUDINARY_CLOUD_NAME`, `VITE_CLOUDINARY_UPLOAD_PRESET`, `VITE_CLOUDINARY_AVATAR_UPLOAD_PRESET`, `VITE_CLOUDINARY_ACADEMY_UPLOAD_PRESET` — read in `src/lib/env.ts` only.
+`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (fallback `VITE_SUPABASE_ANON_KEY`), `VITE_CLOUDINARY_CLOUD_NAME`, `VITE_CLOUDINARY_UPLOAD_PRESET`, `VITE_CLOUDINARY_AVATAR_UPLOAD_PRESET`, `VITE_CLOUDINARY_ACADEMY_UPLOAD_PRESET` — read in `src/lib/env.ts` only. The unsigned presets in the Cloudinary account are `frakhub_evidence`, `frakhub_avatar` (singular; profile pictures, person photos, BOLO pictures and organisation logos) and `frakhub_academy` (also news and the front page); a wrong name fails every upload of that kind with "Upload preset not found" (2026-10-06 to 08 the Vercel build asked for `frakhub_avatars`).
 
 Server-only (read in `api/_lib/env.ts` only, legacy names accepted as fallbacks): `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_KEY` / `SUPABASE_SERVICE_ROLE_KEY`; bypasses RLS), `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, optional `CLOUDINARY_CLOUD_NAME`, `CRON_SECRET` (the cron endpoint refuses to run without it).
 
