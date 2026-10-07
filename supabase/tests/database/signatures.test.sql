@@ -1,12 +1,15 @@
 -- Signatures: every member keeps one (vector outline), readable by members for the documents;
--- certificates carry the department head's signature.
+-- certificates carry the department head's signature; members without one are reminded once their
+-- account is usable.
 -- Run with: bunx supabase test db
 begin;
-select plan(10);
+select plan(18);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,   -- Commander, Bureau Manager
-  '00000000-0000-4000-8000-000000000003'::uuid as deputy_id;
+  '00000000-0000-4000-8000-000000000003'::uuid as deputy_id,
+  '00000000-0000-4000-8000-000000000004'::uuid as pending_id,  -- Deputy Sheriff Trainee, waiting for approval
+  '00000000-0000-4000-8000-000000000008'::uuid as trainee_id;  -- Deputy Sheriff Trainee, onboarding not finished
 grant select on ids to anon, authenticated, service_role;
 
 create function pg_temp.act_as(_id uuid) returns void language plpgsql as $$
@@ -36,6 +39,32 @@ set local role anon;
 select throws_ok('select count(*) from public.member_signatures', '42501', null, 'visitors read no signatures directly');
 select ok((public.verify_certificate((select code from cert)) -> 'signer' ->> 'full_name') is not null,
   'a certificate shows its signer (the department head)');
+
+-- Reminders ----------------------------------------------------------------------------------
+set local role postgres;
+select ok(private.member_ready('user', 'Deputy Sheriff I.', false) and private.member_ready('user', 'Deputy Sheriff Trainee', true)
+          and not private.member_ready('pending', 'Deputy Sheriff I.', true) and not private.member_ready('user', 'Deputy Sheriff Trainee', false),
+  'a member is ready once approved, a Trainee after the onboarding');
+select is(private.signature_reminder(array[(select admin_id from ids), (select deputy_id from ids)]), 1,
+  'only members without a signature are reminded');
+select is(private.signature_reminder(array[(select deputy_id from ids)]), 1, 'reminding again ...');
+select is((select count(*)::int from public.notifications where user_id = (select deputy_id from ids) and dedupe_key = 'signature:setup'), 1,
+  '... replaces the unread reminder');
+
+update public.profiles set faction_rank = 'Deputy Sheriff I.' where id = (select pending_id from ids);
+update public.profiles set system_role = 'user' where id = (select pending_id from ids);
+select is((select count(*)::int from public.notifications where user_id = (select pending_id from ids) and dedupe_key = 'signature:setup'), 1,
+  'an approved registration is reminded');
+
+update public.profiles set system_role = 'pending' where id = (select trainee_id from ids);
+update public.profiles set system_role = 'user' where id = (select trainee_id from ids);
+select is((select count(*)::int from public.notifications where user_id = (select trainee_id from ids) and dedupe_key = 'signature:setup'), 0,
+  'an approved Trainee waits for the onboarding');
+select pg_temp.act_as((select trainee_id from ids));
+select lives_ok('select public.complete_onboarding()', 'the Trainee finishes the onboarding');
+set local role postgres;
+select is((select count(*)::int from public.notifications where user_id = (select trainee_id from ids) and dedupe_key = 'signature:setup'), 1,
+  'and is reminded by their own change');
 
 select * from finish();
 rollback;

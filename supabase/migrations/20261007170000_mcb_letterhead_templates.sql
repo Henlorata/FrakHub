@@ -1,13 +1,13 @@
 -- =============================================================================
 -- The MCB's two official case files (from its Word templates) as starting documents, on top of
 -- the list: "MCB Investigative File" and "Operation Safe Street File". Both start with the
--- letterhead block (logos served by the app from /public/brand, nothing stored here) and use the
--- {{ügyszám}} / {{létrehozta}} / {{dátum}} placeholders (filled by private.fill_case_template_tokens).
+-- letterhead block (its logos are keys of the emblems bundled with the app, LETTERHEAD_LOGOS;
+-- nothing stored here) and use the {{ügyszám}} / {{létrehozta}} / {{dátum}} placeholders (filled
+-- by private.fill_case_template_tokens).
 --
--- POST-DEPLOY: the deployed frontend before this release does not know the letterhead block
--- (BlockNote throws on an unknown block type), so apply this only after the new frontend is live:
---   1. move this file to supabase/migrations/
---   2. bunx supabase db push --db-url "<session pooler URL>"
+-- Written 2026-10-07 as supabase/post-deploy/20261007000000_mcb_letterhead_templates.sql: earlier
+-- frontends do not know the letterhead block (BlockNote throws on an unknown block type), so it
+-- waited for the deploy of 2026-10-07.
 -- Same content as src/lib/case-templates-builtin.ts (the leadership's "Alapsablonok
 -- visszaállítása" adds them too). Skips a template that already exists under the same name.
 -- =============================================================================

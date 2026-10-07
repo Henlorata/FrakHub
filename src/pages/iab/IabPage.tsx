@@ -10,9 +10,10 @@ import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {useConfirm} from "@/components/ConfirmDialog";
+import {useAuth} from "@/context/AuthContext";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import {formatAgo} from "@/lib/datetime";
-import {IAB_OUTCOMES, IAB_PRIORITY, IAB_ROLES, IAB_TITLE_ORDER, IAB_TITLES, iabApi, type IabOverview, type IabTitle} from "@/lib/iab";
+import {IAB_OUTCOMES, IAB_PRIORITY, IAB_ROLES, IAB_TITLE_ORDER, IAB_TITLES, iabApi, readsIabMail, type IabOverview, type IabTitle} from "@/lib/iab";
 import {useProfileDirectory} from "@/lib/profile-directory";
 import {cn, errorMessage} from "@/lib/utils";
 import {CaseDialog} from "./components/CaseDialog";
@@ -25,6 +26,7 @@ const fold = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu
  */
 export function IabPage() {
   const navigate = useNavigate();
+  const {profile} = useAuth();
   const [data, setData] = useState<IabOverview | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [status, setStatus] = useState<"open" | "closed" | "all">("open");
@@ -60,7 +62,9 @@ export function IabPage() {
                   description="Panaszok és szolgálati ügyek kivizsgálása. A vizsgált tag a saját ügyét nem látja."
                   actions={(
                     <>
-                      <Button variant="outline" asChild><Link to="/mail?box=iab"><Inbox/> IAB postafiók</Link></Button>
+                      {data && readsIabMail(data, profile) && (
+                        <Button variant="outline" asChild><Link to="/mail?box=iab"><Inbox/> IAB postafiók</Link></Button>
+                      )}
                       <Button className="bg-fuchsia-600 text-white hover:bg-fuchsia-500" onClick={() => setCreating(true)}><Plus/> Új vizsgálat</Button>
                     </>
                   )}/>

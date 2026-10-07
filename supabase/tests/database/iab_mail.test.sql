@@ -1,7 +1,7 @@
 -- Mail (threads to members and shared addresses) and the Internal Affairs Bureau's investigations.
 -- Run with: bunx supabase test db
 begin;
-select plan(39);
+select plan(41);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,        -- Commander, Bureau Manager
@@ -34,8 +34,10 @@ select pg_temp.act_as((select deputy_id from ids));
 select throws_ok(format('select public.set_iab_title(%L, ''agent'')', (select investigator_id from ids)), '42501', null,
   'a member cannot staff the IAB');
 select pg_temp.act_as((select admin_id from ids));
+select lives_ok($$select public.get_mailbox('iab')$$, 'while nobody holds an IAB title, the Bureau Manager opens the IAB mailbox');
 select lives_ok(format('select public.set_iab_title(%L, ''agent'')', (select investigator_id from ids)), 'the Bureau Manager staffs the IAB');
 select is((select iab_title from public.profiles where id = (select investigator_id from ids)), 'agent', 'the title is stored on the profile');
+select throws_ok($$select public.get_mailbox('iab')$$, '42501', null, 'from then on the mailbox is the IAB''s');
 
 -- A letter to the IAB and a colleague --------------------------------------------------------
 select pg_temp.act_as((select deputy_id from ids));

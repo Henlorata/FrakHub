@@ -1,7 +1,7 @@
 -- Case templates (MCB leadership), the finance overview's forecast data, attendance of events
 -- and the absences of the events calendar. Run with: bunx supabase test db
 begin;
-select plan(34);
+select plan(35);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,        -- Commander, bureau manager
@@ -38,7 +38,10 @@ select pg_temp.act_as((select deputy_id from ids));
 select is((select count(*) from public.case_templates), 0::bigint, 'members outside the case area see no templates');
 
 select pg_temp.act_as((select supervisor_id from ids));
-select is((select count(*) from public.case_templates), 7::bigint, 'investigators read the starter documents and snippets');
+select is((select count(*) from public.case_templates), 9::bigint, 'investigators read the starter documents and snippets');
+select is((select array_agg(label || ': ' || (blocks -> 0 ->> 'type') order by sort_order)
+           from (select label, blocks, sort_order from public.case_templates where kind = 'document' order by sort_order limit 2) t),
+  array['MCB Investigative File: letterhead', 'Operation Safe Street File: letterhead'], 'the MCB''s letterhead files open the list');
 select throws_ok($$insert into public.case_templates (kind, label) values ('document', 'Saját sablon')$$,
   '42501', null, 'investigators cannot add templates');
 with changed as (update public.case_templates set label = 'Átírva' returning 1)
@@ -70,7 +73,7 @@ select lives_ok($$select public.reorder_case_templates(array(
 select is((select sort_order from public.case_templates where id = (select id from made where name = 'document')), 10,
   'the moved template comes first');
 select lives_ok($$delete from public.case_templates where id = (select id from made where name = 'document')$$, 'the leadership deletes a template');
-select is((select count(*) from public.case_templates where kind = 'document'), 3::bigint, 'the deleted template is gone');
+select is((select count(*) from public.case_templates where kind = 'document'), 5::bigint, 'the deleted template is gone');
 
 -- Finance overview -------------------------------------------------------------------------
 select pg_temp.reset_role();
