@@ -64,6 +64,9 @@ test.describe("trainings", () => {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const mock = await mockSupabase(page, {tables: {training_progress: []}});
+    // The member closed every menu group: the steps still find their menu items (practice mode shows them all).
+    await page.addInitScript(() => localStorage.setItem("frakhub:nav-closed",
+      JSON.stringify(["Áttekintés", "Operatív", "Oktatás", "Eszközök", "Közösség", "Adminisztráció"])));
     await login(page);
     await overlay(page).getByRole("button", {name: "Kezdjük"}).click();
     await expect(overlay(page).getByText("Gyakorló mód", {exact: true})).toBeVisible();

@@ -1,8 +1,19 @@
 import path from "node:path";
-import {defineConfig, loadEnv} from "vite";
+import {defineConfig, loadEnv, type Plugin} from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import {vercelApiDev} from "./tooling/vite-vercel-api.ts";
+
+// The build's id. An open tab compares it with /version.json to notice a newer deploy (src/lib/app-version.ts).
+const BUILD_ID = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || Date.now().toString(36);
+
+const appVersion = (): Plugin => ({
+  name: "app-version",
+  apply: "build",
+  generateBundle() {
+    this.emitFile({type: "asset", fileName: "version.json", source: JSON.stringify({build: BUILD_ID})});
+  },
+});
 
 // https://vite.dev/config/
 export default defineConfig(({command, mode}) => {
@@ -14,7 +25,8 @@ export default defineConfig(({command, mode}) => {
   }
 
   return {
-    plugins: [react(), tailwindcss(), vercelApiDev()],
+    plugins: [react(), tailwindcss(), vercelApiDev(), appVersion()],
+    define: {__APP_BUILD__: JSON.stringify(BUILD_ID)},
     resolve: {
       alias: {
         "@": path.resolve(import.meta.dirname, "src"),

@@ -4,10 +4,10 @@ import {toast} from "sonner";
 import {formatDistanceToNowStrict} from "date-fns";
 import {hu} from "date-fns/locale";
 import {
-  Activity, AlertOctagon, AlertTriangle, ArrowRight, Banknote, BookCheck, BrainCircuit, CalendarDays, CalendarOff, CalendarPlus, Car, Check,
-  CheckCircle2, ChevronDown, ChevronRight, ClipboardCheck, Clock, Database, EyeOff, FileSearch, FileText, Fingerprint, Gavel, GraduationCap,
-  Handshake, HeartHandshake, HelpCircle, Info, ListTodo, Mail, MapPin, Medal, Megaphone, MessageSquareLock, Pin, Plus, Radar, Radio, Receipt,
-  RefreshCw, Scale, ScrollText, Shield, Target, Ticket, Trash2, Truck, UserPlus, Users, UsersRound, Vote, X,
+  Activity, AlertOctagon, AlertTriangle, ArrowRight, BookCheck, CalendarDays, CalendarOff, CalendarPlus, Car, Check, CheckCircle2,
+  ChevronDown, ChevronRight, ClipboardCheck, Clock, Database, EyeOff, FileSearch, FileText, Fingerprint, Gavel, GraduationCap, Handshake,
+  HeartHandshake, HelpCircle, Info, ListTodo, Mail, MapPin, Medal, Megaphone, MessageSquareLock, Pin, Plus, Radar, Receipt, RefreshCw, Scale,
+  Shield, Target, Ticket, Trash2, Truck, UserPlus, Vote, X,
 } from "lucide-react";
 import {MonthlyRecapDialog} from "@/components/recap/MonthlyRecapDialog";
 import {progressionApi, type Trainee} from "@/lib/progression";
@@ -28,12 +28,13 @@ import {EmptyState} from "@/components/layout/EmptyState";
 import {TONE_CLASSES, type Tone} from "@/components/layout/PageHeader";
 import {ALERT_LEVELS} from "@/lib/alert-levels";
 import {EVENT_KINDS, organisableAudiences, type UpcomingEvent} from "@/lib/events";
-import {canViewCaseList, cn, errorMessage, isStaff, STAFF_CATEGORY_LABELS, type StaffCategory} from "@/lib/utils";
+import {cn, errorMessage, isStaff, STAFF_CATEGORY_LABELS, type StaffCategory} from "@/lib/utils";
 import {daysSince, formatSpan, rankPillClass} from "@/pages/hr/hr-utils";
 import {
   daysBetween, formatDate, formatDayLabel, formatLongDate, formatTime, hungarianHour, hungarianParts, todayKey,
 } from "@/lib/datetime";
 import {WhatsNewStrip} from "./WhatsNewStrip";
+import {QuickAccess} from "./QuickAccess";
 
 interface DashboardSummary {
   unread_notifications: number;
@@ -231,7 +232,7 @@ export function DashboardPage() {
           share the side column with the member's month and the next events instead of leaving a gap in the middle. */}
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="flex min-w-0 flex-col gap-6">
-          <ModuleGrid/>
+          <QuickAccess/>
           <ActivityLog/>
         </div>
         <div className="order-first flex min-w-0 flex-col gap-6 xl:order-none">
@@ -610,53 +611,6 @@ function UpcomingEvents({events, loading, canOrganise}: {events: UpcomingEvent[]
           })}
         </ul>
       )}
-    </section>
-  );
-}
-
-function ModuleGrid() {
-  const {profile} = useAuth();
-  const navigate = useNavigate();
-  if (!profile) return null;
-  const modules = [
-    {label: "Nyomozó Iroda", hint: "Akták, körözések", icon: Fingerprint, to: "/mcb", tone: "blue" as Tone, show: canViewCaseList(profile)},
-    {label: "Logisztika", hint: "Járművek, flotta", icon: Truck, to: "/logistics", tone: "orange" as Tone, show: true},
-    {label: "Pénzügy", hint: "Költségtérítés, fizetés", icon: Banknote, to: "/finance", tone: "emerald" as Tone, show: true},
-    {label: "Vizsgaközpont", hint: "Vizsgák, javítás", icon: ScrollText, to: "/exams", tone: "violet" as Tone, show: true},
-    {label: "Akadémia", hint: "Tananyagok", icon: GraduationCap, to: "/academy", tone: "cyan" as Tone, show: true},
-    {label: "Kalkulátor", hint: "Büntető törvénykönyv", icon: Gavel, to: "/calculator", tone: "red" as Tone, show: true},
-    {label: "Jelentések", hint: "Fórum-jelentés, napló", icon: FileText, to: "/reports", tone: "slate" as Tone, show: true},
-    {label: "Események", hint: "Gyűlések, képzések", icon: CalendarDays, to: "/events", tone: "gold" as Tone, show: true},
-    {label: "Kódtár", hint: "Rádiókódok, hívójel", icon: Radio, to: "/codes", tone: "cyan" as Tone, show: true},
-    {label: "Személyügy", hint: "Állomány, duty idő", icon: Users, to: "/hr", tone: "gold" as Tone, show: true},
-    {label: "Gyakorlás", hint: "Kódok, Btk., szituációk", icon: BrainCircuit, to: "/practice", tone: "cyan" as Tone, show: true},
-    {label: "Szabályzatok", hint: "Szabályok, kötelező olvasmány", icon: BookCheck, to: "/policies", tone: "emerald" as Tone, show: true},
-    {label: "Közösség", hint: "Szavazás, ötletek", icon: UsersRound, to: "/community", tone: "violet" as Tone, show: true},
-  ].filter((module) => module.show);
-
-  return (
-    <section data-tour="dashboard-modules" className="animate-rise" style={{"--i": 3} as CSSProperties}>
-      <h2 className="mb-3 px-1 text-sm font-semibold text-slate-300">Gyors elérés</h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {modules.map((module, index) => {
-          const tone = TONE_CLASSES[module.tone];
-          return (
-            <button key={module.to} type="button" onClick={() => navigate(module.to)} style={{"--i": index + 4} as CSSProperties}
-                    className="panel lift animate-rise group relative flex min-w-0 flex-col items-start gap-3 overflow-hidden p-4 text-left">
-              <div className={cn("pointer-events-none absolute -right-8 -bottom-8 size-24 rounded-full bg-gradient-to-br opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-40", tone.gradient)}/>
-              <div className={cn("relative grid size-10 place-items-center rounded-xl bg-gradient-to-br p-px transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3", tone.gradient)}>
-                <div className="grid size-full place-items-center rounded-[11px] bg-[#0a1120]/85">
-                  <module.icon className={cn("size-5", tone.text)}/>
-                </div>
-              </div>
-              <div className="relative w-full min-w-0">
-                <div className="truncate text-sm font-semibold text-slate-100 group-hover:text-white">{module.label}</div>
-                <div className="truncate text-xs text-slate-500">{module.hint}</div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
     </section>
   );
 }

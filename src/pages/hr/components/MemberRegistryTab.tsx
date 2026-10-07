@@ -151,6 +151,11 @@ export function MemberRegistryTab({member, viewer, onSaveDetails, onSaveBankAcco
                 </button>
               ))}
             </div>
+            {member.onLeaveNow && member.leave && (
+              <p className="text-[11px] text-sky-300/90">
+                Szabadságon {formatDate(member.leave.ends_on)}-ig: addig mindenhol így látszik, a beállított aktivitás a szabadság után érvényes.
+              </p>
+            )}
           </div>
           <div className="flex justify-end gap-2">
             {(detailsDirty || bankDirty) && <Button variant="ghost" onClick={() => setForm(toForm(member))}>Visszaállítás</Button>}
@@ -166,7 +171,12 @@ export function MemberRegistryTab({member, viewer, onSaveDetails, onSaveBankAcco
           <Fact label="Csatlakozott" value={formatDate(member.details?.joined_on ?? member.created_at)}/>
           <Fact label="Csatlakozás módja" value={JOIN_TYPE_LABELS[member.details?.join_type ?? "new"]}/>
           <Fact label="Felvételiztető" value={member.details?.recruited_by ?? "–"}/>
-          <Fact label="Aktivitás" value={ACTIVITY_META[member.details?.activity_status ?? "active"].label}/>
+          <Fact label="Aktivitás" value={member.onLeaveNow && member.leave ? (
+            <span className="text-sky-300">
+              Szabadságon {formatDate(member.leave.ends_on)}-ig
+              <span className="block text-[11px] font-normal text-slate-500">utána: {ACTIVITY_META[member.details?.activity_status ?? "active"].label}</span>
+            </span>
+          ) : ACTIVITY_META[member.details?.activity_status ?? "active"].label}/>
           {staff && <Fact label="Bankszámlaszám" value={<span className="font-mono text-xs">{member.bankAccount ?? "–"}</span>}/>}
         </section>
       )}

@@ -34,6 +34,9 @@ export function IdCard({profile, joinedOn, onLeave}: {profile: Profile; joinedOn
   const shineRef = React.useRef<HTMLDivElement>(null);
   const theme = themeFor(profile);
   const avatarSrc = getOptimizedAvatarUrl(profile.avatar_url, 320);
+  // An emblem that does not load (e.g. a tab still running the build before a deploy) is left out
+  // instead of a broken picture.
+  const [failedLogo, setFailedLogo] = React.useState<string | null>(null);
 
   const handleMove = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!cardRef.current || !shineRef.current || window.innerWidth < 1024) return;
@@ -67,7 +70,10 @@ export function IdCard({profile, joinedOn, onLeave}: {profile: Profile; joinedOn
             <div className={cn("mt-0.5 text-xs font-bold uppercase tracking-[0.25em]", theme.text)}>{getDepartmentLabel(profile.division)}</div>
           </div>
         </div>
-        {theme.logo && <img src={theme.logo} alt="" className="size-14 object-contain opacity-90 drop-shadow-[0_0_20px_rgba(255,255,255,0.15)]"/>}
+        {theme.logo && theme.logo !== failedLogo && (
+          <img src={theme.logo} alt="" onError={() => setFailedLogo(theme.logo ?? null)}
+               className="size-14 object-contain opacity-90 drop-shadow-[0_0_20px_rgba(255,255,255,0.15)]"/>
+        )}
       </div>
 
       <div className="relative z-10 flex items-center gap-5">

@@ -28,8 +28,9 @@ export const readsFeedback = (profile: Profile) => isHighCommand(profile) || !!p
  */
 export function FeedbackTab({profile, initialView}: {profile: Profile; initialView?: "mine" | "inbox" | null}) {
   const leader = readsFeedback(profile);
-  // The readers come here for the inbox (dashboard counter, notifications); "?box=mine" opens their own reports.
-  const [view, setView] = useState<"mine" | "inbox">(() => initialView ?? (leader ? "inbox" : "mine"));
+  // Everyone starts with their own reports (where a new one is written); the readers' inbox opens with
+  // "?box=inbox" (dashboard counter, notifications) or the switch.
+  const [view, setView] = useState<"mine" | "inbox">(() => initialView ?? "mine");
   return (
     <div className="space-y-4" data-tour="community-feedback">
       {leader && (

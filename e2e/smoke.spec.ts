@@ -54,9 +54,9 @@ const ROUTES: {path: string; text: RegExp}[] = [
   {path: "/policies", text: /Még nincs szabályzat/i},
   {path: "/community", text: /Még nem volt szavazás/i},
   {path: "/community?tab=ideas", text: /Ebben a nézetben nincs ötlet/i},
-  // The readers (the smoke user is one) land on the inbox; their own reports are one tab away.
-  {path: "/community?tab=feedback", text: /Nincs beérkezett visszajelzés/i},
-  {path: "/community?tab=feedback&box=mine", text: /Névtelen visszajelzés a vezetőségnek/i},
+  // Everyone starts on their own reports; the readers' inbox (the smoke user reads it) opens with box=inbox.
+  {path: "/community?tab=feedback", text: /Névtelen visszajelzés a vezetőségnek/i},
+  {path: "/community?tab=feedback&box=inbox", text: /Nincs beérkezett visszajelzés/i},
   {path: "/practice", text: /Kártyacsomagok/i},
   {path: "/practice?deck=radio", text: /Mit jelent|Melyik kód/i},
   {path: "/leaderboard", text: /Szerepelek a ranglistán/i},

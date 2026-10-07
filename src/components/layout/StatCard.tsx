@@ -40,7 +40,8 @@ export function StatCard({label, value, icon: Icon, tone = "slate", hint, onClic
         <Icon className="size-5"/>
       </div>
       <div className="relative min-w-0">
-        <div className="text-2xl font-semibold tabular-nums leading-tight text-white">
+        {/* A long text value ("120 ó 33 p") gets a size smaller instead of breaking in a narrow card. */}
+        <div className={cn("font-semibold tabular-nums leading-tight text-white", typeof value === "string" && value.length > 8 ? "text-xl" : "text-2xl")}>
           {typeof value === "number" ? <AnimatedNumber value={value}/> : value}
         </div>
         <div className="truncate text-xs font-medium text-muted-foreground">{label}</div>

@@ -2,7 +2,7 @@
 -- the monthly recap, the service record, the penal code announcement and the new dashboard and
 -- payslip keys. Run with: bunx supabase test db
 begin;
-select plan(44);
+select plan(48);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,        -- Commander (academy instructor)
@@ -65,6 +65,23 @@ select is((pg_temp.j('draft') ->> 'max_score')::int, 5, 'the best path is comput
 select pg_temp.act_as((select deputy_id from ids));
 select throws_ok(format('select public.get_scenario(%L)', pg_temp.j('draft') ->> 'id'), 'P0002', null,
   'unpublished scenarios are hidden from members');
+
+-- An instructor tries the hidden scenario: the certificate comes when it is published.
+select pg_temp.act_as((select admin_id from ids));
+select ok((public.submit_scenario_run((pg_temp.j('draft') ->> 'id')::uuid, array['1', '1']) ->> 'certificate') is null,
+  'passing a hidden scenario gives no certificate yet');
+select pg_temp.reset_role();
+update public.practice_scenarios set published = true where id = (pg_temp.j('draft') ->> 'id')::uuid;
+select ok(exists (select 1 from public.certificates c where c.user_id = (select admin_id from ids) and c.kind = 'scenario'
+                  and c.ref = pg_temp.j('draft') ->> 'id' and c.revoked_at is null),
+  'publishing it issues the certificate to those who passed');
+select is((select count(*)::int from public.notifications n where n.user_id = (select admin_id from ids)
+           and n.dedupe_key = 'certificate:scenario:' || (pg_temp.j('draft') ->> 'id')), 1, 'and tells them');
+update public.practice_scenarios set published = false where id = (pg_temp.j('draft') ->> 'id')::uuid;
+update public.practice_scenarios set published = true where id = (pg_temp.j('draft') ->> 'id')::uuid;
+select is((select count(*)::int from public.notifications n where n.user_id = (select admin_id from ids)
+           and n.dedupe_key = 'certificate:scenario:' || (pg_temp.j('draft') ->> 'id')), 1, 'publishing it again sends nothing new');
+select pg_temp.act_as((select deputy_id from ids));
 select throws_ok(format('select public.submit_scenario_run(%L, array[%L])', (select value from t where key = 's1'), 'a'), '22023', null,
   'a run must reach an ending');
 insert into t select 'run', public.submit_scenario_run((select value::uuid from t where key = 's1'), array['a', 'a', 'a', 'a'])::text;

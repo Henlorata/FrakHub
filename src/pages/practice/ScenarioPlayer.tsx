@@ -180,6 +180,11 @@ function ResultCard({scenario, result, steps, onRestart, onExit}: {
         <p className="relative mt-1 text-sm text-slate-300">
           {result.passed ? "Szép munka: jól döntöttél a fontos pillanatokban." : `A sikerhez ${scenario.pass_percent}% kell. Nézd át a visszajelzéseket, és próbáld újra!`}
         </p>
+        {result.passed && !result.certificate && !scenario.published && (
+          <p className="relative mx-auto mt-4 max-w-md rounded-xl bg-white/[0.04] px-4 py-2 text-xs text-slate-300 ring-1 ring-white/10">
+            A gyakorlat még rejtett: az oklevelet a közzétételekor kapod meg, értesítéssel.
+          </p>
+        )}
         {result.certificate && (
           <Link to={`/certificates/${result.certificate}`}
                 className="relative mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-100 ring-1 ring-amber-500/30 hover:bg-amber-500/20">

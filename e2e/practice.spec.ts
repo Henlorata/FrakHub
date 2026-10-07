@@ -70,6 +70,30 @@ test.describe("practice", () => {
     await expect(page.getByRole("link", {name: /SFSD-1A2B-3C4D/})).toHaveAttribute("href", "/certificates/SFSD-1A2B-3C4D");
     expect(mock.requests.find((request) => request.name === "submit_scenario_run")?.body).toEqual({_scenario_id: "s1", _choices: ["a", "a"]});
   });
+
+  test("an instructor passing a hidden scenario learns the certificate comes with publishing", async ({page}) => {
+    const hidden = {...scenario, published: false};
+    await mockSupabase(page, {
+      tables: {profiles: [testProfile({faction_rank: "Captain II.", system_role: "admin"})]},
+      rpc: {
+        get_practice_overview: overview({can_edit: true, scenarios: [{id: "s1", title: "Közúti ellenőrzés", summary: null, category: "traffic", difficulty: 1,
+          max_score: 5, pass_percent: 70, published: false, updated_at: "2026-10-01T00:00:00Z", steps: 3, result: null, stats: {players: 0, passed: 0}}]}),
+        get_scenario: hidden,
+        submit_scenario_run: {score: 5, max_score: 5, percent: 100, passed: true, certificate: null,
+          best: {scenario_id: "s1", user_id: "u", best_score: 5, max_score: 5, best_percent: 100, passed: true, attempts: 1, last_run_at: "2026-10-06T00:00:00Z"}},
+      },
+    });
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/practice");
+    await page.getByRole("button", {name: /Kezdés/}).click();
+    await page.getByRole("button", {name: /Megállítom/}).click();
+    await page.getByRole("button", {name: /Tovább/}).click();
+    await page.getByRole("button", {name: /10-28 és Code 6/}).click();
+    await page.getByRole("button", {name: "Eredmény"}).click();
+    await expect(page.getByText("Sikeresen teljesítetted!")).toBeVisible();
+    await expect(page.getByText("A gyakorlat még rejtett: az oklevelet a közzétételekor kapod meg, értesítéssel.")).toBeVisible();
+  });
 });
 
 test.describe("recognition", () => {
@@ -140,7 +164,7 @@ test.describe("recognition", () => {
     expect(mock.count("rpc", "get_monthly_recap")).toBe(1);
 
     await page.reload();
-    await expect(page.getByText("Gyors elérés")).toBeVisible();
+    await expect(page.getByRole("heading", {name: "Gyors elérés"})).toBeVisible();
     await page.waitForTimeout(1200);
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
