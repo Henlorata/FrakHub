@@ -200,10 +200,10 @@ function TaskForm({team, initial, onSave, onCancel}: {
       <Input autoFocus value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} placeholder="Mi a teendő?"/>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Select value={assignee} onValueChange={setAssignee}>
-          <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Felelős"/></SelectTrigger>
+          <SelectTrigger className="h-9 w-full text-xs"><SelectValue placeholder="Felelős"/></SelectTrigger>
           <SelectContent>
             <SelectItem value={NOBODY}>Nincs felelős</SelectItem>
-            {team.map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}
+            {team.map((member) => <SelectItem key={member.id} value={member.id}><span className="truncate">{member.name}</span></SelectItem>)}
           </SelectContent>
         </Select>
         <Input type="date" value={due} min={initial ? undefined : todayKey()} onChange={(event) => setDue(event.target.value)} className="h-9 text-xs"

@@ -107,7 +107,7 @@ export function VehicleEditorDialog({vehicle, categories, defaultCategory, onOpe
             <Select value={categoryId} onValueChange={setCategoryId}>
               <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
               <SelectContent className="max-h-72">
-                {categories.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                {categories.map((item) => <SelectItem key={item.id} value={item.id}><span className="truncate">{item.name}</span></SelectItem>)}
               </SelectContent>
             </Select>
           </Field>

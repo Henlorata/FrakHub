@@ -216,7 +216,7 @@ function StaffPanel({data, onChanged}: {data: IabOverview | null; onChanged: () 
           <p className="text-xs font-medium text-slate-300">Új tag</p>
           <Select value={user} onValueChange={setUser}>
             <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Válassz tagot…"/></SelectTrigger>
-            <SelectContent>{candidates.map((member) => <SelectItem key={member.id} value={member.id}>{member.full_name} · {member.faction_rank}</SelectItem>)}</SelectContent>
+            <SelectContent>{candidates.map((member) => <SelectItem key={member.id} value={member.id}><span className="truncate">{member.full_name} · {member.faction_rank}</span></SelectItem>)}</SelectContent>
           </Select>
           <div className="flex gap-2">
             <Select value={title} onValueChange={(value) => setTitle(value as IabTitle)}>

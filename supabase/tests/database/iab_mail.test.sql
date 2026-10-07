@@ -1,7 +1,7 @@
 -- Mail (threads to members and shared addresses) and the Internal Affairs Bureau's investigations.
 -- Run with: bunx supabase test db
 begin;
-select plan(41);
+select plan(45);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,        -- Commander, Bureau Manager
@@ -130,6 +130,22 @@ select lives_ok(format('select public.close_iab_case(%L, ''not_sustained'', ''A 
   'the lead closes the investigation with the IAB''s own closure');
 select throws_ok(format('select public.save_iab_entry(%L, null, ''note'', null, ''késői megjegyzés'')', (select value from state where key = 'case')), '42501', null,
   'a closed investigation takes no new entries');
+
+-- A letter to one member: the answer goes back to its writer ----------------------------------
+select pg_temp.act_as((select deputy_id from ids));
+insert into state values ('direct', public.send_mail('Szolgálati beosztás', 'Szia! Csütörtökön be tudsz jönni?',
+  jsonb_build_array(jsonb_build_object('kind', 'user', 'id', (select operator_id from ids)))));
+select pg_temp.act_as((select operator_id from ids));
+select lives_ok(format('select public.send_mail(null, ''Igen, ott leszek.'', ''[]''::jsonb, %L)', (select value from state where key = 'direct')),
+  'the only recipient answers a letter written to them alone');
+select pg_temp.as_db(null);
+select is((select to_display from public.mail_messages where thread_id = (select value from state where key = 'direct') order by created_at desc limit 1),
+  array['deputy.teszt@sfsd.org'], 'the answer is addressed to the writer');
+select ok(exists (select 1 from public.notifications where user_id = (select deputy_id from ids) and dedupe_key = 'mail:' || (select value from state where key = 'direct')),
+  'and the writer is told');
+select pg_temp.act_as((select deputy_id from ids));
+select lives_ok(format('select public.send_mail(null, ''Köszönöm!'', ''[]''::jsonb, %L)', (select value from state where key = 'direct')),
+  'the writer answers again');
 
 select * from finish();
 rollback;

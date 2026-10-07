@@ -257,7 +257,7 @@ export function CategoriesDialog({open, onOpenChange, categories, vehicles}: {
                               <SelectTrigger className="h-8 w-60"><SelectValue placeholder="Válassz kategóriát"/></SelectTrigger>
                               <SelectContent className="max-h-72">
                                 {sorted.filter((item) => item.id !== category.id).map((item) => (
-                                  <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                                  <SelectItem key={item.id} value={item.id}><span className="truncate">{item.name}</span></SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>

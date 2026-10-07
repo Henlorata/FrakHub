@@ -255,10 +255,10 @@ function NewItemDialog({open, onOpenChange, detail, onSaved}: {
           <div className="space-y-1">
             <Label>Kapcsolódó kép a bizonyítékok közül</Label>
             <Select value={form.evidence} onValueChange={set("evidence")}>
-              <SelectTrigger><SelectValue/></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
               <SelectContent>
                 <SelectItem value={MANUAL}>Nincs</SelectItem>
-                {images.map((file) => <SelectItem key={file.id} value={file.id}>{file.file_name}</SelectItem>)}
+                {images.map((file) => <SelectItem key={file.id} value={file.id}><span className="truncate">{file.file_name}</span></SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -336,10 +336,10 @@ function StepDialog({step, team, onOpenChange, onSaved}: {
           <div className="space-y-2">
             <Label>Kinek adod ki?</Label>
             <Select value={holder} onValueChange={setHolder}>
-              <SelectTrigger><SelectValue/></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
               <SelectContent>
                 <SelectItem value={MANUAL}>Más (név beírása)</SelectItem>
-                {team.map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}
+                {team.map((member) => <SelectItem key={member.id} value={member.id}><span className="truncate">{member.name}</span></SelectItem>)}
               </SelectContent>
             </Select>
             {holder === MANUAL && (

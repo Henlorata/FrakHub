@@ -133,8 +133,11 @@ export function arrestCommand(cart: CartItem[], targetId: string, jail: number):
   return `arrest ${targetId.trim() || "[ID]"} ${jail} ${items.map(reasonOf).join(", ")}`;
 }
 
-/** The offences for the report ("Gyorshajtás (x2), Rendőri utasítás megtagadása"). */
+/**
+ * The offences for the report ("Rendőri utasítás megtagadása (x2), Gyorshajtás Lakott Területen (50km/h) – 25% (65km/h)").
+ * A sub-item ("25% (65km/h)") means nothing without its main offence, so that comes first.
+ */
 export const chargesText = (cart: CartItem[]) =>
-  cart.map(({item, quantity}) => `${item.megnevezes}${quantity > 1 ? ` (x${quantity})` : ""}`).join(", ");
+  cart.map(({item, quantity}) => `${item.fo_tetel_nev ? `${item.fo_tetel_nev} – ` : ""}${item.megnevezes}${quantity > 1 ? ` (x${quantity})` : ""}`).join(", ");
 
 export const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max > 0 ? max : Number.POSITIVE_INFINITY);

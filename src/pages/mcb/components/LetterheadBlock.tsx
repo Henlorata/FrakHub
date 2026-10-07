@@ -46,7 +46,7 @@ function LetterheadView({block, editor}: LetterheadProps) {
   const setProps = (patch: Partial<typeof block.props>) => editor.updateBlock(block, {props: {...block.props, ...patch}});
 
   return (
-    <div className="group/letterhead relative my-2 w-full select-none" contentEditable={false}>
+    <div className="letterhead-frame group/letterhead relative my-2 w-full select-none" contentEditable={false}>
       {editable && (
         <div className="absolute -top-3 right-0 z-30 flex gap-1 opacity-0 transition group-hover/letterhead:opacity-100 focus-within:opacity-100">
           <button type="button" title={editing ? "Kész" : "Fejléc szerkesztése"} onClick={() => setEditing((value) => !value)}

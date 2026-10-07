@@ -102,21 +102,21 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
             ))}
           </div>
           <Select value={category} onValueChange={(value) => setCategory(value as typeof category)}>
-            <SelectTrigger className="h-9 w-[150px]"><SelectValue/></SelectTrigger>
+            <SelectTrigger className="h-9 w-[170px]"><SelectValue/></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Minden szint</SelectItem>
               {CATEGORY_ORDER.map((key) => <SelectItem key={key} value={key}>{CATEGORY_META[key].label}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={qualification} onValueChange={setQualification}>
-            <SelectTrigger className="h-9 w-[140px]"><SelectValue/></SelectTrigger>
+            <SelectTrigger className="h-9 w-[170px]"><SelectValue/></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Minden képesítés</SelectItem>
               {QUALIFICATIONS.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={status} onValueChange={(value) => setStatus(value as StatusFilter)}>
-            <SelectTrigger className="h-9 w-[150px]"><SelectValue/></SelectTrigger>
+            <SelectTrigger className="h-9 w-[210px]"><SelectValue/></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Minden állapot</SelectItem>
               <SelectItem value="leave">Szabadságon</SelectItem>
@@ -140,7 +140,7 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
         </div>
         <div className="flex items-center gap-3 xl:ml-auto">
           <Select value={sort} onValueChange={(value) => setSort(value as SortKey)}>
-            <SelectTrigger className="h-9 w-[190px]"><ArrowDownUp className="size-3.5"/><SelectValue/></SelectTrigger>
+            <SelectTrigger className="h-9 w-[225px]"><ArrowDownUp className="size-3.5"/><SelectValue/></SelectTrigger>
             <SelectContent>
               <SelectItem value="rank">Rendfokozat szerint</SelectItem>
               <SelectItem value="name">Név szerint</SelectItem>

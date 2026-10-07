@@ -185,8 +185,9 @@ export function InformantsPage() {
                 <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-sky-500/10 text-sky-200 ring-1 ring-sky-500/25">
                   <ShieldQuestion className="size-6"/>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-mono text-xl font-bold tracking-wider text-white">{current.codename}</h3>
+                {/* At least 10rem for the codename: on a phone the buttons go to the next line instead. */}
+                <div className="min-w-40 flex-1">
+                  <h3 className="font-mono text-xl font-bold tracking-wider text-white wrap-anywhere">{current.codename}</h3>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                     <span className={cn("rounded-full px-2 py-0.5 font-semibold ring-1", STATUS[current.status].tone)}>{STATUS[current.status].label}</span>
                     <Stars value={current.reliability}/><span className="text-slate-400">{RELIABILITY[current.reliability]}</span>
@@ -349,7 +350,7 @@ function InformantDialog({informant, isLead, myId, onOpenChange, onSaved}: {
           <div className="space-y-1">
             <Label>Státusz</Label>
             <Select value={form.status} onValueChange={(value) => setForm((prev) => ({...prev, status: value as InformantStatus}))}>
-              <SelectTrigger><SelectValue/></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
               <SelectContent>{(Object.keys(STATUS) as InformantStatus[]).map((status) => <SelectItem key={status} value={status}>{STATUS[status].label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
@@ -447,7 +448,7 @@ function MeetingDialog({informant, onOpenChange, onSaved}: {informant: Informant
           <div className="space-y-1">
             <Label>Az információ értéke</Label>
             <Select value={form.value} onValueChange={(value) => setForm((prev) => ({...prev, value: value as InformantContact["value"]}))}>
-              <SelectTrigger><SelectValue/></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
               <SelectContent>{(Object.keys(VALUE) as InformantContact["value"][]).map((value) => <SelectItem key={value} value={value}>{VALUE[value].label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
@@ -458,12 +459,17 @@ function MeetingDialog({informant, onOpenChange, onSaved}: {informant: Informant
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
           <div className="space-y-1">
-            <Label>Akta (nem kötelező)</Label>
+            <Label htmlFor="meeting-case">Akta (nem kötelező)</Label>
             <Select value={form.case_id} onValueChange={(value) => setForm((prev) => ({...prev, case_id: value}))}>
-              <SelectTrigger><SelectValue/></SelectTrigger>
+              <SelectTrigger id="meeting-case" className="w-full"><SelectValue/></SelectTrigger>
               <SelectContent className="max-h-72">
                 <SelectItem value="none">Nincs</SelectItem>
-                {cases.map((item) => <SelectItem key={item.id} value={item.id}>{item.case_number} · {item.title}</SelectItem>)}
+                {/* A long title is cut short; the case number stays readable. */}
+                {cases.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    <span className="min-w-0 truncate"><span className="font-mono">{item.case_number}</span> · {item.title}</span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

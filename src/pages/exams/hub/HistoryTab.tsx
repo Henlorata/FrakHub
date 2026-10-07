@@ -84,7 +84,7 @@ export function HistoryTab({exams, canTrash, workingId, onTrash, reloadKey}: His
           <SelectTrigger className="w-full lg:w-64"><SelectValue/></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Minden vizsga</SelectItem>
-            {exams.map((exam) => <SelectItem key={exam.id} value={exam.id}>{exam.title}</SelectItem>)}
+            {exams.map((exam) => <SelectItem key={exam.id} value={exam.id}><span className="truncate">{exam.title}</span></SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={status} onValueChange={(value) => {

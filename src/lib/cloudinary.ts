@@ -52,8 +52,19 @@ export async function uploadToCloudinary(file: File, kind: UploadKind, scope?: s
     body: formData,
   });
   const data = (await response.json().catch(() => ({}))) as {secure_url?: string; error?: {message?: string}};
-  if (!response.ok || !data.secure_url) throw new Error(data.error?.message ?? "Cloudinary feltöltési hiba.");
+  if (!response.ok || !data.secure_url) throw new Error(uploadError(data.error?.message, preset));
   return data.secure_url;
+}
+
+/** Cloudinary answers in English: the usual failures in the app's language. */
+function uploadError(message: string | undefined, preset: string): string {
+  if (!message) return "A kép feltöltése nem sikerült.";
+  if (/upload preset not found/i.test(message)) {
+    return `A képfeltöltés nincs beállítva: a(z) „${preset}” feltöltési beállítás (upload preset) nem létezik a Cloudinary-fiókban. Szólj az oldal karbantartójának.`;
+  }
+  if (/file size too large/i.test(message)) return "A fájl túl nagy a feltöltéshez.";
+  if (/invalid image file|unsupported/i.test(message)) return "A fájl nem érvényes kép.";
+  return `A kép feltöltése nem sikerült (${message}).`;
 }
 
 const isCloudinaryUrl = (url: string) => url.startsWith("https://res.cloudinary.com/") && url.includes("/upload/");

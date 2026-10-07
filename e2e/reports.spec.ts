@@ -69,3 +69,20 @@ test.describe("report form draft", () => {
     await expect(page.getByLabel("Időpont")).toHaveValue(formatStandardDate());
   });
 });
+
+test.describe("calculator to report", () => {
+  test("a sub-offence goes to the report with its main offence", async ({page}) => {
+    await mockSupabase(page);
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/calculator");
+    await page.getByLabel("Keresés a tételek között").fill("Lakott Területen");
+    await page.locator("main button[aria-expanded]").filter({hasText: "Gyorshajtás Lakott Területen"}).first().click();
+    await page.locator("main [data-tour=calc-add]").first().click();
+    await page.getByRole("button", {name: /Jelentés készítése ezekkel/}).click();
+    await expect(page).toHaveURL(/\/reports$/);
+    // "25% (65km/h)" alone would mean nothing in the report.
+    await expect(page.getByPlaceholder("pl. Gyorshajtás, rendőri utasítás megtagadása"))
+      .toHaveValue("Gyorshajtás Lakott Területen (50km/h) – 25% (65km/h)");
+  });
+});

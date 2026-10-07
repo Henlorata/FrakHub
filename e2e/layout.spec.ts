@@ -26,6 +26,10 @@ const data = {
       profiles: {full_name: LONG.slice(0, 64), badge_number: "4001", faction_rank: "Deputy Sheriff II."},
     }],
     fleet_categories: [{id: "other", name: LONG.slice(0, 80), description: LONG.slice(0, 300), unit: null, min_rank: null, tone: "green", sort_order: 1}],
+    // A long organisation name fills the suspects page's filter list.
+    suspects: [{id: "s1", full_name: LONG.slice(0, 120), alias: LONG.slice(0, 80), gender: "male", status: "wanted", mugshot_url: null,
+      description: LONG.slice(0, 300), created_by: TEST_USER_ID, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      gang_affiliation: "Los Santos Vagos Nemzetközi Fegyverkereskedő és Pénzmosó Szövetség"}],
     fleet_vehicles: [{
       id: "fv1", plate: "SFSD-0123456789", model: LONG.slice(0, 60), category_id: "other", game_id: 99999999, station: "Downtown",
       callsign: null, license_name: null, capacity: 2, shared_label: LONG.slice(0, 60), allowed_units: null, min_rank: null,
@@ -211,7 +215,7 @@ test.describe("long unbroken text", () => {
         "/community?tab=ideas", "/leaderboard", "/hr?tab=promotions", "/hr?tab=trainees", "/permissions", "/certificates/SFSD-0000-0001",
         "/mail", "/mail?thread=t1", "/iab", "/iab/case/c1", "/iab/case/c1/print", "/sib", "/sib?tab=page", "/home", "/news", "/news/x",
         "/contact", "/mcb/graph?node=person%3Ap1", "/finance/payslip/2026-09", "/hr/award/commendation/c1", "/mcb/trash", "/hr?tab=reviews",
-        "/profile?tab=reviews"]) {
+        "/profile?tab=reviews", "/mcb/suspects"]) {
         await page.goto(path);
         await page.waitForLoadState("networkidle");
         await expectNoHorizontalOverflow(page, path);

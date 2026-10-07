@@ -280,7 +280,7 @@ function DeleteRankDialog({rank, ranks, holders, onOpenChange, onConfirm}: {
               <SelectTrigger className="w-full"><SelectValue/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Rang nélkül</SelectItem>
-                {others.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                {others.map((item) => <SelectItem key={item.id} value={item.id}><span className="truncate">{item.name}</span></SelectItem>)}
               </SelectContent>
             </Select>
           </div>
