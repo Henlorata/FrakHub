@@ -1,4 +1,5 @@
-import {useEffect, useMemo, useState, type CSSProperties, type ReactNode} from "react";
+import {useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode} from "react";
+import {useLocation} from "react-router";
 import {
   ArrowDownRight, ArrowUpRight, BarChart3, ChartNoAxesColumn, FileText, FolderOpen, Gavel, Handshake, Radar, Scale, Table2, Ticket, Timer,
 } from "lucide-react";
@@ -9,6 +10,7 @@ import {change, compactNumber, penalEntry, statsApi, type DepartmentStats, type 
 import {cn} from "@/lib/utils";
 import {useAuth} from "@/context/AuthContext";
 import {isExecutive} from "@shared/ranks";
+import {ErrorLogCard} from "./ErrorLogCard";
 import {SystemHealthCard} from "./SystemHealthCard";
 
 const PERIODS = [[30, "30 nap"], [90, "90 nap"], [365, "1 év"]] as const;
@@ -37,6 +39,15 @@ export function StatsPage() {
   const [stats, setStats] = useState<DepartmentStats | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const {hash} = useLocation();
+  const scrolled = useRef(false);
+
+  // Arriving from a dashboard task (/stats#rendszer, #hibak): the section, once the charts above it are drawn.
+  useEffect(() => {
+    if (loading || !hash || scrolled.current) return;
+    scrolled.current = true;
+    document.getElementById(hash.slice(1))?.scrollIntoView({block: "start"});
+  }, [loading, hash]);
 
   useEffect(() => {
     let active = true;
@@ -119,6 +130,7 @@ export function StatsPage() {
         </div>
       )}
       {leadership && <SystemHealthCard/>}
+      {leadership && <ErrorLogCard/>}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import {createClient, type RealtimeChannel} from "@supabase/supabase-js";
 import {env} from "./env";
 import {noteRequest} from "./cache-epoch";
+import {reportDatabaseError, setErrorTransport} from "./error-reporting";
 import {sandbox} from "./sandbox/state";
 
 const SUPABASE_URL = env.supabaseUrl || "https://missing-config.invalid";
@@ -35,16 +36,30 @@ const watchMfa = (response: Response) => {
   return response;
 };
 
-const sandboxAwareFetch: typeof fetch = (input, init) => {
-  const backend = sandbox.backend();
-  if (backend) {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (handledInSandbox(url)) return backend.handle(url, init);
+// The error log: database answers that point at a bug (error-reporting.ts decides which).
+const watchErrors = (url: string) => (response: Response) => {
+  if (response.status >= 400 && !url.includes("/rest/v1/rpc/report_client_error")
+      && (url.startsWith(`${SUPABASE_URL}/rest/v1/`) || url.startsWith(`${SUPABASE_URL}/storage/v1/`))) {
+    response.clone().text().then((text) => {
+      let body: Record<string, unknown> | null = null;
+      try {
+        body = JSON.parse(text) as Record<string, unknown> | null;
+      } catch {
+        // An HTML error page of a proxy: the status says enough.
+      }
+      reportDatabaseError(url, response.status, body);
+    }, () => undefined);
   }
+  return response;
+};
+
+const sandboxAwareFetch: typeof fetch = (input, init) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  const backend = sandbox.backend();
+  if (backend && handledInSandbox(url)) return backend.handle(url, init);
   // Writes make the stored lists check their versions again (versioned-cache.ts).
-  noteRequest(typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
-    init?.method ?? (input instanceof Request ? input.method : undefined));
-  return fetch(input, init).then(watchMfa);
+  noteRequest(url, init?.method ?? (input instanceof Request ? input.method : undefined));
+  return fetch(input, init).then(watchMfa).then(watchErrors(url));
 };
 
 /**
@@ -62,6 +77,9 @@ export const supabase = createClient(
   env.supabaseKey || "missing-key",
   {global: {fetch: sandboxAwareFetch}},
 );
+
+// The error log's reports go through this client: as the member, or anonymously on public pages.
+setErrorTransport((report) => supabase.rpc("report_client_error", report));
 
 // --- Practice mode: Realtime stays silent ---------------------------------------------
 

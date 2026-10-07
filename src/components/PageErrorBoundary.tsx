@@ -1,6 +1,7 @@
 import {Component, type ErrorInfo, type ReactNode} from "react";
 import {AlertTriangle, RotateCcw} from "lucide-react";
 import {Button} from "@/components/ui/button";
+import {reportError} from "@/lib/error-reporting";
 import {sandbox} from "@/lib/sandbox/state";
 
 interface State {
@@ -17,6 +18,7 @@ export class PageErrorBoundary extends Component<{children: ReactNode}, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Page render error:", error, info.componentStack);
+    reportError("crash", error, info.componentStack);
   }
 
   render() {

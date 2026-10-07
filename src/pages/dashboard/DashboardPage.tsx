@@ -4,7 +4,7 @@ import {toast} from "sonner";
 import {formatDistanceToNowStrict} from "date-fns";
 import {hu} from "date-fns/locale";
 import {
-  Activity, AlertOctagon, AlertTriangle, ArrowRight, BookCheck, CalendarDays, CalendarOff, CalendarPlus, Car, Check, CheckCircle2,
+  Activity, AlertOctagon, AlertTriangle, ArrowRight, BookCheck, Bug, CalendarDays, CalendarOff, CalendarPlus, Car, Check, CheckCircle2,
   ChevronDown, ChevronRight, ClipboardCheck, Clock, Database, EyeOff, FileSearch, FileText, Fingerprint, Gavel, GraduationCap, Handshake,
   HeartHandshake, HelpCircle, Info, ListTodo, Mail, MapPin, Medal, Megaphone, MessageSquareLock, Pin, Plus, Radar, Receipt, RefreshCw, Scale,
   Shield, Target, Ticket, Trash2, Truck, UserPlus, Vote, X,
@@ -74,6 +74,8 @@ interface DashboardSummary {
   iab_open?: number | null;
   /** The database's size (Executive Staff and Bureau Manager). */
   db_health?: {bytes: number; limit_bytes: number} | null;
+  /** Open rows of the error log (the same leadership). */
+  client_errors?: number | null;
 }
 
 /** The member's month against the requirements (duty time is recorded by staff at the meetings). */
@@ -196,6 +198,7 @@ export function DashboardPage() {
     // Only near the free plan's limit.
     {label: "% adatbázis-tárhely foglalt", value: (dbUsedPercent(summary?.db_health) ?? 0) >= 70 ? dbUsedPercent(summary?.db_health) : 0, icon: Database,
       tone: "orange", to: "/stats#rendszer"},
+    {label: "Nyitott hiba a hibanaplóban", value: summary?.client_errors, icon: Bug, tone: "orange", to: "/stats#hibak"},
   ];
   const openTasks = tasks.filter((task) => (task.value ?? 0) > 0);
 
