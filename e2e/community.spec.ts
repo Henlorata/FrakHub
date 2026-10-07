@@ -122,7 +122,7 @@ test.describe("community", () => {
     expect(JSON.stringify(sent)).not.toContain(String(me.id));
   });
 
-  test("the readers of anonymous feedback land on the inbox, their own reports one tab away", async ({page}) => {
+  test("the readers of anonymous feedback start on their own reports, the inbox one switch away", async ({page}) => {
     const mock = await mockSupabase(page, {
       tables: {profiles: [testProfile({faction_rank: "Captain II.", system_role: "admin"})]},
       rpc: {
@@ -134,9 +134,12 @@ test.describe("community", () => {
     await login(page);
     await expect(page).toHaveURL(/\/dashboard$/);
     await page.goto("/community?tab=feedback");
-    await expect(page.getByText("A gyűlések túl későn kezdődnek, korábban kellene.")).toBeVisible();
-    expect(mock.count("rpc", "get_my_feedback")).toBe(0);
-    await page.goto("/community?tab=feedback&box=mine");
     await expect(page.getByText(/senki – a vezetőség sem – látja, ki írta/)).toBeVisible();
+    expect(mock.count("rpc", "get_feedback_inbox")).toBe(0);
+    await page.getByRole("tab", {name: "Beérkezett"}).click();
+    await expect(page.getByText("A gyűlések túl későn kezdődnek, korábban kellene.")).toBeVisible();
+    // The dashboard counter and the notifications open the inbox directly.
+    await page.goto("/community?tab=feedback&box=inbox");
+    await expect(page.getByText("A gyűlések túl későn kezdődnek, korábban kellene.")).toBeVisible();
   });
 });

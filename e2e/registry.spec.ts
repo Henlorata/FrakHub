@@ -1,5 +1,6 @@
 import {expect, test} from "@playwright/test";
 import {login, mockSupabase, TEST_USER_ID, testProfile} from "./support/mock-supabase";
+import {addDaysKey, formatDate, todayKey} from "../src/lib/datetime";
 
 const DEPUTY_ID = "22222222-2222-4222-8222-222222222222";
 const PENDING_ID = "33333333-3333-4333-8333-333333333333";
@@ -115,5 +116,58 @@ test.describe("HR registry", () => {
     await page.goto("/hr?tab=former");
     await expect(page.getByRole("cell", {name: /Visszatérő Vilmos/})).toBeVisible();
     await expect(page.getByText("Elbocsátva")).toBeVisible();
+  });
+
+  test.describe("approved leave", () => {
+    const day = (offset: number) => addDaysKey(todayKey(), offset);
+    const other = testProfile({id: PENDING_ID, full_name: "Visszatért Vera", badge_number: "2004", faction_rank: "Deputy Sheriff I.", system_role: "user"});
+    const details = (userId: string, activity_status: string) => ({
+      user_id: userId, station: null, parking_spot: null, joined_on: null, join_type: "new", recruited_by: null, activity_status,
+      updated_at: "2026-10-01T10:00:00Z", updated_by: null,
+    });
+    const leaveMock = (me: Record<string, unknown>) => ({
+      tables: {profiles: [me, deputy, other]},
+      rpc: {
+        get_hr_registry: registry({details: [details(DEPUTY_ID, "less_active"), details(PENDING_ID, "inactive")]}),
+        // A list kept from earlier days: Dénes is away now, Vera's leave is over and her next one is
+        // more than 30 days ahead.
+        get_active_leaves: [
+          {user_id: DEPUTY_ID, starts_on: day(-1), ends_on: day(3)},
+          {user_id: PENDING_ID, starts_on: day(-9), ends_on: day(-2)},
+          {user_id: PENDING_ID, starts_on: day(40), ends_on: day(45)},
+        ],
+      },
+    });
+
+    test("is shown for its days, and the status set before comes back after it", async ({page}) => {
+      await mockSupabase(page, leaveMock(testProfile({faction_rank: "Deputy Sheriff III.", system_role: "user"})));
+      await login(page);
+      await expect(page).toHaveURL(/\/dashboard$/);
+      await page.goto("/hr");
+
+      const away = page.locator("tr", {hasText: "Deputy Dénes"});
+      await expect(away.getByText("Szabadságon")).toBeVisible();
+      const back = page.locator("tr", {hasText: "Visszatért Vera"});
+      await expect(back.getByText("Inaktív")).toBeVisible();
+      await expect(back.getByText(/Szabadság/)).toHaveCount(0);
+
+      await away.click();
+      const sheet = page.getByRole("dialog");
+      await sheet.getByRole("tab", {name: "Nyilvántartás"}).click();
+      // The header and the registry's "Aktivitás" both say so; the registry adds the status after it.
+      await expect(sheet.getByText(`Szabadságon ${formatDate(day(3))}-ig`)).toHaveCount(2);
+      await expect(sheet.getByText("utána: Kevésbé aktív")).toBeVisible();
+    });
+
+    test("staff edit the status that applies after the leave", async ({page}) => {
+      await mockSupabase(page, leaveMock(viewer));
+      await login(page);
+      await expect(page).toHaveURL(/\/dashboard$/);
+      await page.goto(`/hr?member=${DEPUTY_ID}`);
+
+      const sheet = page.getByRole("dialog");
+      await sheet.getByRole("tab", {name: "Nyilvántartás"}).click();
+      await expect(sheet.getByText(/Szabadságon .*-ig: addig mindenhol így látszik, a beállított aktivitás a szabadság után érvényes/)).toBeVisible();
+    });
   });
 });

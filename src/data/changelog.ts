@@ -24,6 +24,26 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    id: "2026-10-navigation",
+    title: "Rendezettebb menü, saját gyorsgombok",
+    month: "2026-10",
+    summary: "Becsukható menücsoportok, testreszabható gyors elérés, a szabadság a személyügyi adatlapon, és az oldal magától frissül az új verzióra.",
+    items: [
+      {area: "Menü", title: "Becsukható csoportok",
+        text: "Az oldalsó menü csoportjai (Áttekintés, Operatív, …) a nevükre kattintva becsukhatók, és a böngésző megjegyzi. A becsukott csoportban is látszik az oldal, ahol éppen vagy."},
+      {area: "Irányítópult", title: "Saját gyors elérés",
+        text: "A Gyors elérés Testreszabás gombjával kiválaszthatod és sorba rendezheted a gombokat: oldalakat és gyorsműveleteket (új BOLO, új levél, szabadság igénylése…).",
+        link: "/dashboard"},
+      {area: "Személyügy", title: "Szabadság az adatlapon",
+        text: "A jóváhagyott szabadság napjaiban a tag mindenhol Szabadságon látszik, utána magától visszatér a korábbi aktivitása.",
+        link: "/hr"},
+      {area: "Jelentések", title: "Friss űrlap",
+        text: "A jelentésíró mindig a mai dátummal indul. A félbehagyott jelentést 10 percig őrzi meg, utána üres űrlap fogad."},
+      {area: "Általános", title: "Frissítés magától",
+        text: "Ha közben új verzió jelent meg, a következő oldalváltáskor az oldal magától betölti; nem kell kézzel frissíteni."},
+    ],
+  },
+  {
     id: "2026-10-operations-reviews",
     title: "Műveleti terv, értékelések, helyszínrajz",
     month: "2026-10",

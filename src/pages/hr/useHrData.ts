@@ -10,7 +10,7 @@ import {recentMonths} from "@/lib/registry";
 import {
   type ActiveLeave, type DutyTimeEntry, type HrRecord, type HrRegistry, type MemberDetails, type Profile, type RegistryVehicle,
 } from "@/types/supabase";
-import {todayKey} from "@/lib/datetime";
+import {addDaysKey, todayKey} from "@/lib/datetime";
 
 export interface AwardSummary {
   id: string;
@@ -163,12 +163,15 @@ export function useHrData() {
 
   const members = useMemo<HrMember[]>(() => {
     const now = today();
+    const soon = addDaysKey(now, 30);
     const lastMonth = recentMonths(2)[0];
     const details = new Map(registry.details.map((row) => [row.user_id, row]));
     const accounts = new Map(registry.bank_accounts.map((row) => [row.user_id, row.account_number]));
     return profiles
       .map((member) => {
-        const memberLeaves = leaves.filter((leave) => leave.user_id === member.id)
+        // The stored list holds every approved leave not yet over at the time it was read: the dates
+        // are compared here, so it stays right while it is reused.
+        const memberLeaves = leaves.filter((leave) => leave.user_id === member.id && leave.ends_on >= now && leave.starts_on <= soon)
           .sort((a, b) => a.starts_on.localeCompare(b.starts_on));
         const current = memberLeaves.find((leave) => leave.starts_on <= now && leave.ends_on >= now) ?? null;
         return {

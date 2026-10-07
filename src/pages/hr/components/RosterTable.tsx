@@ -51,7 +51,8 @@ export function RosterTable({members, viewer, staff, busyId, onRankChange, onOpe
       if (status === "leave" && !member.leave) return false;
       if (status === "warning" && member.warnings === 0) return false;
       if (status === "inactive" && (daysSince(member.lastSeen) ?? 999) < INACTIVE_DAYS) return false;
-      if (status === "flagged" && (member.details?.activity_status ?? "active") === "active") return false;
+      // A member on leave counts as inactive for its days; the stored status is the one after it.
+      if (status === "flagged" && !member.onLeaveNow && (member.details?.activity_status ?? "active") === "active") return false;
       if (status === "vehicle" && member.vehicleWarnings === 0
           && !member.vehicles.some((vehicle) => vehicle.registration_required
             && registrationStatus(vehicle.registration_expires_on).state !== "ok")) return false;

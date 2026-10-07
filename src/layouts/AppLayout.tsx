@@ -1,7 +1,7 @@
-import {Suspense, useCallback, useEffect, useState} from "react";
+import {Suspense, useCallback, useEffect, useId, useState} from "react";
 import {Link, Navigate, Outlet, useLocation, useNavigate} from "react-router";
 import {
-  BellRing, ChevronsLeft, ChevronsRight, Loader2, LogOut, Menu, RotateCcw, Search, Sparkles, User,
+  BellRing, ChevronDown, ChevronsLeft, ChevronsRight, Loader2, LogOut, Menu, RotateCcw, Search, Sparkles, User,
 } from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {useSystemStatus} from "@/context/SystemStatusContext";
@@ -24,6 +24,8 @@ import {SystemStatusMenu} from "@/components/layout/SystemStatusMenu";
 import {AppBackdrop} from "@/components/layout/AppBackdrop";
 import {SheriffStar} from "@/components/brand/SheriffStar";
 import {useChangelogUnseen} from "@/lib/changelog";
+import {checkForNewBuild, newBuildDeployed} from "@/lib/app-version";
+import {sandbox} from "@/lib/sandbox/state";
 import {ALERT_LEVELS} from "@/lib/alert-levels";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import {cn} from "@/lib/utils";
@@ -31,6 +33,17 @@ import {pageTitleFor, visibleSections} from "./navigation";
 import type {Profile} from "@/types/supabase";
 
 const COLLAPSED_KEY = "frakhub:sidebar-collapsed";
+/** The menu groups the member has closed (by label), kept in this browser. */
+const CLOSED_GROUPS_KEY = "frakhub:nav-closed";
+
+const readClosedGroups = (): string[] => {
+  try {
+    const value = JSON.parse(localStorage.getItem(CLOSED_GROUPS_KEY) ?? "[]") as unknown;
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+};
 
 /** Inline fallback while a page chunk loads, so the shell stays on screen. */
 export const PageLoader = () => (
@@ -75,6 +88,7 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
   const navigate = useNavigate();
   const {alertLevel} = useSystemStatus();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === "1");
+  const [closedGroups, setClosedGroups] = useState(readClosedGroups);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const showChrome = location.pathname !== "/onboarding";
@@ -113,6 +127,27 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
     });
   }, []);
 
+  const toggleGroup = useCallback((label: string) => {
+    setClosedGroups((current) => {
+      const next = current.includes(label) ? current.filter((item) => item !== label) : [...current, label];
+      localStorage.setItem(CLOSED_GROUPS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  // A deploy since this tab loaded: look when the tab is shown again, and load the new build on the
+  // next page change (not in practice mode, which would end the training).
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void checkForNewBuild();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+  useEffect(() => {
+    if (newBuildDeployed() && !sandbox.isActive()) window.location.reload();
+  }, [location.pathname]);
+
   return (
     <div className="relative flex min-h-screen text-slate-100 selection:bg-primary/30">
       <div className="contents print:hidden">
@@ -126,7 +161,7 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
           collapsed ? "w-[76px]" : "w-64",
         )}>
           <Brand collapsed={collapsed}/>
-          <SidebarNav profile={profile} collapsed={collapsed} tour/>
+          <SidebarNav profile={profile} collapsed={collapsed} closedGroups={closedGroups} onToggleGroup={toggleGroup} tour/>
           <div className="border-t p-3">
             <button
               type="button"
@@ -185,7 +220,8 @@ function Shell({profile, signOut}: {profile: Profile; signOut: () => Promise<voi
         <SheetContent side="left" className="w-72 bg-[#060b16]/95 p-0 backdrop-blur-2xl">
           <SheetTitle className="sr-only">Navigáció</SheetTitle>
           <Brand collapsed={false}/>
-          <SidebarNav profile={profile} collapsed={false} onNavigate={() => setMobileOpen(false)}/>
+          <SidebarNav profile={profile} collapsed={false} closedGroups={closedGroups} onToggleGroup={toggleGroup}
+                      onNavigate={() => setMobileOpen(false)}/>
         </SheetContent>
       </Sheet>
 
@@ -211,58 +247,87 @@ function Brand({collapsed}: {collapsed: boolean}) {
   );
 }
 
-function SidebarNav({profile, collapsed, onNavigate, tour}: {profile: Profile; collapsed: boolean; onNavigate?: () => void; tour?: boolean}) {
+function SidebarNav({profile, collapsed, closedGroups, onToggleGroup, onNavigate, tour}: {
+  profile: Profile;
+  collapsed: boolean;
+  closedGroups: string[];
+  onToggleGroup: (label: string) => void;
+  onNavigate?: () => void;
+  tour?: boolean;
+}) {
   const location = useLocation();
   const {unreadCount} = useNotifications();
+  const groupId = useId();
+  // The icon rail and the trainings (their steps point at menu items) show every group open.
+  const groupsCanClose = !collapsed && !sandbox.isActive();
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(`${path}/`);
+  const badgeOf = (path: string) => (path === "/notifications" && unreadCount > 0 ? unreadCount : 0);
 
   return (
-    <nav data-tour={tour ? "nav" : undefined} className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-      {visibleSections(profile).map((section) => (
-        <div key={section.label}>
-          {!collapsed && (
-            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{section.label}</p>
-          )}
-          {collapsed && <div className="mx-auto mb-2 h-px w-8 bg-white/5"/>}
-          <div className="space-y-0.5">
-            {section.items.map((item) => {
-              const active = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
-              const badge = item.path === "/notifications" && unreadCount > 0 ? unreadCount : 0;
-              const link = (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={onNavigate}
-                  data-tour={tour ? `nav-${item.path.slice(1)}` : undefined}
-                  className={cn(
-                    "group relative flex h-9 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
-                    collapsed && "justify-center px-0",
-                    active ? "bg-gradient-to-r from-white/[0.08] to-white/[0.02] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.05)]" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-100",
-                  )}
-                >
-                  {active && <span className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-r-full bg-[var(--status-color)] shadow-[0_0_12px_var(--status-color)]"/>}
-                  <item.icon className={cn("size-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110",
-                    active ? "text-[var(--status-color)] drop-shadow-[0_0_6px_var(--status-glow)]" : "text-slate-500 group-hover:text-slate-300")}/>
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                  {badge > 0 && (
-                    <span className={cn(
-                      "grid h-[18px] min-w-[18px] place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground tabular-nums",
-                      collapsed ? "absolute top-0.5 right-2" : "ml-auto",
-                    )}>
-                      {badge > 99 ? "99+" : badge}
-                    </span>
-                  )}
-                </Link>
-              );
-              return collapsed ? (
-                <Tooltip key={item.path}>
-                  <TooltipTrigger asChild>{link}</TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
-              ) : link;
-            })}
+    <nav data-tour={tour ? "nav" : undefined} className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+      {visibleSections(profile).map((section, index) => {
+        const closed = groupsCanClose && closedGroups.includes(section.label);
+        // A closed group still shows the page you are on, and the count of what it hides.
+        const items = closed ? section.items.filter((item) => isActive(item.path)) : section.items;
+        const hiddenBadge = closed ? section.items.filter((item) => !isActive(item.path)).reduce((sum, item) => sum + badgeOf(item.path), 0) : 0;
+        return (
+          <div key={section.label}>
+            {collapsed ? (
+              <div className="mx-auto mb-2 h-px w-8 bg-white/5"/>
+            ) : (
+              <button type="button" onClick={() => onToggleGroup(section.label)} aria-expanded={!closed} aria-controls={`${groupId}-${index}`}
+                      className="group/section mb-1 flex h-6 w-full items-center gap-2 rounded-md px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:text-slate-300">
+                <span className="truncate">{section.label}</span>
+                {hiddenBadge > 0 && (
+                  <span className="grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[9px] font-bold tracking-normal text-primary-foreground tabular-nums">
+                    {hiddenBadge > 99 ? "99+" : hiddenBadge}
+                  </span>
+                )}
+                <ChevronDown className={cn("ml-auto size-3.5 shrink-0 opacity-50 transition-[transform,opacity] duration-200 group-hover/section:opacity-100",
+                  closed && "-rotate-90")}/>
+              </button>
+            )}
+            <div id={`${groupId}-${index}`} className="space-y-0.5">
+              {items.map((item) => {
+                const active = isActive(item.path);
+                const badge = badgeOf(item.path);
+                const link = (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={onNavigate}
+                    data-tour={tour ? `nav-${item.path.slice(1)}` : undefined}
+                    className={cn(
+                      "group relative flex h-9 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
+                      collapsed && "justify-center px-0",
+                      active ? "bg-gradient-to-r from-white/[0.08] to-white/[0.02] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.05)]" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-100",
+                    )}
+                  >
+                    {active && <span className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-r-full bg-[var(--status-color)] shadow-[0_0_12px_var(--status-color)]"/>}
+                    <item.icon className={cn("size-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110",
+                      active ? "text-[var(--status-color)] drop-shadow-[0_0_6px_var(--status-glow)]" : "text-slate-500 group-hover:text-slate-300")}/>
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                    {badge > 0 && (
+                      <span className={cn(
+                        "grid h-[18px] min-w-[18px] place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground tabular-nums",
+                        collapsed ? "absolute top-0.5 right-2" : "ml-auto",
+                      )}>
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+                return collapsed ? (
+                  <Tooltip key={item.path}>
+                    <TooltipTrigger asChild>{link}</TooltipTrigger>
+                    <TooltipContent side="right">{item.label}</TooltipContent>
+                  </Tooltip>
+                ) : link;
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </nav>
   );
 }

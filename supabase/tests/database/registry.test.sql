@@ -1,7 +1,7 @@
 -- HR registry tests: bank accounts, member details, duty time and former members (the fleet
 -- has its own file). Run with: bunx supabase test db
 begin;
-select plan(23);
+select plan(26);
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,
@@ -112,6 +112,20 @@ select pg_temp.act_as((select sergeant_id from ids));
 select ok(json_array_length(public.get_hr_registry() -> 'bank_accounts') >= 1, 'staff get bank accounts in the registry');
 select pg_temp.act_anon();
 select throws_ok($$select public.get_hr_registry()$$, '42501', null, 'anon cannot read the registry');
+
+-- --- Approved leaves (the HR page shows "Szabadságon" for their days) ------------------
+select pg_temp.act_postgres();
+insert into public.hr_records (user_id, kind, title, starts_on, ends_on, status) values
+  ((select deputy_id from ids), 'leave', 'Távoli szabadság', current_date + 40, current_date + 50, 'active'),
+  ((select deputy_id from ids), 'leave', 'Lejárt szabadság', current_date - 10, current_date - 1, 'active'),
+  ((select deputy_id from ids), 'leave', 'Kérelem', current_date + 2, current_date + 3, 'pending');
+select pg_temp.act_as((select operator_id from ids));
+select ok(exists (select 1 from public.get_active_leaves() l where l.user_id = (select deputy_id from ids) and l.starts_on = current_date + 40),
+  'a leave approved far ahead is listed (the page keeps the list between visits)');
+select ok(not exists (select 1 from public.get_active_leaves() l where l.user_id = (select deputy_id from ids) and l.starts_on = current_date - 10),
+  'a leave that is over is not');
+select ok(not exists (select 1 from public.get_active_leaves() l where l.user_id = (select deputy_id from ids) and l.starts_on = current_date + 2),
+  'nor a request waiting for approval');
 
 select * from finish();
 rollback;

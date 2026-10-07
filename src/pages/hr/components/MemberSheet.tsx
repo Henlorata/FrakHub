@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {Link} from "react-router";
 import {toast} from "sonner";
 import {
@@ -59,7 +59,7 @@ export function MemberSheet(props: MemberSheetProps) {
   const {member, onOpenChange} = props;
   return (
     <Sheet open={!!member} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-2xl" data-tour="member-sheet">
+      <SheetContent className="sm:max-w-3xl" data-tour="member-sheet">
         {member && <MemberSheetBody key={member.id} {...props} member={member}/>}
       </SheetContent>
     </Sheet>
@@ -69,6 +69,11 @@ export function MemberSheet(props: MemberSheetProps) {
 function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove, onRecordChanged, onAwardsChanged, onSaveDetails,
   onSaveBankAccount}: MemberSheetProps & {member: HrMember}) {
   const [tab, setTab] = useState("profile");
+  // On a narrow screen the tabs scroll sideways: keep the chosen one in view.
+  const tabList = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    tabList.current?.querySelector<HTMLElement>("[data-state=active]")?.scrollIntoView({block: "nearest", inline: "nearest"});
+  }, [tab]);
   const division = DIVISION_META[member.division] ?? DIVISION_META.TSB;
   const allowedRanks = useMemo(
     () => getAllowedPromotionRanks(viewer).filter((rank) => rank !== member.faction_rank && canAssignRank(viewer, member, rank)),
@@ -144,7 +149,8 @@ function MemberSheetBody({member, viewer, busy, onRankChange, onUpdate, onRemove
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
-        <TabsList className="mx-5 mt-4 w-auto justify-start self-start">
+        <TabsList ref={tabList}
+                  className="mx-5 mt-4 max-w-[calc(100%-2.5rem)] justify-start self-start overflow-x-auto [scrollbar-width:none] [&>*]:shrink-0 [&>*]:px-2.5 [&::-webkit-scrollbar]:hidden">
           <TabsTrigger value="profile"><ShieldCheck className="size-3.5"/> Adatlap</TabsTrigger>
           <TabsTrigger value="registry"><ClipboardList className="size-3.5"/> Nyilvántartás</TabsTrigger>
           <TabsTrigger value="history"><History className="size-3.5"/> Előzmények</TabsTrigger>
