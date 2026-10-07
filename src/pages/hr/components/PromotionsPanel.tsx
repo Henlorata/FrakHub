@@ -21,6 +21,7 @@ import type {Profile} from "@/types/supabase";
 import {RankPill} from "./RankControls";
 import {formatSpan} from "../hr-utils";
 import type {HrMember} from "../useHrData";
+import {formatPeriod, formatScore} from "@/lib/reviews";
 
 type Filter = "ready" | "close" | "all";
 
@@ -322,6 +323,11 @@ function BoardRow({member, index, viewer, hrMember, busy, onOpen, onNominate, on
             <ArrowRight className="size-3 text-slate-500"/>
             {member.next_rank && <RankPill rank={member.next_rank} className="h-5 text-[11px]"/>}
             <span className="text-[11px] text-slate-500">· {formatSpan(member.days_in_rank)} a rangban</span>
+            {member.last_review && (
+              <span className="text-[11px] text-amber-200/90" title="A legutóbbi teljesítményértékelés átlaga">
+                · értékelés: {formatScore(member.last_review.overall)} ({formatPeriod(member.last_review.period)})
+              </span>
+            )}
           </div>
           {member.configured ? (
             <ul className="mt-2 flex flex-wrap gap-1.5">

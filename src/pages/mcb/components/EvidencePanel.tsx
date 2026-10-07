@@ -1,5 +1,5 @@
 import {useState} from "react";
-import {Check, FileText, Image as ImageIcon, MoreVertical, Paperclip, Pencil, Plus, ScrollText, Trash2, UploadCloud, X} from "lucide-react";
+import {Brush, Check, FileText, Image as ImageIcon, MoreVertical, Paperclip, Pencil, Plus, ScrollText, Trash2, UploadCloud, X} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {EmptyState} from "@/components/layout/EmptyState";
@@ -22,10 +22,12 @@ interface EvidencePanelProps {
   onInsert: (id: string) => void;
   onRename: (item: CaseEvidence, name: string) => Promise<boolean>;
   onDelete: (item: CaseEvidence) => void;
+  /** Draw on a copy of an uploaded picture (the original stays as it is). */
+  onAnnotate?: (item: CaseEvidence) => void;
 }
 
 /** The case's evidence as a numbered gallery (#1 = first upload). */
-export function EvidencePanel({evidence, numbers, usage, canEdit, canDelete, onUpload, onView, onInsert, onRename, onDelete}: EvidencePanelProps) {
+export function EvidencePanel({evidence, numbers, usage, canEdit, canDelete, onUpload, onView, onInsert, onRename, onDelete, onAnnotate}: EvidencePanelProps) {
   const [renaming, setRenaming] = useState<{id: string; name: string} | null>(null);
   const [filter, setFilter] = useState<"all" | "image" | "document" | "unused">("all");
   const sorted = [...evidence].sort((a, b) => (numbers.get(a.id) ?? 0) - (numbers.get(b.id) ?? 0));
@@ -133,6 +135,9 @@ export function EvidencePanel({evidence, numbers, usage, canEdit, canDelete, onU
                         )}
                         {canEdit && (
                           <DropdownMenuItem onSelect={() => setRenaming({id: item.id, name: item.file_name})}><Pencil className="size-4"/> Átnevezés</DropdownMenuItem>
+                        )}
+                        {canEdit && image && onAnnotate && (
+                          <DropdownMenuItem onSelect={() => onAnnotate(item)}><Brush className="size-4"/> Jelölt másolat</DropdownMenuItem>
                         )}
                         {canDelete(item) && (
                           <>

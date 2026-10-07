@@ -1,6 +1,6 @@
 import {
-  AlertTriangle, Banknote, Bell, CalendarDays, CheckCircle2, ClipboardList, Fingerprint, GraduationCap, Info,
-  Megaphone, ShieldCheck, Siren, Truck, Users, type LucideIcon,
+  AlertTriangle, Banknote, Bell, CalendarDays, CheckCircle2, ClipboardList, Fingerprint, GraduationCap, Info, Mail,
+  Megaphone, Radar, Scale, ShieldCheck, Siren, Truck, Users, UsersRound, type LucideIcon,
 } from "lucide-react";
 import type {NotificationCategory, NotificationType} from "@/types/supabase";
 
@@ -22,11 +22,15 @@ export const NOTIFICATION_CATEGORIES: Record<NotificationCategory, CategoryMeta>
   finance: {label: "Pénzügy", icon: Banknote, tone: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20", mutable: true},
   announcement: {label: "Hirdetmények", icon: Megaphone, tone: "bg-yellow-500/10 text-yellow-400 ring-yellow-500/20", mutable: true},
   event: {label: "Események", icon: CalendarDays, tone: "bg-rose-500/10 text-rose-300 ring-rose-500/20", mutable: true},
+  patrol: {label: "BOLO, körözések", icon: Radar, tone: "bg-red-500/10 text-red-300 ring-red-500/20", mutable: true},
+  community: {label: "Közösség", icon: UsersRound, tone: "bg-violet-500/10 text-violet-300 ring-violet-500/20", mutable: true},
+  mail: {label: "Levelezés", icon: Mail, tone: "bg-indigo-500/10 text-indigo-300 ring-indigo-500/20", mutable: true},
+  iab: {label: "Belső vizsgálatok", icon: Scale, tone: "bg-fuchsia-500/10 text-fuchsia-300 ring-fuchsia-500/20", mutable: true},
   system: {label: "Rendszer", icon: ShieldCheck, tone: "bg-slate-500/10 text-slate-300 ring-slate-500/20", mutable: false},
 };
 
 export const CATEGORY_ORDER: NotificationCategory[] = [
-  "hr", "mcb", "exam", "academy", "logistics", "finance", "announcement", "event", "system",
+  "mail", "hr", "mcb", "patrol", "iab", "exam", "academy", "logistics", "finance", "announcement", "event", "community", "system",
 ];
 
 export const NOTIFICATION_TYPES: Record<NotificationType, {label: string; icon: LucideIcon; accent: string; dot: string}> = {

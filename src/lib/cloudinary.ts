@@ -3,7 +3,7 @@ import {env} from "./env";
 import {compressImage, type CompressOptions} from "./image-compression";
 import {sandbox} from "./sandbox/state";
 
-export type UploadKind = "evidence" | "avatar" | "academy" | "mugshot";
+export type UploadKind = "evidence" | "avatar" | "academy" | "mugshot" | "bolo" | "organization" | "news" | "site";
 
 interface UploadSettings extends CompressOptions {
   /** Upload preset (env) to use; defaults to the kind itself. */
@@ -21,6 +21,13 @@ const UPLOAD_SETTINGS: Record<UploadKind, UploadSettings> = {
   academy: {resourceType: "image", folder: (pageId) => `academy/${pageId}`, maxDimension: 1920, quality: 0.88},
   // Photos of registered persons: the avatar preset, in their own folder.
   mugshot: {preset: "avatar", resourceType: "image", folder: () => "mugshots", maxDimension: 768, quality: 0.9},
+  // BOLO pictures (a vehicle, a wanted person): the avatar preset, smaller than evidence.
+  bolo: {preset: "avatar", resourceType: "image", folder: () => "bolo", maxDimension: 1280, quality: 0.85},
+  // Crime organisations' logos and colours (MCB).
+  organization: {preset: "avatar", resourceType: "image", folder: () => "organizations", maxDimension: 512, quality: 0.9},
+  // The public front page: news pictures and the gallery (the SIB), delivered with f_auto/q_auto and bounded widths.
+  news: {preset: "academy", resourceType: "image", folder: () => "news", maxDimension: 2000, quality: 0.86},
+  site: {preset: "academy", resourceType: "image", folder: () => "site", maxDimension: 2000, quality: 0.86},
 };
 
 /**

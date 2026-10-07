@@ -2,7 +2,7 @@ import {useCallback, useEffect, useMemo, useState, type CSSProperties} from "rea
 import {Link, useNavigate} from "react-router";
 import {
   ArrowDownWideNarrow, CalendarClock, Check, ChevronRight, FilePlus2, FileText, FolderLock, FolderOpen, Fingerprint, Gavel, LayoutGrid, ListTodo, Lock,
-  Paperclip, Rows3, Search, Siren, Sparkles, Users, X,
+  Paperclip, Rows3, Search, Siren, Sparkles, Trash2, Users, X,
 } from "lucide-react";
 import {toast} from "sonner";
 import {Button} from "@/components/ui/button";
@@ -338,6 +338,9 @@ export function McbDashboard() {
                 <Rows3 className="size-4"/>
               </button>
             </div>
+            <Button asChild size="icon" variant="ghost" className="size-10" title="Lomtár" aria-label="Lomtár">
+              <Link to="/mcb/trash"><Trash2 className="size-4"/></Link>
+            </Button>
             <Button onClick={() => setNewOpen(true)} data-tour="mcb-new-case" className="h-10 bg-sky-600 text-white shadow-[0_0_24px_-6px_rgb(14_165_233/0.8)] hover:bg-sky-500">
               <FilePlus2 className="size-4"/> Új akta
             </Button>

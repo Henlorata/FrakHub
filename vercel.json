@@ -6,6 +6,17 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/news/:slug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(Discordbot|facebookexternalhit|Facebot|Twitterbot|Slackbot|TelegramBot|WhatsApp|LinkedInBot|Embedly|SkypeUriPreview|redditbot).*"
+        }
+      ],
+      "destination": "/api/news-preview?slug=:slug"
+    },
+    {
       "source": "/((?!api/|.*\\..*|@vite|@react-refresh).*)",
       "destination": "/index.html"
     }

@@ -1,16 +1,20 @@
 import {Suspense} from "react";
 import {Link, Navigate, Outlet, useLocation} from "react-router";
-import {FolderKanban, Gavel, LayoutTemplate, LineChart, ShieldQuestion, UserSearch} from "lucide-react";
+import {FolderKanban, Gavel, LayoutTemplate, LineChart, Network, ShieldQuestion, UserSearch, Waypoints} from "lucide-react";
 import {useAuth} from "@/context/AuthContext";
 import {SuspectCacheProvider} from "@/context/SuspectCacheContext";
+import {useBureauCatalog} from "@/lib/bureaus";
 import {canViewCaseList, cn} from "@/lib/utils";
 import {canViewMcbOverview, isMcbLead} from "@/lib/mcb";
 import {PageLoader} from "@/layouts/AppLayout";
+import {BRAND_IMAGES} from "@/lib/brand";
 
 /** MCB area shell. AppLayout already guarantees a signed-in, approved profile. */
 export function McbLayout() {
   const {profile} = useAuth();
   const location = useLocation();
+  // The MCB rights of a bureau rank follow the bureau's own list (the privileged flag).
+  useBureauCatalog(!!profile && canViewCaseList(profile));
 
   // Same rule as the sidebar entry (single source: canViewCaseList).
   if (!profile || !canViewCaseList(profile)) return <Navigate to="/dashboard" replace/>;
@@ -21,6 +25,8 @@ export function McbLayout() {
   const links = [
     {path: "/mcb", label: "Akták", icon: FolderKanban, exact: true},
     {path: "/mcb/suspects", label: "Nyilvántartás", icon: UserSearch},
+    {path: "/mcb/organizations", label: "Szervezetek", icon: Network},
+    {path: "/mcb/graph", label: "Kapcsolati háló", icon: Waypoints},
     {path: "/mcb/warrants", label: "Parancsok", icon: Gavel},
     ...(canViewMcbOverview(profile) ? [{path: "/mcb/admin", label: "Vezetés", icon: LineChart}] : []),
     ...(isMcbLead(profile) ? [{path: "/mcb/templates", label: "Sablonok", icon: LayoutTemplate}] : []),
@@ -37,7 +43,7 @@ export function McbLayout() {
             <div className="flex items-center gap-3">
               <div className="relative grid size-11 place-items-center">
                 <span className="absolute inset-0 rounded-2xl bg-sky-500/20 blur-lg"/>
-                <img src="/mcb.png" alt="" className="relative size-11 object-contain drop-shadow-[0_0_10px_rgb(56_189_248/0.45)]"/>
+                <img src={BRAND_IMAGES.mcb} alt="" className="relative size-11 object-contain drop-shadow-[0_0_10px_rgb(56_189_248/0.45)]"/>
               </div>
               <div>
                 <p className="text-[11px] font-semibold tracking-[0.2em] text-sky-400 uppercase">Major Crimes Bureau</p>

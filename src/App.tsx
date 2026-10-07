@@ -1,6 +1,6 @@
 import {lazy, Suspense, type ComponentType} from "react";
 import {BrowserRouter, Navigate, Route, Routes} from "react-router";
-import {AuthProvider} from "@/context/AuthContext";
+import {AuthProvider, useAuth} from "@/context/AuthContext";
 import {SystemStatusProvider} from "@/context/SystemStatusContext";
 import {Toaster} from "@/components/ui/sonner";
 import {LoadingScreen} from "@/components/ui/loading-screen";
@@ -43,6 +43,8 @@ const WarrantsPage = lazyPage(() => import("@/pages/mcb/WarrantsPage"), "Warrant
 const CasePrintPage = lazyPage(() => import("@/pages/mcb/CasePrintPage"), "CasePrintPage");
 const TemplatesPage = lazyPage(() => import("@/pages/mcb/TemplatesPage"), "TemplatesPage");
 const InformantsPage = lazyPage(() => import("@/pages/mcb/InformantsPage"), "InformantsPage");
+const OrganizationsPage = lazyPage(() => import("@/pages/mcb/OrganizationsPage"), "OrganizationsPage");
+const OrganizationPage = lazyPage(() => import("@/pages/mcb/OrganizationPage"), "OrganizationPage");
 const ExamHub = lazyPage(() => import("@/pages/exams/ExamHub"), "ExamHub");
 const ExamEditor = lazyPage(() => import("@/pages/exams/ExamEditor"), "ExamEditor");
 const ExamGradingPage = lazyPage(() => import("@/pages/exams/grading/ExamGradingPage"), "ExamGradingPage");
@@ -57,6 +59,34 @@ const CodesPage = lazyPage(() => import("@/pages/codes/CodesPage"), "CodesPage")
 const ChangelogPage = lazyPage(() => import("@/pages/changelog/ChangelogPage"), "ChangelogPage");
 const PoliciesPage = lazyPage(() => import("@/pages/community/PoliciesPage"), "PoliciesPage");
 const CommunityPage = lazyPage(() => import("@/pages/community/CommunityPage"), "CommunityPage");
+const BriefingPage = lazyPage(() => import("@/pages/briefing/BriefingPage"), "BriefingPage");
+const StatsPage = lazyPage(() => import("@/pages/stats/StatsPage"), "StatsPage");
+const MailPage = lazyPage(() => import("@/pages/mail/MailPage"), "MailPage");
+const HomePage = lazyPage(() => import("@/pages/home/HomePage"), "HomePage");
+const NewsListPage = lazyPage(() => import("@/pages/home/NewsListPage"), "NewsListPage");
+const NewsArticlePage = lazyPage(() => import("@/pages/home/NewsArticlePage"), "NewsArticlePage");
+const ContactPage = lazyPage(() => import("@/pages/home/ContactPage"), "ContactPage");
+const GraphPage = lazyPage(() => import("@/pages/mcb/GraphPage"), "GraphPage");
+const CaseTrashPage = lazyPage(() => import("@/pages/mcb/CaseTrashPage"), "CaseTrashPage");
+const SibPage = lazyPage(() => import("@/pages/sib/SibPage"), "SibPage");
+const NewsEditorPage = lazyPage(() => import("@/pages/sib/NewsEditorPage"), "NewsEditorPage");
+const IabPage = lazyPage(() => import("@/pages/iab/IabPage"), "IabPage");
+const IabCasePage = lazyPage(() => import("@/pages/iab/IabCasePage"), "IabCasePage");
+const IabCasePrintPage = lazyPage(() => import("@/pages/iab/IabCasePrintPage"), "IabCasePrintPage");
+const PayslipPrintPage = lazyPage(() => import("@/pages/finance/PayslipPrintPage"), "PayslipPrintPage");
+const AwardCertificatePage = lazyPage(() => import("@/pages/hr/AwardCertificatePage"), "AwardCertificatePage");
+
+/**
+ * "/": visitors get the public front page, signed-in members their dashboard (the front page stays
+ * at /home). Small and eager, so members never download the front page just to be sent on.
+ */
+function HomeGate() {
+  const {session, loading} = useAuth();
+  if (session) return <Navigate to="/dashboard" replace/>;
+  // The stored session is checked first (instant without one).
+  if (loading) return <LoadingScreen/>;
+  return <HomePage/>;
+}
 
 function AppRoutes() {
   return (
@@ -67,14 +97,27 @@ function AppRoutes() {
         <Route path="/exam/public/:examId" element={<PublicExamPage/>}/>
         <Route path="/certificates" element={<CertificatePage/>}/>
         <Route path="/certificates/:code" element={<CertificatePage/>}/>
+        <Route path="/home" element={<HomePage/>}/>
+        <Route path="/news" element={<NewsListPage/>}/>
+        <Route path="/news/:slug" element={<NewsArticlePage/>}/>
+        <Route path="/contact" element={<ContactPage/>}/>
 
         <Route element={<AppLayout/>}>
           <Route path="/dashboard" element={<DashboardPage/>}/>
           <Route path="/onboarding" element={<OnboardingPage/>}/>
           <Route path="/notifications" element={<NotificationsPage/>}/>
+          <Route path="/briefing" element={<BriefingPage/>}/>
+          <Route path="/stats" element={<StatsPage/>}/>
+          <Route path="/mail" element={<MailPage/>}/>
+          <Route path="/sib" element={<SibPage/>}/>
+          <Route path="/sib/news/:postId" element={<NewsEditorPage/>}/>
+          <Route path="/iab" element={<IabPage/>}/>
+          <Route path="/iab/case/:caseId" element={<IabCasePage/>}/>
+          <Route path="/iab/case/:caseId/print" element={<IabCasePrintPage/>}/>
           <Route path="/reports" element={<ReportsPage/>}/>
           <Route path="/hr" element={<HrPage/>}/>
           <Route path="/hr/record/:userId" element={<ServiceRecordPage/>}/>
+          <Route path="/hr/award/:kind/:id" element={<AwardCertificatePage/>}/>
 
           <Route path="/mcb" element={<McbLayout/>}>
             <Route index element={<McbDashboard/>}/>
@@ -85,6 +128,10 @@ function AppRoutes() {
             <Route path="warrants" element={<WarrantsPage/>}/>
             <Route path="templates" element={<TemplatesPage/>}/>
             <Route path="informants" element={<InformantsPage/>}/>
+            <Route path="organizations" element={<OrganizationsPage/>}/>
+            <Route path="organizations/:orgId" element={<OrganizationPage/>}/>
+            <Route path="graph" element={<GraphPage/>}/>
+            <Route path="trash" element={<CaseTrashPage/>}/>
           </Route>
 
           <Route path="/exams" element={<ExamHub/>}/>
@@ -94,6 +141,7 @@ function AppRoutes() {
           <Route path="/logistics" element={<LogisticsPage/>}/>
           <Route path="/logistics/fleet/:vehicleId" element={<VehiclePage/>}/>
           <Route path="/finance" element={<FinancePage/>}/>
+          <Route path="/finance/payslip/:month" element={<PayslipPrintPage/>}/>
           <Route path="/profile" element={<ProfilePage/>}/>
           <Route path="/calculator" element={<CalculatorPage/>}/>
           <Route path="/academy" element={<AcademyPage/>}/>
@@ -107,7 +155,7 @@ function AppRoutes() {
           <Route path="/permissions" element={<PermissionsPage/>}/>
         </Route>
 
-        <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
+        <Route path="/" element={<HomeGate/>}/>
         <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
       </Routes>
     </Suspense>

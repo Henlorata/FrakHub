@@ -4,7 +4,6 @@ import {
   canManageUserQualification,
   canManageUserRank,
   getAllowedPromotionRanks,
-  getDivisionRanks,
   isDivision,
   isFactionRank,
   isQualification,
@@ -102,19 +101,46 @@ export const POST = handle("admin/update-role", async (request) => {
     }
   }
 
-  // --- Division and bureau rank ---
-  if (body.division !== undefined || body.division_rank !== undefined) {
+  // --- Division, bureau rank and titles (the bureau's own lists: division_ranks, division_titles) ---
+  if (body.division !== undefined || body.division_rank !== undefined || body.division_titles !== undefined) {
     const division = body.division ?? target.division;
     if (!isDivision(division)) throw new HttpError(400, "Ismeretlen osztály.");
-    let divisionRank = body.division_rank === undefined ? target.division_rank : body.division_rank;
-    if (divisionRank === "" || division === "TSB") divisionRank = null;
-    if (divisionRank !== null && (typeof divisionRank !== "string" || !getDivisionRanks(division).includes(divisionRank))) {
-      throw new HttpError(400, "Érvénytelen alosztály rang.");
+    const [ranks, titles] = await Promise.all([
+      supabase.from("division_ranks").select("name").eq("division", division),
+      supabase.from("division_titles").select("id").eq("division", division),
+    ]);
+    if (ranks.error) throw ranks.error;
+    if (titles.error) throw titles.error;
+    const rankNames = (ranks.data ?? []).map((row: {name: string}) => row.name);
+    const titleIds = (titles.data ?? []).map((row: {id: string}) => row.id);
+    const movesDivision = division !== target.division;
+
+    const requestedRank: unknown = body.division_rank === undefined ? target.division_rank : body.division_rank;
+    if (requestedRank !== null && requestedRank !== "" && typeof requestedRank !== "string") throw new HttpError(400, "Érvénytelen alosztály rang.");
+    let divisionRank: string | null = requestedRank ? (requestedRank as string) : null;
+    // Moving to another division without a new rank: a rank that does not exist there is dropped.
+    if (movesDivision && body.division_rank === undefined && divisionRank && !rankNames.includes(divisionRank)) divisionRank = null;
+    if (divisionRank !== null && !rankNames.includes(divisionRank)) throw new HttpError(400, "Érvénytelen alosztály rang.");
+
+    const currentTitles = target.division_titles ?? [];
+    let nextTitles: string[];
+    if (body.division_titles === undefined) {
+      nextTitles = currentTitles.filter((id) => titleIds.includes(id));
+    } else {
+      const requested = body.division_titles;
+      if (!Array.isArray(requested) || !requested.every((id) => typeof id === "string" && titleIds.includes(id))) {
+        throw new HttpError(400, "Érvénytelen cím: csak az osztály saját címei adhatók.");
+      }
+      nextTitles = [...new Set(requested as string[])];
     }
-    if (division !== target.division || divisionRank !== (target.division_rank ?? null)) {
+
+    const rankChanged = movesDivision || divisionRank !== (target.division_rank ?? null);
+    const titlesChanged = !sameSet(nextTitles, currentTitles);
+    if (rankChanged || titlesChanged) {
       if (!canManageUserDivision(caller, target)) throw new HttpError(403, "Nincs jogosultságod az osztály módosításához.");
-      if (division !== target.division) changes.division = division;
-      changes.division_rank = divisionRank ?? "";
+      if (movesDivision) changes.division = division;
+      if (rankChanged) changes.division_rank = divisionRank ?? "";
+      if (titlesChanged) changes.division_titles = nextTitles;
     }
   }
 

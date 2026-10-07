@@ -6,6 +6,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
+import {DivisionTitleBadges} from "@/components/hr/DivisionTitleBadges";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {Badge} from "@/components/ui/badge";
 import {ScrollArea} from "@/components/ui/scroll-area";
@@ -331,6 +332,7 @@ export function OfficerProfileDialog({open, onOpenChange, userId, caseId}: Offic
                             className="p-2 bg-slate-900/50 border border-slate-800 rounded flex-1 flex items-center min-h-[44px]">
                             <p
                               className="text-xs text-blue-200 font-bold">{profile.division_rank || "Nincs rögzítve"}</p>
+                            <DivisionTitleBadges ids={profile.division_titles} className="ml-2"/>
                           </div>
                         </div>
 

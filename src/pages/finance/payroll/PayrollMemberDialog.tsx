@@ -1,11 +1,13 @@
 import {useState, type ReactNode} from "react";
-import {Info, RotateCcw} from "lucide-react";
+import {Link} from "react-router";
+import {Info, Printer, RotateCcw} from "lucide-react";
 import {Dialog, DialogContent, DialogDescription, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {autoFormatDuty, formatAccountNumber, formatDuty, parseDuty} from "@/lib/registry";
 import {formatMoney} from "@/lib/finance";
+import {payslipHref} from "@/lib/documents";
 import {cn} from "@/lib/utils";
 import type {PayrollInput, PayrollRow, PayrollSettings} from "@/types/finance";
 import {MemberAvatar} from "../components/MemberAvatar";
@@ -17,6 +19,8 @@ interface PayrollMemberDialogProps {
   input: PayrollInput;
   settings: PayrollSettings;
   editable: boolean;
+  /** The month when it is closed: its payslip can be printed. */
+  closedMonth?: string | null;
   onInput: (patch: Partial<PayrollInput>) => void;
   onClose: () => void;
 }
@@ -28,7 +32,7 @@ const selectClass = "h-9 w-full rounded-md bg-white/[0.03] px-2 text-sm text-sla
  * frequent ones too: unit, qualification, note, account number). Changes go to the sheet's
  * unsaved changes; the sheet's Save button stores them.
  */
-export function PayrollMemberDialog({row, input, settings, editable, onInput, onClose}: PayrollMemberDialogProps) {
+export function PayrollMemberDialog({row, input, settings, editable, closedMonth, onInput, onClose}: PayrollMemberDialogProps) {
   const [duty, setDuty] = useState(input.duty_minutes ? formatDuty(input.duty_minutes, true) : "");
   const [account, setAccount] = useState(input.account_number ?? "");
   const dutyInvalid = duty.trim() !== "" && parseDuty(duty) === null;
@@ -57,6 +61,11 @@ export function PayrollMemberDialog({row, input, settings, editable, onInput, on
             <DialogTitle className="truncate">{row.name}</DialogTitle>
             <DialogDescription className="truncate">{row.rank} · #{row.badge_number} · {row.division}</DialogDescription>
           </div>
+          {closedMonth && (
+            <Button size="sm" variant="outline" asChild className="shrink-0">
+              <Link to={payslipHref(closedMonth, row.user_id)}><Printer/> Fizetési papír</Link>
+            </Button>
+          )}
           <div className="text-right">
             <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Összesen</p>
             <p className={cn("font-mono text-2xl font-semibold tabular-nums", row.total > 0 ? "text-emerald-300" : "text-slate-500")}>{formatMoney(row.total)}</p>

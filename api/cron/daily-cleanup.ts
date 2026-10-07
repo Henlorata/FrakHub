@@ -1,12 +1,9 @@
 import {createHash, timingSafeEqual} from "node:crypto";
 import {serverEnv} from "../_lib/env.js";
+import {purgeCase} from "../_lib/cases.js";
 import {getBearerToken, handle, HttpError, json} from "../_lib/http.js";
 import {getSupabaseAdmin} from "../_lib/supabase.js";
 import {PENAL_CODE_RELEASE} from "../../shared/penal-changelog.js";
-
-const RETENTION_DAYS = {closedRequests: 40, actionLogs: 1, readNotifications: 30, notifications: 120};
-
-const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
 const sameSecret = (provided: string, expected: string) => {
   // Hashing first makes the comparison constant-time regardless of input length.
@@ -30,9 +27,10 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
 
   const supabase = getSupabaseAdmin();
   const results = {
-    financeProofsCleared: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0,
+    financeProofsCleared: 0, financeFilesDeleted: 0, vehicleDeleted: 0, actionsDeleted: 0, notificationsDeleted: 0, bolosDeleted: 0,
+    databaseMb: null as number | null,
     registrationReminders: 0, registrationFilesDeleted: 0, registrationReviewsExpired: 0, examAttemptsClosed: 0, eventReminders: 0,
-    warrantsLapsed: 0, mcbReminders: 0, penalCodeAnnounced: false,
+    warrantsLapsed: 0, mcbReminders: 0, casesPurged: 0, penalCodeAnnounced: false,
     errors: [] as string[],
   };
   const fail = (step: string, error: unknown) => {
@@ -59,44 +57,24 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
     fail("finance", error);
   }
 
-  // 2. Closed vehicle requests older than the retention period.
+  // 2-4. Housekeeping in one database call (run_housekeeping): read notifications after a month and
+  //      everything after four, the calculator's log after 400 days (the statistics look a year back),
+  //      decided vehicle requests after 120 days (the fleet's 90-day view), closed BOLOs after a year,
+  //      the public form's rate-limit rows; it also records the database's size for the leadership.
   try {
-    const {error, count} = await supabase
-      .from("vehicle_requests")
-      .delete({count: "exact"})
-      .neq("status", "pending")
-      .lt("created_at", daysAgo(RETENTION_DAYS.closedRequests));
+    const {data, error} = await supabase.rpc("run_housekeeping");
     if (error) throw error;
-    results.vehicleDeleted = count ?? 0;
+    const done = (data ?? {}) as {
+      notifications_read?: number; notifications_old?: number; action_logs?: number; vehicle_requests?: number; bolos?: number;
+      health?: {bytes?: number};
+    };
+    results.notificationsDeleted = (done.notifications_read ?? 0) + (done.notifications_old ?? 0);
+    results.actionsDeleted = done.action_logs ?? 0;
+    results.vehicleDeleted = done.vehicle_requests ?? 0;
+    results.bolosDeleted = done.bolos ?? 0;
+    results.databaseMb = done.health?.bytes ? Math.round(done.health.bytes / 1024 / 1024) : null;
   } catch (error) {
-    fail("vehicle", error);
-  }
-
-  // 3. Dashboard activity feed entries older than a day.
-  try {
-    const {error, count} = await supabase
-      .from("action_logs")
-      .delete({count: "exact"})
-      .lt("created_at", daysAgo(RETENTION_DAYS.actionLogs));
-    if (error) throw error;
-    results.actionsDeleted = count ?? 0;
-  } catch (error) {
-    fail("action_logs", error);
-  }
-
-  // 4. Notifications: read ones after a month, everything after four months.
-  try {
-    const [read, old] = await Promise.all([
-      supabase.from("notifications").delete({count: "exact"})
-        .eq("is_read", true).lt("created_at", daysAgo(RETENTION_DAYS.readNotifications)),
-      supabase.from("notifications").delete({count: "exact"})
-        .lt("created_at", daysAgo(RETENTION_DAYS.notifications)),
-    ]);
-    if (read.error) throw read.error;
-    if (old.error) throw old.error;
-    results.notificationsDeleted = (read.count ?? 0) + (old.count ?? 0);
-  } catch (error) {
-    fail("notifications", error);
+    fail("housekeeping", error);
   }
 
   // 5. Fleet: "expires soon" / "expired" registration reminders (once per stage).
@@ -155,6 +133,22 @@ export const GET = handle("cron/daily-cleanup", async (request) => {
     results.mcbReminders = (daily.reminded ?? 0) + (daily.task_digests ?? 0) + (daily.retention ?? 0);
   } catch (error) {
     fail("mcb_daily", error);
+  }
+
+  // 9b. MCB trash: cases trashed more than 30 days ago are deleted for good, with their files.
+  try {
+    const {data, error} = await supabase.rpc("expired_trashed_cases", {_limit: 25});
+    if (error) throw error;
+    for (const caseId of (data ?? []) as string[]) {
+      try {
+        await purgeCase(supabase, caseId);
+        results.casesPurged += 1;
+      } catch (purgeError) {
+        fail(`case_purge ${caseId}`, purgeError);
+      }
+    }
+  } catch (error) {
+    fail("case_trash", error);
   }
 
   // 10. A new penal code release (shared/penal-changelog.ts) is announced to every member once;

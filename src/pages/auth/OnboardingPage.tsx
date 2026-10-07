@@ -139,7 +139,7 @@ export function OnboardingPage() {
               Gratulálunk,<br/><span className="bg-gradient-to-r from-amber-200 to-amber-500 bg-clip-text text-transparent">{firstName}.</span>
             </h1>
             <p className="mt-4 max-w-xl text-slate-300">
-              Három lépés választ el a szolgálattól. Belépés után egy rövid, interaktív bemutató végigvezet a FrakHub minden részén, a saját
+              Három lépés választ el a szolgálattól. Belépés után egy rövid, interaktív bemutató végigvezet az SFSD Intranet minden részén, a saját
               tempódban.
             </p>
             <ol className="mt-6 grid grid-cols-3 gap-2">

@@ -51,16 +51,13 @@ export type DepartmentDivision = (typeof DIVISIONS)[number];
 export const QUALIFICATIONS = ["SAHP", "AB", "MU", "GW", "FAB", "SIB", "TB"] as const;
 export type Qualification = (typeof QUALIFICATIONS)[number];
 
-/** Ranks inside a bureau (division_rank): MCB investigators and SEB operators, highest first. */
+/**
+ * The bureau ranks (division_rank) the app shipped with, highest first. Since then each bureau
+ * keeps its own list in the database (division_ranks, edited by its Bureau Commander): these are
+ * only the defaults the client shows until that list is loaded.
+ */
 export const INVESTIGATOR_RANKS = ["Investigator III.", "Investigator II.", "Investigator I."] as const;
 export const OPERATOR_RANKS = ["Operator III.", "Operator II.", "Operator I."] as const;
-
-/** Bureau ranks available in a division (TSB has none). */
-export const getDivisionRanks = (division: string | null | undefined): readonly string[] => {
-  if (division === "MCB") return INVESTIGATOR_RANKS;
-  if (division === "SEB") return OPERATOR_RANKS;
-  return [];
-};
 
 export type SystemRole = "admin" | "supervisor" | "user" | "pending";
 

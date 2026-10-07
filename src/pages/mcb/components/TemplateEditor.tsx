@@ -2,15 +2,18 @@ import {useEffect, useMemo} from "react";
 import {BlockNoteSchema, defaultBlockSpecs, type PartialBlock} from "@blocknote/core";
 import {BlockNoteView} from "@blocknote/mantine";
 import {getDefaultReactSlashMenuItems, SuggestionMenuController, useCreateBlockNote, type DefaultReactSuggestionItem} from "@blocknote/react";
+import {Stamp} from "lucide-react";
 import "@blocknote/mantine/style.css";
 import {toInitialContent} from "@/lib/blocknote-content";
 import {hu} from "@/lib/blocknote-hu";
 import type {TemplateBlock} from "@/lib/case-templates";
+import {LetterheadBlock} from "./LetterheadBlock";
 
-// Templates hold text only (headings, lists, tables, quotes): no pictures or files; evidence is
-// added to the case itself. The blocks are the same as the case documents' default ones.
+// Templates hold text only (headings, lists, tables, quotes) and the letterhead, whose logos are
+// files of the app: no uploaded pictures or files; evidence is added to the case itself. The
+// blocks are the same as the case documents' ones.
 const {image: _image, video: _video, audio: _audio, file: _file, ...textBlocks} = defaultBlockSpecs;
-const schema = BlockNoteSchema.create({blockSpecs: textBlocks});
+const schema = BlockNoteSchema.create({blockSpecs: {...textBlocks, letterhead: LetterheadBlock()}});
 type Block = PartialBlock<typeof schema.blockSchema, typeof schema.inlineContentSchema, typeof schema.styleSchema>;
 
 /** Default slash items the case documents do not use either. */
@@ -30,7 +33,12 @@ export function TemplateEditor({initial, onChange}: {initial: TemplateBlock[]; o
 
   const items = (query: string): DefaultReactSuggestionItem[] => {
     const term = fold(query.trim());
-    return getDefaultReactSlashMenuItems(editor)
+    const letterhead: DefaultReactSuggestionItem = {
+      title: "Fejléc", subtext: "Az iroda hivatalos fejléce logókkal", aliases: ["fejlec", "letterhead", "logo", "cimer"], group: "Nyomozás",
+      icon: <Stamp size={18}/>,
+      onItemClick: () => editor.insertBlocks([{type: "letterhead"}], editor.getTextCursorPosition().block, "before"),
+    };
+    return [letterhead, ...getDefaultReactSlashMenuItems(editor)]
       .filter((item) => !HIDDEN_SLASH_ITEMS.has((item as {key?: string}).key ?? ""))
       .filter((item) => !term || [item.title, item.subtext ?? "", ...(item.aliases ?? [])].some((value) => fold(value).includes(term)));
   };

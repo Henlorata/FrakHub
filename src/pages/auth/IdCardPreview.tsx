@@ -3,15 +3,16 @@ import {Fingerprint} from "lucide-react";
 import {SheriffStar} from "@/components/brand/SheriffStar";
 import {formatDate} from "@/lib/datetime";
 import {cn} from "@/lib/utils";
+import {BRAND_IMAGES} from "@/lib/brand";
 
 export type CardDivision = "TSB" | "SEB" | "MCB";
 
 export const DIVISION_LOOK: Record<CardDivision, {title: string; short: string; logo: string | null; accent: string; ring: string; glow: string; text: string; bar: string}> = {
   TSB: {title: "Általános állomány", short: "Járőrszolgálat", logo: null, accent: "from-amber-300 via-yellow-500 to-amber-700",
     ring: "ring-amber-400/40", glow: "shadow-[0_30px_80px_-30px_rgb(234_179_8/0.65)]", text: "text-amber-300", bar: "bg-amber-400"},
-  SEB: {title: "Special Enforcement Bureau", short: "Különleges egység", logo: "/seb.png", accent: "from-rose-300 via-red-500 to-red-800",
+  SEB: {title: "Special Enforcement Bureau", short: "Különleges egység", logo: BRAND_IMAGES.seb, accent: "from-rose-300 via-red-500 to-red-800",
     ring: "ring-red-400/40", glow: "shadow-[0_30px_80px_-30px_rgb(239_68_68/0.7)]", text: "text-red-300", bar: "bg-red-500"},
-  MCB: {title: "Major Crimes Bureau", short: "Nyomozó részleg", logo: "/mcb.png", accent: "from-sky-300 via-sky-500 to-indigo-700",
+  MCB: {title: "Major Crimes Bureau", short: "Nyomozó részleg", logo: BRAND_IMAGES.mcb, accent: "from-sky-300 via-sky-500 to-indigo-700",
     ring: "ring-sky-400/40", glow: "shadow-[0_30px_80px_-30px_rgb(56_189_248/0.7)]", text: "text-sky-300", bar: "bg-sky-400"},
 };
 
@@ -87,7 +88,7 @@ export function IdCardPreview({name, badge, rank, division, active, stamp = "Fü
 
         <div className="relative flex h-full flex-col p-[5.5%]">
           <div className="flex items-start gap-3">
-            <SheriffStar className="size-12 shrink-0 drop-shadow-[0_0_10px_rgb(234_179_8/0.5)]"/>
+            <SheriffStar className="size-12 shrink-0 drop-shadow-[0_2px_4px_rgb(0_0_0/0.55)]"/>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[clamp(10px,1.6vw,15px)] font-black tracking-[0.12em] text-white">SAN FIERRO SHERIFF&apos;S DEPARTMENT</p>
               <p className={cn("text-[clamp(8px,1vw,10px)] font-semibold uppercase tracking-[0.3em]", look.text)}>Szolgálati igazolvány</p>

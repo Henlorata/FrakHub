@@ -12,7 +12,7 @@ import {EmptyState} from "@/components/layout/EmptyState";
 import {DISCARD_CHANGES, useConfirm} from "@/components/ConfirmDialog";
 import {useAuth} from "@/context/AuthContext";
 import {
-  caseTemplatesApi, loadCaseTemplates, parseAliases, TEMPLATE_ICONS, TEMPLATE_LIMITS, templateIcon, templateProblem,
+  caseTemplatesApi, loadCaseTemplates, parseAliases, TEMPLATE_ICONS, TEMPLATE_LIMITS, TEMPLATE_TOKENS, templateIcon, templateProblem,
   type CaseTemplate, type TemplateBlock, type TemplateDraft, type TemplateKind,
 } from "@/lib/case-templates";
 import {BUILTIN_TEMPLATES} from "@/lib/case-templates-builtin";
@@ -330,7 +330,14 @@ export function TemplatesPage() {
                 <div className="space-y-1.5">
                   <Label>Tartalom</Label>
                   <p className="text-[11px] text-slate-500">
-                    Címsorok, listák, táblázatok, idézetek. Kép nem kerülhet a sablonba: a bizonyítékokat az aktába töltik fel.
+                    Címsorok, listák, táblázatok, idézetek és a hivatalos fejléc („/fejléc”). Feltöltött kép nem kerülhet a sablonba:
+                    a bizonyítékokat az aktába töltik fel.
+                  </p>
+                  <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                    <span>Kitöltődik:</span>
+                    {TEMPLATE_TOKENS.map((item) => (
+                      <span key={item.token}><code className="rounded bg-white/5 px-1 py-0.5 font-mono text-sky-200">{item.token}</code> {item.label}</span>
+                    ))}
                   </p>
                   <Suspense fallback={<div className="skeleton h-[420px] rounded-xl"/>}>
                     <TemplateEditor key={editorKey} initial={initialBlocks} onChange={onBlocks}/>

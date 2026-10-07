@@ -124,6 +124,9 @@ export const dashboardRpc: Record<string, RpcHandler> = {
       feedback_new: null,
       // No end-of-month recap in practice mode (it would cover the tour).
       recap_month: null,
+      active_bolos: count(tables.bolo_alerts, (row) => row.status === "active" && String(row.expires_at) > new Date().toISOString()),
+      mail_unread: 0,
+      iab_open: null,
     };
   },
 

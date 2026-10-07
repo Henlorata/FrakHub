@@ -6,6 +6,7 @@ import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
 import {cn, getDepartmentLabel} from "@/lib/utils";
 import {formatDate} from "@/pages/hr/hr-utils";
 import type {Profile} from "@/types/supabase";
+import {BRAND_IMAGES} from "@/lib/brand";
 
 interface IdCardTheme {
   bg: string;
@@ -19,10 +20,10 @@ const themeFor = (profile: Profile): IdCardTheme => {
     return {bg: "bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#312e81]", border: "border-purple-500/50", text: "text-purple-300"};
   }
   if (profile.division === "SEB") {
-    return {bg: "bg-gradient-to-br from-[#0f172a] via-[#1a0505] to-black", border: "border-red-600/50", text: "text-red-400", logo: "/seb.png"};
+    return {bg: "bg-gradient-to-br from-[#0f172a] via-[#1a0505] to-black", border: "border-red-600/50", text: "text-red-400", logo: BRAND_IMAGES.seb};
   }
   if (profile.division === "MCB") {
-    return {bg: "bg-gradient-to-br from-[#0f172a] via-[#050f1a] to-black", border: "border-sky-500/50", text: "text-sky-300", logo: "/mcb.png"};
+    return {bg: "bg-gradient-to-br from-[#0f172a] via-[#050f1a] to-black", border: "border-sky-500/50", text: "text-sky-300", logo: BRAND_IMAGES.mcb};
   }
   return {bg: "bg-gradient-to-br from-[#0f172a] via-[#051a0f] to-black", border: "border-emerald-600/50", text: "text-emerald-400"};
 };

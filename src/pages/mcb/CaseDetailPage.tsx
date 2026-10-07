@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
+import {lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {Link, useNavigate, useParams} from "react-router";
 import {
   AlertTriangle, ArchiveRestore, ArrowLeft, Boxes, Check, ChevronRight, FileText, FolderArchive, Gavel, History, Info, ListTodo, Loader2, Lock,
@@ -18,8 +18,7 @@ import {
 import {OfficerProfileDialog} from "@/components/OfficerProfileDialog";
 import {useAuth} from "@/context/AuthContext";
 import {useSuspects} from "@/context/SuspectCacheContext";
-import {postApi} from "@/lib/api";
-import {deleteCloudinaryAssets} from "@/lib/cloudinary";
+import {deleteCloudinaryAssets, uploadToCloudinary} from "@/lib/cloudinary";
 import {formatAgo, formatDate} from "@/lib/datetime";
 import {
   CATEGORIES, CATEGORY, PRIORITIES, PRIORITY, WARRANT_SELECT, documentReferences, evidenceNumbers, mcbApi,
@@ -62,6 +61,9 @@ function useWideLayout() {
   }, []);
   return wide;
 }
+
+// The drawing tool loads only when it is opened.
+const ImageAnnotator = lazy(() => import("@/components/annotate/ImageAnnotator").then((module) => ({default: module.ImageAnnotator})));
 
 interface ConfirmState {
   title: string;
@@ -109,8 +111,9 @@ export function CaseDetailPage() {
   const [officerId, setOfficerId] = useState<string | null>(null);
   const [linkedCase, setLinkedCase] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  // An uploaded picture being annotated: the drawing becomes a new piece of evidence.
+  const [annotating, setAnnotating] = useState<CaseEvidence | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [listInfo, setListInfo] = useState<CaseListItem | null>(null);
 
   const editorRef = useRef<CaseEditorHandle>(null);
@@ -328,16 +331,48 @@ export function CaseDetailPage() {
     });
   };
 
-  const deleteCase = async () => {
-    const toastId = toast.loading("Az akta és a csatolt fájlok törlése…");
-    try {
-      await postApi("/api/case/delete", {caseId});
-      toast.success("Az akta véglegesen törölve.", {id: toastId});
+  const trashCase = () => setConfirm({
+    title: "Akta a lomtárba",
+    description: <>A(z) <strong>{detail?.case.case_number}</strong> eltűnik a listákból, a keresésből és a kapcsolati hálóból, a parancsai sem
+      látszanak, és senki sem szerkesztheti. A lomtárból 30 napig visszaállítható, utána a fájlokkal együtt véglegesen törlődik.</>,
+    action: "Lomtárba",
+    destructive: true,
+    run: async () => {
+      if (editorRef.current?.isDirty()) {
+        const saved = await editorRef.current.save();
+        if (!saved) throw new Error("Előbb mentsd a dokumentumot (vagy oldd fel az ütközést).");
+      }
+      await mcbApi.trash(caseId);
       mcbApi.invalidateList();
+      announce("meta");
+      toast.success("Az akta a lomtárba került.", {
+        description: "30 napig visszaállítható.",
+        action: {label: "Visszavonás", onClick: () => {
+          mcbApi.restore(caseId).then(() => {
+            mcbApi.invalidateList();
+            toast.success("Akta visszaállítva.");
+            navigate(`/mcb/case/${caseId}`);
+          }, (error) => toast.error("A visszaállítás nem sikerült.", {description: errorMessage(error)}));
+        }},
+      });
       navigate("/mcb");
-    } catch (error) {
-      toast.error("A törlés nem sikerült.", {id: toastId, description: errorMessage(error)});
+    },
+  });
+
+  const saveAnnotated = async (source: CaseEvidence, file: File) => {
+    if (!profile) return;
+    const url = await uploadToCloudinary(file, "evidence");
+    const {error} = await supabase.from("case_evidence").insert({
+      case_id: caseId, uploaded_by: profile.id, file_name: `${source.file_name} (jelölt)`.slice(0, 120), file_path: url, file_type: "image",
+    });
+    if (error) {
+      void deleteCloudinaryAssets([url]);
+      throw error;
     }
+    setAnnotating(null);
+    await refreshEvidence();
+    announce("evidence");
+    toast.success("A jelölt másolat bekerült a bizonyítékok közé.");
   };
 
   const renameEvidence = async (item: CaseEvidence, name: string) => {
@@ -505,6 +540,7 @@ export function CaseDetailPage() {
       key={editorKey}
       ref={editorRef}
       caseId={caseId}
+      caseNumber={item.case_number as string}
       content={item.body}
       version={item.body_version}
       updatedAt={item.updated_at}
@@ -577,7 +613,7 @@ export function CaseDetailPage() {
                      editorRef.current?.insertEvidence(id);
                      if (!wide) setMobileTab("document");
                    }}
-                   onRename={renameEvidence} onDelete={deleteEvidence}/>
+                   onRename={renameEvidence} onDelete={deleteEvidence} onAnnotate={setAnnotating}/>
   ) : tab === "tasks" ? (
     <div className="h-full p-3">
       <TasksPanel detail={detail} myId={profile?.id} onChanged={(tasks) => {
@@ -726,7 +762,7 @@ export function CaseDetailPage() {
                   {viewer.can_manage && (
                     <>
                       <DropdownMenuSeparator/>
-                      <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}><Trash2 className="size-4"/> Végleges törlés</DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" onSelect={trashCase}><Trash2 className="size-4"/> Lomtárba</DropdownMenuItem>
                     </>
                   )}
                 </DropdownMenuContent>
@@ -813,6 +849,12 @@ export function CaseDetailPage() {
                              setLogKey((key) => key + 1);
                            }}/>
       <WarrantDocument warrant={warrantDoc} onClose={() => setWarrantDoc(null)}/>
+      {annotating && (
+        <Suspense fallback={null}>
+          <ImageAnnotator src={annotating.file_path} name={annotating.file_name} onCancel={() => setAnnotating(null)}
+                          onSave={(file) => saveAnnotated(annotating, file)}/>
+        </Suspense>
+      )}
       <LinkedCaseDialog caseId={linkedCase} onClose={() => setLinkedCase(null)}/>
       <OfficerProfileDialog open={!!officerId} onOpenChange={(open) => !open && setOfficerId(null)} userId={officerId ?? ""} caseId={caseId}/>
 
@@ -845,9 +887,6 @@ export function CaseDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <DeleteCaseDialog open={deleteOpen} onOpenChange={setDeleteOpen} caseNumber={item.case_number as string}
-                        counts={{evidence: detail.evidence.length, people: detail.people.length, warrants: detail.warrants.length}}
-                        onConfirm={deleteCase}/>
     </div>
   );
 }
@@ -916,52 +955,6 @@ function TitleEditor({title, canEdit, onSave}: {title: string; canEdit: boolean;
         </button>
       )}
     </div>
-  );
-}
-
-function DeleteCaseDialog({open, onOpenChange, caseNumber, counts, onConfirm}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  caseNumber: string;
-  counts: {evidence: number; people: number; warrants: number};
-  onConfirm: () => Promise<void>;
-}) {
-  const [typed, setTyped] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (open) setTyped("");
-  }, [open]);
-
-  return (
-    <AlertDialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <AlertDialogContent className="border-red-500/40">
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2 text-red-200"><AlertTriangle className="size-5"/> Végleges törlés</AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div className="space-y-2 text-sm text-slate-300">
-              <p>Az akta minden tartalma visszavonhatatlanul törlődik: a dokumentum, {counts.evidence} bizonyíték (a fájlokkal együtt),
-                {` ${counts.people}`} személy-kapcsolat, {counts.warrants} parancs, az üzenetek és a napló.</p>
-              <p>Lezárás vagy archiválás helyett csak akkor töröld, ha az akta tévedésből készült.</p>
-              <p>Megerősítésként írd be az ügyszámot: <span className="font-mono text-red-200">{caseNumber}</span></p>
-            </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <Input value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={caseNumber} className="font-mono"/>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Mégse</AlertDialogCancel>
-          <AlertDialogAction disabled={busy || typed.trim() !== caseNumber} className="bg-red-600 text-white hover:bg-red-500"
-                             onClick={async (event) => {
-                               event.preventDefault();
-                               setBusy(true);
-                               await onConfirm();
-                               setBusy(false);
-                               onOpenChange(false);
-                             }}>
-            {busy && <Loader2 className="size-4 animate-spin"/>} Végleges törlés
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 

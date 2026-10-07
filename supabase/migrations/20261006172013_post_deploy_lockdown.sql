@@ -1,12 +1,7 @@
--- Tightening that needs the NEW frontend and API to be live (apply after the Vercel
--- deployment that contains the redesigned exam, HR and dashboard code):
+-- Post-deploy lockdown (written 2026-10-04 as supabase/post-deploy/20261004200000_post_deploy_lockdown.sql),
+-- applied after the new frontend went live on Vercel (2026-10-06): removes the compatibility
+-- paths the old client needed. Everything below is unchanged from that file.
 --
---   1. move this file to supabase/migrations/
---   2. bunx supabase db push --db-url "<session pooler URL>"   (or apply it with the MCP)
---
--- The previous migrations kept the old client working; this one removes those
--- compatibility paths.
-
 -- 1. Questions and options are no longer readable before or during an exam: candidates get
 --    their questions from start_exam(), editors and graders through get_exam_editor() and
 --    get_exam_sheet(). Exams are written by save_exam() and delete_full_exam() only.

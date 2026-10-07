@@ -50,7 +50,7 @@ export function ExamLobby({intro, guestFinished, starting, onStart, onNewGuestAt
       <section className="panel glow-border animate-rise relative overflow-hidden p-6 md:p-8">
         <div className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-yellow-500/10 blur-3xl"/>
         <div className="relative flex items-start gap-5">
-          <SheriffStar className="hidden size-16 shrink-0 drop-shadow-[0_0_24px_rgb(234_179_8/0.35)] sm:block"/>
+          <SheriffStar className="hidden size-16 shrink-0 drop-shadow-[0_6px_14px_rgb(0_0_0/0.5)] sm:block"/>
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-yellow-400">
               {EXAM_TYPE_LABELS[exam.type]}{exam.division ? ` · ${exam.division}` : ""}

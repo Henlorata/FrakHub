@@ -1,4 +1,4 @@
-import {CalendarClock, CalendarPlus, FilePlus2, Receipt, Truck, type LucideIcon} from "lucide-react";
+import {CalendarClock, CalendarPlus, FilePlus2, PenSquare, Radar, Receipt, Truck, type LucideIcon} from "lucide-react";
 import {organisableAudiences} from "@/lib/events";
 import {canViewCaseList} from "@/lib/utils";
 import type {Profile} from "@/types/supabase";
@@ -13,6 +13,8 @@ export interface QuickAction {
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
+  {label: "Új BOLO kiadása", path: "/briefing?new=bolo", icon: Radar, keywords: "bolo körözés lopott jármű eltűnt személy figyelő"},
+  {label: "Új levél", path: "/mail?new=1", icon: PenSquare, keywords: "levél email írás posta panasz iab"},
   {label: "Új akta nyitása", path: "/mcb?new=case", icon: FilePlus2, keywords: "akta ügy mcb", visible: canViewCaseList},
   {label: "Járműigénylés", path: "/logistics?new=1", icon: Truck, keywords: "jármű autó igénylés"},
   {label: "Költségtérítési kérelem", path: "/finance?new=1", icon: Receipt, keywords: "pénz számla költség"},

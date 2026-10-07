@@ -1,11 +1,12 @@
 import {useEffect, useMemo, useRef, useState, type KeyboardEvent} from "react";
 import {useNavigate} from "react-router";
-import {CornerDownLeft, FolderOpen, Search, User, type LucideIcon} from "lucide-react";
+import {Car, CornerDownLeft, FolderOpen, Radar, Search, ShieldAlert, User, type LucideIcon} from "lucide-react";
 import {Dialog, DialogContent, DialogTitle} from "@/components/ui/dialog";
 import {useAuth} from "@/context/AuthContext";
 import {getProfileDirectory, type DirectoryProfile} from "@/lib/profile-directory";
 import {canViewCaseList, cn} from "@/lib/utils";
 import {getOptimizedAvatarUrl} from "@/lib/cloudinary";
+import {looksLikePlate, patrolApi, type PlateLookup} from "@/lib/patrol";
 import {QUICK_ACTIONS} from "@/layouts/quick-actions";
 import {EXTRA_PAGES, visibleSections} from "@/layouts/navigation";
 
@@ -30,9 +31,10 @@ interface CaseHit {
 const fold = (value: string) => value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 /**
- * Ctrl+K / ⌘K: jump to pages and actions, find members and (for MCB viewers) cases.
- * Members come from the cached directory; cases are searched on demand (debounced,
- * at most 6 rows), so the palette costs nothing until it is used.
+ * Ctrl+K / ⌘K: jump to pages and actions, find members and (for MCB viewers) cases, and look a
+ * plate up (BOLO alerts, the department's vehicles, for the case area registered persons).
+ * Members come from the cached directory; cases and plates are searched on demand (debounced,
+ * a few rows), so the palette costs nothing until it is used.
  */
 export function CommandPalette({open, onOpenChange}: {open: boolean; onOpenChange: (open: boolean) => void}) {
   const {profile, supabase} = useAuth();
@@ -40,6 +42,7 @@ export function CommandPalette({open, onOpenChange}: {open: boolean; onOpenChang
   const [query, setQuery] = useState("");
   const [members, setMembers] = useState<DirectoryProfile[]>([]);
   const [cases, setCases] = useState<CaseHit[]>([]);
+  const [plates, setPlates] = useState<PlateLookup | null>(null);
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const canSearchCases = canViewCaseList(profile);
@@ -69,6 +72,19 @@ export function CommandPalette({open, onOpenChange}: {open: boolean; onOpenChang
     }, 250);
     return () => clearTimeout(timer);
   }, [query, open, canSearchCases, supabase]);
+
+  // A term that looks like a plate (letters and digits): one lookup, 300 ms after the last keystroke.
+  useEffect(() => {
+    const term = query.trim();
+    if (!open || !looksLikePlate(term)) {
+      setPlates(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      patrolApi.lookupPlate(term).then(setPlates, () => setPlates(null));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query, open]);
 
   const entries = useMemo<PaletteEntry[]>(() => {
     if (!profile) return [];
@@ -101,8 +117,23 @@ export function CommandPalette({open, onOpenChange}: {open: boolean; onOpenChang
       run: go(`/mcb/case/${hit.id}`),
     }));
 
-    return [...actions, ...pages, ...people, ...caseEntries];
-  }, [profile, query, members, cases, navigate, onOpenChange]);
+    const plateEntries: PaletteEntry[] = plates ? [
+      ...plates.bolos.map<PaletteEntry>((hit) => ({
+        id: `bolo:${hit.id}`, group: "Rendszám", label: `BOLO: ${hit.title}`, icon: Radar,
+        hint: [hit.plate, hit.active ? "aktív" : "lezárt"].filter(Boolean).join(" · "), run: go(`/briefing?bolo=${hit.id}`),
+      })),
+      ...plates.fleet.map<PaletteEntry>((hit) => ({
+        id: `fleet:${hit.id}`, group: "Rendszám", label: `${hit.plate} · ${hit.model}`, hint: "SFSD jármű", icon: Car,
+        run: go(`/logistics/fleet/${hit.id}`),
+      })),
+      ...plates.persons.map<PaletteEntry>((hit) => ({
+        id: `person:${hit.suspect_id}:${hit.plate}`, group: "Rendszám", label: hit.full_name, icon: ShieldAlert,
+        hint: [hit.plate, hit.vehicle, "nyilvántartott"].filter(Boolean).join(" · "), run: go(`/mcb/suspects?person=${hit.suspect_id}`),
+      })),
+    ] : [];
+
+    return [...plateEntries, ...actions, ...pages, ...people, ...caseEntries];
+  }, [profile, query, members, cases, plates, navigate, onOpenChange]);
 
   useEffect(() => {
     setActive(0);
@@ -138,7 +169,7 @@ export function CommandPalette({open, onOpenChange}: {open: boolean; onOpenChang
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Keresés oldalak, műveletek, tagok és akták között…"
+            placeholder="Oldalak, műveletek, tagok, akták vagy rendszám…"
             className="h-14 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
           />
           <kbd className="hidden rounded-md border bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-400 sm:block">ESC</kbd>

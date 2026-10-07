@@ -58,7 +58,8 @@ export function LogisticsPage() {
   const fetchRequests = React.useCallback(async () => {
     const {data, error} = await supabase.from("vehicle_requests")
       .select(`*, profiles!vehicle_requests_user_id_fkey (full_name, badge_number, faction_rank)`)
-      .order("created_at", {ascending: false});
+      // The latest ones are enough for the list and the 90-day demand view (keeps the response small).
+      .order("created_at", {ascending: false}).limit(300);
     if (error) toast.error("Hiba az adatok betöltésekor");
     setRequests((data as unknown as VehicleRequest[]) || []);
   }, [supabase]);

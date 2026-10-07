@@ -1,4 +1,5 @@
 import {isHighCommand, isStaff, isSupervisory} from "@shared/ranks";
+import {fillTemplateTokens} from "@/lib/case-templates";
 import {canViewCaseList} from "@/lib/utils";
 import type {Profile} from "@/types/supabase";
 import type {SandboxBackend} from "../state";
@@ -11,9 +12,13 @@ import {mcbApi, mcbRpc, seedMcb} from "./mcb";
 import {examViewRows, examsRpc, seedExams} from "./exams";
 import {financeRpc, seedFinance} from "./finance";
 import {academyRpc, seedAcademy} from "./academy";
-import {eventsRpc, seedEvents} from "./events";
+import {eventsRpc, seedEvents, seedOperations} from "./events";
 import {progressionRpc, seedProgression} from "./progression";
 import {extrasRpc, seedExtras} from "./extras";
+import {bureauRpc, seedBureaus} from "./bureaus";
+import {patrolRpc, seedPatrol} from "./patrol";
+import {communicationRpc, seedCommunication} from "./communication";
+import {graphRpc} from "./graph";
 
 /** Foreign keys the app embeds (`owner:owner_id(...)`, `profiles!x_user_id_fkey(...)`, `holders:fleet_assignments(...)`). */
 const RELATIONS: Schema["relations"] = {
@@ -42,6 +47,7 @@ const RELATIONS: Schema["relations"] = {
   academy_students: {cycle_id: "academy_cycles", user_id: "profiles"},
   exam_submissions: {exam_id: "exams", user_id: "profiles"},
   exam_overrides: {exam_id: "exams", user_id: "profiles"},
+  member_signatures: {user_id: "profiles"},
 };
 
 /** Upsert targets that are not `id`. */
@@ -67,8 +73,15 @@ function withDefaults(world: World, table: string, row: Row): Row {
       Object.assign(out, {status: out.status ?? "open", priority: out.priority ?? "medium", category: out.category ?? null,
         description: out.description ?? null, body_version: 1, body_updated_by: world.me.id, theme: out.theme ?? "default", updated_at: now,
         closed_at: null});
+      // As private.fill_case_template_tokens() in the database.
+      out.body = fillTemplateTokens(out.body ?? [], {caseNumber: String(out.case_number), author: String(owner?.full_name ?? ""),
+        date: world.day().replace(/-/g, ".")});
       break;
     }
+    case "bolo_alerts":
+      Object.assign(out, {status: "active", created_by: world.me.id, updated_at: now, resolved_at: null, resolved_by: null, resolution: null,
+        expires_at: out.expires_at ?? new Date(Date.now() + 72 * 3_600_000).toISOString()});
+      break;
     case "report_logs": {
       const occurred = String(out.occurred_on ?? world.day());
       const post = typeof out.forum_url === "string" ? out.forum_url.match(/(?:\/posts\/|post-)(\d{1,18})/)?.[1] : undefined;
@@ -203,11 +216,15 @@ export function createSandbox(profile: Profile): SandboxBackend {
   seedFinance(world);
   seedAcademy(world);
   seedEvents(world);
+  seedOperations(world);
   seedProgression(world);
   seedExtras(world);
+  seedBureaus(world);
+  seedPatrol(world);
+  seedCommunication(world);
 
   const rpc: Record<string, RpcHandler> = {...peopleRpc, ...dashboardRpc, ...mcbRpc, ...examsRpc, ...fleetRpc, ...financeRpc, ...academyRpc, ...eventsRpc,
-    ...progressionRpc, ...extrasRpc};
+    ...progressionRpc, ...extrasRpc, ...bureauRpc, ...patrolRpc, ...communicationRpc, ...graphRpc};
   const api: Record<string, (body: Row, world: World) => unknown> = {...peopleApi, ...mcbApi, "/api/delete-image": () => ({deleted: 0})};
   const virtual: Record<string, () => Row[]> = {exam_submissions_view: () => examViewRows(world)};
   const visible = visibility(profile);

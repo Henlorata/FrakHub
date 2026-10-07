@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
 import {useNavigate} from "react-router";
 import {
-  ArrowRight, Car, Check, FileText, FolderOpen, Home, Link2, Loader2, Lock, MapPin, Network, Pencil, Plus, Trash2, X,
+  ArrowRight, Car, Check, FileText, FolderOpen, Home, Link2, Loader2, Lock, MapPin, Network, Pencil, Plus, Trash2, Waypoints, X,
 } from "lucide-react";
 import {toast} from "sonner";
 import {Dialog, DialogContent, DialogDescription, DialogTitle} from "@/components/ui/dialog";
@@ -19,6 +19,8 @@ import {useAuth} from "@/context/AuthContext";
 import {deleteCloudinaryAssets, uploadToCloudinary} from "@/lib/cloudinary";
 import {formatAgo, formatDate} from "@/lib/datetime";
 import {PROPERTY_TYPE, SUSPECT_STATUS, SUSPECT_STATUSES, mcbApi, type SuspectDossier} from "@/lib/mcb";
+import {ORG_ROLES, organizationsApi} from "@/lib/organizations";
+import {graphHref} from "@/lib/graph";
 import {canViewCaseList, cn, errorMessage} from "@/lib/utils";
 import type {CaseWarrant, Suspect, SuspectStatus} from "@/types/supabase";
 import {CaseStatusChip, InvolvementChip, Mugshot, SuspectStatusChip} from "./McbBadges";
@@ -53,12 +55,15 @@ export function SuspectDetailDialog({suspectId, onOpenChange, onChanged, people,
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [warrantDoc, setWarrantDoc] = useState<CaseWarrant | null>(null);
+  const [organizations, setOrganizations] = useState<Awaited<ReturnType<typeof organizationsApi.ofPerson>>>([]);
   const canEdit = canViewCaseList(profile);
 
   const load = useCallback(async (id: string) => {
     setLoading(true);
     try {
-      setDossier(await mcbApi.dossier(id));
+      const [loaded, groups] = await Promise.all([mcbApi.dossier(id), organizationsApi.ofPerson(id).catch(() => null)]);
+      setDossier(loaded);
+      setOrganizations(groups ?? []);
     } catch (error) {
       toast.error("Az adatlap betöltése nem sikerült.", {description: errorMessage(error)});
       onOpenChange(false);
@@ -210,6 +215,28 @@ export function SuspectDetailDialog({suspectId, onOpenChange, onChanged, people,
                 <dt className="text-slate-500">Felvette</dt><dd className="truncate text-right text-slate-200">{dossier.creator_name ?? "–"}</dd>
                 <dt className="text-slate-500">Frissítve</dt><dd className="text-right text-slate-200">{formatAgo(person.updated_at ?? person.created_at)}</dd>
               </dl>
+              {organizations.length > 0 && (
+                <div className="relative flex w-full flex-wrap justify-center gap-1.5">
+                  {organizations.map((group) => (
+                    <button key={group.id} type="button" title={`${group.name} · ${ORG_ROLES[group.role]}`}
+                            onClick={() => {
+                              onOpenChange(false);
+                              navigate(`/mcb/organizations/${group.id}`);
+                            }}
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/[0.04] py-0.5 pr-2.5 pl-1 text-[11px] text-slate-200 ring-1 ring-white/10 hover:bg-white/[0.08]">
+                      <span className="size-3.5 shrink-0 rounded-full" style={{background: group.color ?? "#64748b"}}/>
+                      <span className="truncate">{group.name}</span>
+                      <span className="text-slate-500">· {ORG_ROLES[group.role]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {suspectId && !editing && (
+                <Button variant="outline" size="sm" className={cn("relative w-full", !canEdit && "mt-auto")} onClick={() => {
+                  navigate(graphHref(`person:${suspectId}`));
+                  onOpenChange(false);
+                }}><Waypoints className="size-4"/> Kapcsolati háló</Button>
+              )}
               {canEdit && !editing && (
                 <div className="relative mt-auto flex w-full flex-col gap-2 pt-3">
                   <Button variant="outline" size="sm" onClick={startEdit}><Pencil className="size-4"/> Adatok szerkesztése</Button>

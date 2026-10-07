@@ -1,4 +1,5 @@
 import {supabase} from "./supabaseClient";
+import {bumpCacheEpoch} from "./cache-epoch";
 import {sandbox} from "./sandbox/state";
 
 /** Error returned by one of our Vercel functions; `message` is user-facing (Hungarian). */
@@ -43,5 +44,7 @@ export async function postApi<T = unknown>(
 
   const payload = (await response.json().catch(() => null)) as {error?: string} | null;
   if (!response.ok) throw new ApiError(response.status, payload?.error ?? `Szerverhiba (${response.status}).`);
+  // Our functions write (HR, deletions): the stored lists check their versions again.
+  bumpCacheEpoch();
   return payload as T;
 }

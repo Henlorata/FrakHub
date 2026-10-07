@@ -1,4 +1,4 @@
-import {isAcademyInstructor} from "../shared/ranks.js";
+import {isAcademyInstructor, isHighCommand} from "../shared/ranks.js";
 import {destroyAssets, toOwnAssets} from "./_lib/cloudinary.js";
 import {handle, HttpError, json, readJsonObject} from "./_lib/http.js";
 import {getSupabaseAdmin, requireCaller} from "./_lib/supabase.js";
@@ -11,7 +11,13 @@ const REFERENCES = [
   {table: "case_evidence", column: "file_path"},
   {table: "suspects", column: "mugshot_url"},
   {table: "ribbons", column: "image_url"},
+  {table: "bolo_alerts", column: "image_url"},
+  {table: "crime_organizations", column: "logo_url"},
+  {table: "news_posts", column: "cover_url"},
 ] as const;
+
+/** The front page's pictures (news text, gallery) are referenced from JSON: only their editors delete them. */
+const SITE_FOLDERS = ["news/", "site/"];
 
 /**
  * Deletes orphaned Cloudinary assets: replaced avatars, removed case evidence and
@@ -35,6 +41,11 @@ export const POST = handle("delete-image", async (request) => {
 
   if (academyAssets.length > 0 && !isAcademyInstructor(caller)) {
     throw new HttpError(403, "Tananyag képeit csak oktató törölheti.");
+  }
+  const siteEditor = !!caller.is_bureau_manager || isHighCommand(caller)
+    || !!caller.qualifications?.includes("SIB") || !!caller.commanded_divisions?.includes("SIB");
+  if (otherAssets.some((asset) => SITE_FOLDERS.some((folder) => asset.publicId.startsWith(folder))) && !siteEditor) {
+    throw new HttpError(403, "A nyilvános oldal képeit csak a SIB és a vezetőség törölheti.");
   }
 
   const inUse = await findReferencedUrls(otherAssets.map((asset) => asset.url));

@@ -7,6 +7,9 @@ import {formatDateTime} from "@/lib/datetime";
 import {PROPERTY_TYPE, WARRANT_TYPE, warrantTarget} from "@/lib/mcb";
 import {cn} from "@/lib/utils";
 import type {CaseWarrant} from "@/types/supabase";
+import {BRAND_IMAGES} from "@/lib/brand";
+import {SignatureLine} from "@/components/signature/SignatureLine";
+import {useSignatures} from "@/lib/signature/api";
 
 const STAMP: Record<string, {text: string; className: string} | undefined> = {
   approved: {text: "Jóváhagyva", className: "border-emerald-700 text-emerald-700"},
@@ -31,6 +34,7 @@ export function WarrantDocument({warrant, onClose}: {warrant: CaseWarrant | null
   const type = warrant ? WARRANT_TYPE[warrant.type] : null;
   const stamp = warrant ? STAMP[warrant.status] : undefined;
   const number = warrant ? `P-${warrant.id.slice(0, 8).toUpperCase()}` : "";
+  const signatureOf = useSignatures([warrant?.requested_by, warrant?.approved_by]);
 
   return (
     <Dialog open={!!warrant} onOpenChange={(open) => !open && onClose()}>
@@ -53,7 +57,7 @@ export function WarrantDocument({warrant, onClose}: {warrant: CaseWarrant | null
                   <p className="text-[11px] font-semibold tracking-[0.3em] text-slate-600 uppercase">San Fierro Sheriff&apos;s Department</p>
                   <p className="text-sm font-semibold tracking-wide text-slate-700">Major Crimes Bureau · Nyomozó Iroda</p>
                 </div>
-                <img src="/mcb.png" alt="" className="size-14 shrink-0 object-contain opacity-90"/>
+                <img src={BRAND_IMAGES.mcb} alt="" className="size-14 shrink-0 object-contain opacity-90"/>
               </header>
 
               <div className="relative mt-6 text-center">
@@ -104,20 +108,14 @@ export function WarrantDocument({warrant, onClose}: {warrant: CaseWarrant | null
               )}
 
               <footer className="relative mt-9 grid grid-cols-2 gap-8 text-sm">
-                <div>
-                  <p className="border-b border-slate-500 pb-1 font-[cursive] text-lg">{warrant.requester?.full_name ?? "–"}</p>
-                  <p className="mt-1 text-xs text-slate-600">Kérelmező · {warrant.requester?.badge_number ? `#${warrant.requester.badge_number}` : ""}</p>
-                  <p className="text-xs text-slate-600">{formatDateTime(warrant.created_at)}</p>
-                </div>
-                <div>
-                  <p className="border-b border-slate-500 pb-1 font-[cursive] text-lg">
-                    {warrant.status === "pending" ? <span className="text-slate-400">jóváhagyásra vár</span> : warrant.approver?.full_name ?? "–"}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {warrant.status === "rejected" ? "Elutasította" : "Jóváhagyta"}{warrant.approver?.badge_number ? ` · #${warrant.approver.badge_number}` : ""}
-                  </p>
-                  <p className="text-xs text-slate-600">{warrant.status === "pending" ? "" : formatDateTime(warrant.decided_at ?? warrant.updated_at)}</p>
-                </div>
+                <SignatureLine signature={signatureOf(warrant.requested_by)} name={warrant.requester?.full_name} align="left"
+                               role="Kérelmező" detail={[warrant.requester?.faction_rank, warrant.requester?.badge_number ? `#${warrant.requester.badge_number}` : null].filter(Boolean).join(" · ")}
+                               date={formatDateTime(warrant.created_at)}/>
+                <SignatureLine signature={signatureOf(warrant.approved_by)} name={warrant.status === "pending" ? null : warrant.approver?.full_name} align="left"
+                               pending={warrant.status === "pending" ? "jóváhagyásra vár" : null}
+                               role={warrant.status === "rejected" ? "Elutasította" : "Jóváhagyta"}
+                               detail={[warrant.approver?.faction_rank, warrant.approver?.badge_number ? `#${warrant.approver.badge_number}` : null].filter(Boolean).join(" · ")}
+                               date={warrant.status === "pending" ? null : formatDateTime(warrant.decided_at ?? warrant.updated_at)}/>
               </footer>
 
               {stamp && (

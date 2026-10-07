@@ -2,7 +2,7 @@ import type {ReactNode} from "react";
 import type {LucideIcon} from "lucide-react";
 import {cn} from "@/lib/utils";
 
-export type Tone = "gold" | "blue" | "emerald" | "orange" | "violet" | "red" | "cyan" | "slate";
+export type Tone = "gold" | "blue" | "emerald" | "orange" | "violet" | "red" | "cyan" | "slate" | "indigo" | "fuchsia";
 
 export const TONE_CLASSES: Record<Tone, {tile: string; text: string; soft: string; ring: string; gradient: string}> = {
   gold: {tile: "bg-yellow-500/10 text-yellow-400 ring-yellow-500/25", text: "text-yellow-400", soft: "bg-yellow-500/10", ring: "ring-yellow-500/30",
@@ -21,6 +21,10 @@ export const TONE_CLASSES: Record<Tone, {tile: string; text: string; soft: strin
     gradient: "from-cyan-200 via-cyan-500 to-blue-700"},
   slate: {tile: "bg-slate-500/10 text-slate-300 ring-slate-500/25", text: "text-slate-300", soft: "bg-slate-500/10", ring: "ring-slate-500/30",
     gradient: "from-slate-200 via-slate-400 to-slate-700"},
+  indigo: {tile: "bg-indigo-500/10 text-indigo-300 ring-indigo-500/25", text: "text-indigo-300", soft: "bg-indigo-500/10", ring: "ring-indigo-500/30",
+    gradient: "from-indigo-200 via-indigo-500 to-violet-800"},
+  fuchsia: {tile: "bg-fuchsia-500/10 text-fuchsia-300 ring-fuchsia-500/25", text: "text-fuchsia-300", soft: "bg-fuchsia-500/10", ring: "ring-fuchsia-500/30",
+    gradient: "from-fuchsia-200 via-fuchsia-500 to-purple-800"},
 };
 
 interface PageHeaderProps {

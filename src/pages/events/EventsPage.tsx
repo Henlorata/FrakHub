@@ -16,6 +16,7 @@ import {errorMessage} from "@/lib/utils";
 import {AbsencePanel} from "./AbsencePanel";
 import {AttendanceDialog} from "./AttendanceDialog";
 import {EventCard} from "./EventCard";
+import {OperationPlanDialog} from "./OperationPlanDialog";
 import {EventDialog} from "./EventDialog";
 import {MiniCalendar} from "./MiniCalendar";
 
@@ -56,7 +57,10 @@ export function EventsPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [attendanceFor, setAttendanceFor] = useState<FactionEvent | null>(null);
+  const [operationFor, setOperationFor] = useState<FactionEvent | null>(null);
   const focusId = searchParams.get("id");
+  // A notification about a role links to /events?id=...&plan=1: the plan opens with the event.
+  const openPlan = useRef(searchParams.get("plan") === "1");
   const audiences = useMemo(() => organisableAudiences(profile), [profile]);
 
   // Approved leave of the same window (dates only): the calendar and the planning hints.
@@ -103,6 +107,12 @@ export function EventsPage() {
   const focused = focusId ? (events ?? []).find((event) => event.id === focusId) ?? null : null;
   const pastOpen = showPast || (!!focused && eventEnd(focused) < now);
 
+  useEffect(() => {
+    if (!focused || !openPlan.current) return;
+    openPlan.current = false;
+    setOperationFor(focused);
+  }, [focused]);
+
   // A notification's link (?id=...) scrolls to the event and highlights it for a moment.
   useEffect(() => {
     if (!focused) return;
@@ -113,6 +123,7 @@ export function EventsPage() {
       setSearchParams((params) => {
         const next = new URLSearchParams(params);
         next.delete("id");
+        next.delete("plan");
         return next;
       }, {replace: true});
     }, 4000);
@@ -189,7 +200,7 @@ export function EventsPage() {
                inAudience={isInAudience(profile, event.audience)}
                onRespond={(status, note) => void respond(event, status, note)} onEdit={() => setEditing(event)}
                onToggleCancel={() => void toggleCancel(event)} onDelete={() => void remove(event)}
-               onAttendance={() => setAttendanceFor(event)}/>
+               onAttendance={() => setAttendanceFor(event)} onOperation={() => setOperationFor(event)}/>
   );
 
   const myAnswers = upcoming.filter((event) => !event.cancelled_at && event.my_status === "going").length;
@@ -273,6 +284,10 @@ export function EventsPage() {
                        setNewFromUrl(false);
                        setReloadKey((key) => key + 1);
                      }}/>
+      )}
+      {operationFor && (
+        <OperationPlanDialog event={operationFor} onClose={() => setOperationFor(null)}
+                             onChanged={(summary) => patch(operationFor.id, (current) => ({...current, operation: summary}))}/>
       )}
       {attendanceFor && (
         <AttendanceDialog event={attendanceFor} absences={absences} onClose={() => setAttendanceFor(null)}

@@ -13,6 +13,7 @@ import {formatAgo, formatDateTime} from "@/lib/datetime";
 import {CATEGORY, canViewMcbOverview, isMcbLead, mcbApi, type McbOverview, type McbOverviewMember, type McbSettings} from "@/lib/mcb";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
+import {divisionRankOrder} from "@/lib/bureaus";
 import {cn, errorMessage, getRankPriority} from "@/lib/utils";
 import {describeCaseEvent} from "./components/CaseTimeline";
 import {MemberAvatar, PriorityChip} from "./components/McbBadges";
@@ -21,7 +22,6 @@ import {TransferCaseDialog} from "./components/AddCollaboratorDialog";
 // Chart colours: categorical slots 1 and 3 of the dark palette, validated on the panel surface.
 const SERIES = {opened: "#3987e5", closed: "#199e70"};
 const MONTHS = ["jan.", "febr.", "márc.", "ápr.", "máj.", "jún.", "júl.", "aug.", "szept.", "okt.", "nov.", "dec."];
-const INVESTIGATOR_ORDER: Record<string, number> = {"Investigator III.": 0, "Investigator II.": 1, "Investigator I.": 2};
 
 /** "2026. okt." (tooltip, table) and the axis label without the year ("okt."). */
 const monthLabel = (key: string) => {
@@ -53,7 +53,7 @@ export function AdminPage() {
 
   const members = useMemo(() => [...(data?.members ?? [])].sort((a, b) =>
     Number(b.is_bureau_commander) - Number(a.is_bureau_commander)
-    || (INVESTIGATOR_ORDER[a.division_rank ?? ""] ?? 9) - (INVESTIGATOR_ORDER[b.division_rank ?? ""] ?? 9)
+    || divisionRankOrder("MCB", a.division_rank) - divisionRankOrder("MCB", b.division_rank)
     || getRankPriority(a.faction_rank) - getRankPriority(b.faction_rank)), [data?.members]);
 
   if (profile && !allowed) return <Navigate to="/mcb" replace/>;

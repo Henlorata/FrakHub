@@ -1,9 +1,11 @@
 import {
-  Award, Banknote, Bell, BookCheck, BrainCircuit, Calculator, CalendarDays, ClipboardList, FileText, Fingerprint, GraduationCap, KeyRound,
-  LayoutDashboard, Radio, Sparkles, Trophy, Truck, User, Users, UsersRound,
+  Award, Banknote, BarChart3, Bell, BookCheck, BrainCircuit, Calculator, CalendarDays, ClipboardList, FileText, Fingerprint, GraduationCap, KeyRound,
+  Globe, LayoutDashboard, Mail, Megaphone, Radar, Radio, Scale, Sparkles, Trophy, Truck, User, Users, UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import {canViewCaseList} from "@/lib/utils";
+import {canSeeIab} from "@/lib/iab";
+import {canEditSite} from "@/lib/site";
 import type {Profile} from "@/types/supabase";
 
 export interface NavItem {
@@ -25,8 +27,11 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Áttekintés",
     items: [
       {label: "Irányítópult", path: "/dashboard", icon: LayoutDashboard, keywords: "dashboard főoldal kezdőlap"},
+      {label: "Eligazítás", path: "/briefing", icon: Radar, keywords: "eligazítás bolo körözés lopott jármű körözött személy szolgálat járőr"},
       {label: "Értesítések", path: "/notifications", icon: Bell, keywords: "üzenetek értesítés"},
+      {label: "Levelezés", path: "/mail", icon: Mail, keywords: "levél levelezés email posta üzenet public mails körlevél iab panasz"},
       {label: "Események", path: "/events", icon: CalendarDays, keywords: "naptár gyűlés képzés esemény jelentkezés program"},
+      {label: "Statisztika", path: "/stats", icon: BarChart3, keywords: "statisztika bírság letartóztatás intézkedés grafikon számok trend"},
     ],
   },
   {
@@ -59,12 +64,14 @@ export const NAV_SECTIONS: NavSection[] = [
       {label: "Szabályzatok", path: "/policies", icon: BookCheck, keywords: "szabályzat szabály sop elolvastam kötelező"},
       {label: "Közösség", path: "/community", icon: UsersRound, keywords: "szavazás ötlet ötletláda javaslat névtelen visszajelzés panasz"},
       {label: "Ranglista", path: "/leaderboard", icon: Trophy, keywords: "ranglista toplista verseny legjobbak"},
+      {label: "Sajtóiroda", path: "/sib", icon: Megaphone, keywords: "sib hírek sajtó közlemény főoldal nyilvános oldal galéria toborzás", visible: canEditSite},
     ],
   },
   {
     label: "Adminisztráció",
     items: [
       {label: "Személyügy", path: "/hr", icon: Users, keywords: "hr állomány előléptetés rang trainee újonc mentor aktivitás"},
+      {label: "Belső vizsgálatok", path: "/iab", icon: Scale, keywords: "iab internal affairs belső vizsgálat panasz fegyelmi", visible: canSeeIab},
       {label: "Ki mit tehet?", path: "/permissions", icon: KeyRound, keywords: "jogosultság jog engedély szerepkör"},
     ],
   },
@@ -76,6 +83,7 @@ export const EXTRA_PAGES: NavItem[] = [
   {label: "Újdonságok", path: "/changelog", icon: Sparkles, keywords: "újdonság változás frissítés hírek változásnapló"},
   {label: "Okleveleim", path: "/profile?tab=certificates", icon: Award, keywords: "oklevél bizonyítvány képesítés igazolás"},
   {label: "Oklevél ellenőrzése", path: "/certificates", icon: Award, keywords: "oklevél ellenőrzés kód hiteles"},
+  {label: "Nyilvános főoldal", path: "/home", icon: Globe, keywords: "főoldal nyilvános oldal hírek bemutatkozás toborzás weboldal"},
 ];
 
 export const visibleSections = (profile: Profile): NavSection[] =>
@@ -94,6 +102,7 @@ export const pageTitleFor = (pathname: string): string => {
   if (pathname.startsWith("/mcb/admin")) return "Az iroda vezetése";
   if (pathname.startsWith("/mcb/templates")) return "Aktasablonok";
   if (pathname.startsWith("/mcb/informants")) return "Informátorok";
+  if (pathname.startsWith("/mcb/organizations")) return "Bűnszervezetek";
   if (pathname.startsWith("/logistics/fleet/")) return "Jármű";
   if (pathname.startsWith("/changelog")) return "Újdonságok";
   if (pathname.startsWith("/hr/record")) return "Szolgálati lap";

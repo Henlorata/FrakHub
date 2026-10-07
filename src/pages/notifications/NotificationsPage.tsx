@@ -260,5 +260,9 @@ const CATEGORY_HINTS: Record<NotificationCategory, string> = {
   finance: "Költségtérítési kérelmek.",
   announcement: "Új hirdetmények az irányítópulton.",
   event: "Új események, lemondás, időpont-változás, és emlékeztető az esemény napján.",
+  community: "Szavazások, ötletek, szabályzatok és a névtelen visszajelzések válaszai.",
+  patrol: "Új, veszélyes BOLO (lopott jármű, körözött személy), és ha a te BOLO-dat megtalálták.",
+  mail: "Új levelek és válaszok a postafiókodba, a csoportcímeidre és a körlevelekből.",
+  iab: "Az Internal Affairs Bureau tagjainak: új és lezárt vizsgálatok, kijelölt vizsgálatvezetés.",
   system:"Fiókot és biztonságot érintő üzenetek, készültségi szint.",
 };

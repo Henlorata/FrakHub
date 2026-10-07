@@ -332,6 +332,7 @@ export function PayrollTab() {
 
       {detailRow && (
         <PayrollMemberDialog key={detailRow.user_id} row={detailRow} input={inputOf(detailRow.user_id)} settings={data.settings} editable={editable}
+                             closedMonth={data.status === "closed" ? data.month : null}
                              onInput={(patch) => {
                                updateInput(detailRow.user_id, patch);
                                // The sheet shows the dialog's values, not a stale text being typed in a cell.
