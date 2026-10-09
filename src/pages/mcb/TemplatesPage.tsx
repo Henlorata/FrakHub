@@ -1,4 +1,4 @@
-import {lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
+import {Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties} from "react";
 import {Navigate} from "react-router";
 import {toast} from "sonner";
 import {
@@ -17,10 +17,11 @@ import {
 } from "@/lib/case-templates";
 import {BUILTIN_TEMPLATES} from "@/lib/case-templates-builtin";
 import {formatDateTime} from "@/lib/datetime";
+import {lazyComponent} from "@/lib/lazy";
 import {isMcbLead} from "@/lib/mcb";
 import {cn, errorMessage} from "@/lib/utils";
 
-const TemplateEditor = lazy(() => import("./components/TemplateEditor").then((module) => ({default: module.TemplateEditor})));
+const TemplateEditor = lazyComponent(() => import("./components/TemplateEditor"), "TemplateEditor");
 
 const KINDS: {kind: TemplateKind; title: string; hint: string; add: string}[] = [
   {kind: "document", title: "Kiinduló dokumentumok", hint: "Új akta nyitásakor választható.", add: "Új dokumentum"},

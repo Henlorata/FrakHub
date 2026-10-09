@@ -1,4 +1,4 @@
-import {lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
+import {Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {Link, useNavigate, useParams} from "react-router";
 import {
   AlertTriangle, ArchiveRestore, ArrowLeft, Boxes, Check, ChevronRight, FileText, FolderArchive, Gavel, History, Info, ListTodo, Loader2, Lock,
@@ -20,6 +20,7 @@ import {useAuth} from "@/context/AuthContext";
 import {useSuspects} from "@/context/SuspectCacheContext";
 import {deleteCloudinaryAssets, uploadToCloudinary} from "@/lib/cloudinary";
 import {formatAgo, formatDate} from "@/lib/datetime";
+import {lazyComponent} from "@/lib/lazy";
 import {
   CATEGORIES, CATEGORY, PRIORITIES, PRIORITY, WARRANT_SELECT, documentReferences, evidenceNumbers, mcbApi,
   type CaseDetail, type CaseListItem,
@@ -63,7 +64,7 @@ function useWideLayout() {
 }
 
 // The drawing tool loads only when it is opened.
-const ImageAnnotator = lazy(() => import("@/components/annotate/ImageAnnotator").then((module) => ({default: module.ImageAnnotator})));
+const ImageAnnotator = lazyComponent(() => import("@/components/annotate/ImageAnnotator"), "ImageAnnotator");
 
 interface ConfirmState {
   title: string;

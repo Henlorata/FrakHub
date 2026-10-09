@@ -1,15 +1,16 @@
-import {lazy, Suspense, useEffect, useState} from "react";
+import {Suspense, useEffect, useState} from "react";
 import {useLocation} from "react-router";
 import {PenLine} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Dialog, DialogContent, DialogDescription, DialogTitle} from "@/components/ui/dialog";
 import {useAuth} from "@/context/AuthContext";
 import {useTraining} from "@/context/TrainingContext";
+import {lazyComponent} from "@/lib/lazy";
 import {sandbox} from "@/lib/sandbox/state";
 import {knownToHaveSignature, rememberHasSignature, signatureApi, signaturePresence} from "@/lib/signature/api";
 import {pageLayerOpen} from "@/lib/training/dom";
 
-const SignatureDialog = lazy(() => import("./SignatureDialog"));
+const SignatureDialog = lazyComponent(() => import("./SignatureDialog"), "default");
 
 /** "Later" waits until the next visit (new tab or browser session). */
 const LATER_KEY = "frakhub.signature.later";

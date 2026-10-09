@@ -1,4 +1,4 @@
-import {lazy, Suspense, useCallback, useEffect, useRef, useState} from "react";
+import {Suspense, useCallback, useEffect, useRef, useState} from "react";
 import {Link, useNavigate, useParams} from "react-router";
 import {toast} from "sonner";
 import {ArrowLeft, Eye, ImagePlus, Loader2, Megaphone, Save, Send, Trash2, Undo2, X} from "lucide-react";
@@ -11,10 +11,11 @@ import {Textarea} from "@/components/ui/textarea";
 import {useConfirm} from "@/components/ConfirmDialog";
 import {getOptimizedImageUrl, uploadToCloudinary} from "@/lib/cloudinary";
 import {countInlineImages, uploadInlineImages} from "@/lib/inline-images";
+import {lazyComponent} from "@/lib/lazy";
 import {NEWS_CATEGORIES, siteApi, type NewsCategory} from "@/lib/site";
 import {cn, errorMessage} from "@/lib/utils";
 
-const NewsDocumentEditor = lazy(() => import("./NewsDocumentEditor"));
+const NewsDocumentEditor = lazyComponent(() => import("./NewsDocumentEditor"), "default");
 
 interface Draft {
   id: string | null;

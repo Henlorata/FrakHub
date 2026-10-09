@@ -1,4 +1,4 @@
-import {lazy, Suspense, type ComponentType} from "react";
+import {Suspense} from "react";
 import {BrowserRouter, Navigate, Route, Routes} from "react-router";
 import {AuthProvider, useAuth} from "@/context/AuthContext";
 import {SystemStatusProvider} from "@/context/SystemStatusContext";
@@ -13,14 +13,13 @@ import {ConfirmProvider} from "@/components/ConfirmDialog";
 import {SandboxBoundary} from "@/components/training/SandboxBoundary";
 import {TrainingProvider} from "@/context/TrainingContext";
 import {missingRequiredEnv} from "@/lib/env";
+import {lazyComponent} from "@/lib/lazy";
 
 /**
  * Route-level code splitting: a page's code (and heavy dependencies such as the
  * BlockNote editor) is downloaded only when the page is first visited.
  */
-function lazyPage<M extends Record<string, unknown>>(loader: () => Promise<M>, exportName: keyof M) {
-  return lazy(async () => ({default: (await loader())[exportName] as ComponentType}));
-}
+const lazyPage = lazyComponent;
 
 const RegisterPage = lazyPage(() => import("@/pages/auth/RegisterPage"), "RegisterPage");
 const OnboardingPage = lazyPage(() => import("@/pages/auth/OnboardingPage"), "OnboardingPage");

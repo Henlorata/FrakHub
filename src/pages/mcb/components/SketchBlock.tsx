@@ -1,11 +1,12 @@
-import {lazy, Suspense, useEffect, useMemo, useState} from "react";
+import {Suspense, useEffect, useMemo, useState} from "react";
 import {createReactBlockSpec, type ReactCustomBlockRenderProps} from "@blocknote/react";
 import {Loader2, Map as MapIcon, PencilRuler, X} from "lucide-react";
 import {parseSketch, serializeSketch, SKETCH_HEIGHTS} from "@/components/sketch/sketch-model";
 import {SketchView} from "@/components/sketch/SketchView";
+import {lazyComponent} from "@/lib/lazy";
 
 // The editor (palette, handles) loads only when a sketch is edited.
-const SketchEditor = lazy(() => import("@/components/sketch/SketchEditor").then((module) => ({default: module.SketchEditor})));
+const SketchEditor = lazyComponent(() => import("@/components/sketch/SketchEditor"), "SketchEditor");
 
 // The stored block format: never rename the type or its props (case documents use them).
 const sketchConfig = {
