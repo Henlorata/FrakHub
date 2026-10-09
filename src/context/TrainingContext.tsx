@@ -1,7 +1,8 @@
-import {createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
+import {createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {useLocation, useNavigate} from "react-router";
 import {toast} from "sonner";
 import {useAuth} from "@/context/AuthContext";
+import {lazyComponent} from "@/lib/lazy";
 import {sandbox} from "@/lib/sandbox/state";
 import {markPracticeToasts} from "@/lib/sandbox/toasts";
 import {eligibleTrainings, trainingById, type TrainingId, type TrainingInfo} from "@/lib/training/catalog";
@@ -9,7 +10,7 @@ import {fetchProgress, readLocalProgress, saveProgress, type ProgressMap, type T
 import {closeOverlays, pageLayerOpen} from "@/lib/training/dom";
 import type {TourStep} from "@/lib/training/types";
 
-const TourOverlay = lazy(() => import("@/components/training/TourOverlay"));
+const TourOverlay = lazyComponent(() => import("@/components/training/TourOverlay"), "default");
 
 export type TourPhase =
   | {kind: "idle"}

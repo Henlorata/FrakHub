@@ -1,3 +1,4 @@
+import {reloadingPage} from "./lazy";
 import {sandbox} from "./sandbox/state";
 
 /**
@@ -5,8 +6,8 @@ import {sandbox} from "./sandbox/state";
  * the leadership instead of a screenshot. A page that crashed, an unhandled error, a failed upload,
  * a server error of our functions and a database answer that only a frontend and schema out of step
  * give. Each error is sent once per page load (at most 15); the database counts repeats on one row
- * and throttles. Never in practice mode or offline; the page goes without its query (search words,
- * codes) and the browser only as its name, version and system.
+ * and throttles. Never in practice mode, offline or while a failed chunk reloads the page; the page
+ * goes without its query (search words, codes) and the browser only as its name, version and system.
  */
 
 export type ErrorKind = "crash" | "error" | "upload" | "api" | "database";
@@ -92,7 +93,7 @@ export function browserLabel(agent: string) {
 
 /** Records an error in the log (best effort, never throws). */
 export function reportError(kind: ErrorKind, error: unknown, extra?: string | null) {
-  if (sandbox.isActive() || navigator.onLine === false) return;
+  if (sandbox.isActive() || navigator.onLine === false || reloadingPage()) return;
   const {message, stack} = describe(error);
   const text = message.replace(/\s+/g, " ").trim();
   if (!text || NOISE.some((pattern) => pattern.test(text)) || FOREIGN.test(stack)) return;

@@ -1,4 +1,4 @@
-import {lazy, Suspense, useEffect, useState, type CSSProperties} from "react";
+import {Suspense, useEffect, useState, type CSSProperties} from "react";
 import {
   ArrowLeft, BadgeCheck, CheckCircle2, ClipboardCheck, Compass, FlaskConical, GraduationCap, HelpCircle, KeyRound, Loader2, LogOut,
   Map as MapIcon, Radio, ShieldCheck, Sparkles, Users,
@@ -9,6 +9,7 @@ import {Input} from "@/components/ui/input";
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {useAuth} from "@/context/AuthContext";
 import {FIRST_DAY_RULES} from "@/data/radio-codes";
+import {lazyComponent} from "@/lib/lazy";
 import {cn, errorMessage} from "@/lib/utils";
 import {AuthShell} from "./AuthShell";
 import {IdCardPreview, type CardDivision} from "./IdCardPreview";
@@ -39,7 +40,7 @@ function ResultSlip() {
   );
 }
 
-const PracticeCorner = lazy(async () => ({default: (await import("./onboarding/PracticeCorner")).PracticeCorner}));
+const PracticeCorner = lazyComponent(() => import("./onboarding/PracticeCorner"), "PracticeCorner");
 
 /** "tr abcd-efg h" -> "TR-ABCD-EFGH" (the code shown at the end of the recruitment exam). */
 function formatClaimCode(input: string): string {

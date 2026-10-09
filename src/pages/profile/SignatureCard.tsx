@@ -6,11 +6,12 @@ import {Button} from "@/components/ui/button";
 import {useConfirm} from "@/components/ConfirmDialog";
 import {SIGNATURE_INK, SignatureMark} from "@/components/signature/SignatureMark";
 import {formatDate} from "@/lib/datetime";
+import {lazyComponent} from "@/lib/lazy";
 import {signatureApi, useSignatures, type SignatureMethod} from "@/lib/signature/api";
 import {errorMessage} from "@/lib/utils";
 import type {Profile} from "@/types/supabase";
 
-const SignatureDialog = React.lazy(() => import("@/components/signature/SignatureDialog"));
+const SignatureDialog = lazyComponent(() => import("@/components/signature/SignatureDialog"), "default");
 
 const METHOD_LABEL: Record<SignatureMethod, string> = {draw: "rajzolt", upload: "képről", style: "stílus", auto: "automatikus"};
 

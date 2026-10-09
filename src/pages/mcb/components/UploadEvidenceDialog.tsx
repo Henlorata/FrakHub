@@ -1,10 +1,11 @@
-import {lazy, Suspense, useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent} from "react";
+import {Suspense, useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent} from "react";
 import {Brush, CheckCircle2, FileText, ImagePlus, Loader2, UploadCloud, X, XCircle} from "lucide-react";
 import {toast} from "sonner";
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {Button} from "@/components/ui/button";
 import {useAuth} from "@/context/AuthContext";
 import {uploadToCloudinary} from "@/lib/cloudinary";
+import {lazyComponent} from "@/lib/lazy";
 import {cn, errorMessage} from "@/lib/utils";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -23,7 +24,7 @@ interface UploadItem {
 const baseName = (file: File) => file.name.replace(/\.[^.]+$/, "") || "Bizonyíték";
 
 // The drawing tool loads only when it is opened.
-const ImageAnnotator = lazy(() => import("@/components/annotate/ImageAnnotator").then((module) => ({default: module.ImageAnnotator})));
+const ImageAnnotator = lazyComponent(() => import("@/components/annotate/ImageAnnotator"), "ImageAnnotator");
 
 interface UploadEvidenceDialogProps {
   open: boolean;
