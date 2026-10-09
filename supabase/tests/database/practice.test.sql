@@ -84,7 +84,8 @@ select is((select count(*)::int from public.notifications n where n.user_id = (s
 select pg_temp.act_as((select deputy_id from ids));
 select throws_ok(format('select public.submit_scenario_run(%L, array[%L])', (select value from t where key = 's1'), 'a'), '22023', null,
   'a run must reach an ending');
-insert into t select 'run', public.submit_scenario_run((select value::uuid from t where key = 's1'), array['a', 'a', 'a', 'a'])::text;
+-- The best path of the sample (its answers are shuffled since 20261008041150).
+insert into t select 'run', public.submit_scenario_run((select value::uuid from t where key = 's1'), array['b', 'b', 'c', 'b'])::text;
 select is((pg_temp.j('run') ->> 'percent')::int, 100, 'the server scores the chosen path');
 select ok(pg_temp.j('run') ->> 'certificate' like 'SFSD-____-____', 'passing a published scenario issues a certificate');
 select is((public.submit_scenario_run((select value::uuid from t where key = 's1'), array['c']) -> 'best' ->> 'best_percent')::int, 100,

@@ -4,9 +4,11 @@ import {
   Award, BrainCircuit, ChevronRight, Flame, GraduationCap, Pencil, Play, Plus, Route, Sparkles, Target, Trophy, Users, X,
 } from "lucide-react";
 import {Button} from "@/components/ui/button";
+import {Switch} from "@/components/ui/switch";
 import {PageHeader, TONE_CLASSES} from "@/components/layout/PageHeader";
 import {EmptyState} from "@/components/layout/EmptyState";
-import {practiceApi, SCENARIO_CATEGORIES, type PracticeOverview, type ScenarioSummary} from "@/lib/practice/api";
+import {useLocalStorage} from "@/hooks/use-local-storage";
+import {practiceApi, SCENARIO_CATEGORIES, type PracticeOverview, type ScenarioCategory, type ScenarioSummary} from "@/lib/practice/api";
 import {DECK_ORDER, DECKS, type DeckId} from "@/lib/practice/decks";
 import {addDays, deckStats, weakSpots} from "@/lib/practice/srs";
 import {formatDate} from "@/lib/datetime";
@@ -149,19 +151,18 @@ function Overview({overview, onDeck, onScenario, onEdit}: {
       </section>
 
       <section aria-labelledby="scenarios-title">
-        <div className="mb-3 flex items-center gap-2 px-1">
+        <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
           <h2 id="scenarios-title" className="text-sm font-semibold text-slate-300">Szituációs gyakorlatok</h2>
-          <span className="text-xs text-slate-500">· döntések egy helyzetben, mindegyikre visszajelzéssel</span>
+          <span className="text-xs text-slate-500">
+            · döntések egy helyzetben, mindegyikre visszajelzéssel
+            {overview.scenarios.length > 0 && ` · ${overview.scenarios.filter((item) => item.result?.passed).length}/${overview.scenarios.length} teljesítve`}
+          </span>
           {overview.can_edit && <Button size="sm" variant="outline" className="ml-auto" onClick={() => onEdit(null)}><Plus/> Új gyakorlat</Button>}
         </div>
         {overview.scenarios.length === 0 ? (
           <div className="panel"><EmptyState icon={Route} title="Még nincs szituációs gyakorlat." description="Az oktatók írhatnak ilyet: helyzet, döntések, visszajelzés."/></div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" data-tour="practice-scenarios">
-            {overview.scenarios.map((item, index) => (
-              <ScenarioCard key={item.id} item={item} index={index} canEdit={overview.can_edit} onPlay={() => onScenario(item.id)} onEdit={() => onEdit(item.id)}/>
-            ))}
-          </div>
+          <ScenarioGrid scenarios={overview.scenarios} canEdit={overview.can_edit} onScenario={onScenario} onEdit={onEdit}/>
         )}
       </section>
 
@@ -220,6 +221,65 @@ function ActivityGrid({days, today}: {days: PracticeOverview["days"]; today: str
 }
 
 const DIFFICULTY = ["", "Könnyű", "Közepes", "Nehéz"];
+
+type ScenarioFilter = {category: ScenarioCategory | "all"; open: boolean};
+
+/** The scenarios with a category filter and "only the ones not passed yet" (kept in this browser). */
+function ScenarioGrid({scenarios, canEdit, onScenario, onEdit}: {
+  scenarios: ScenarioSummary[];
+  canEdit: boolean;
+  onScenario: (id: string) => void;
+  onEdit: (id: string | null) => void;
+}) {
+  const [filter, setFilter] = useLocalStorage<ScenarioFilter>("frakhub.practice.filter", {category: "all", open: false});
+  const categories = (Object.keys(SCENARIO_CATEGORIES) as ScenarioCategory[])
+    .map((key) => ({key, count: scenarios.filter((item) => item.category === key).length}))
+    .filter((entry) => entry.count > 0);
+  // The filter shows only with more than six; below that (and for a category that has no scenario any
+  // more, or a stored value of an older version) every scenario is listed.
+  const filtering = scenarios.length > 6;
+  const category = filtering && categories.some((entry) => entry.key === filter.category) ? filter.category : "all";
+  const openOnly = filtering && filter.open;
+  const shown = scenarios.filter((item) => (category === "all" || item.category === category) && (!openOnly || !item.result?.passed));
+  const chip = (active: boolean) => cn("rounded-full px-3 py-1 text-xs ring-1 transition-colors",
+    active ? "bg-cyan-500/15 text-cyan-100 ring-cyan-500/30" : "bg-white/[0.03] text-slate-400 ring-white/10 hover:text-slate-200");
+
+  return (
+    <>
+      {filtering && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5 px-1">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Kategória">
+            <button type="button" aria-pressed={category === "all"} className={chip(category === "all")}
+                    onClick={() => setFilter({...filter, category: "all"})}>
+              Mind <span className="text-slate-500 tabular-nums">{scenarios.length}</span>
+            </button>
+            {categories.map((entry) => (
+              <button key={entry.key} type="button" aria-pressed={category === entry.key} className={chip(category === entry.key)}
+                      onClick={() => setFilter({...filter, category: entry.key})}>
+                {SCENARIO_CATEGORIES[entry.key]} <span className="text-slate-500 tabular-nums">{entry.count}</span>
+              </button>
+            ))}
+          </div>
+          <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs text-slate-400">
+            <Switch checked={filter.open} onCheckedChange={(open) => setFilter({...filter, open})}/> Csak a még nem teljesítettek
+          </label>
+        </div>
+      )}
+      {shown.length === 0 ? (
+        <div className="panel">
+          <EmptyState icon={Route} title={openOnly ? "Ebben a válogatásban mindet teljesítetted." : "Ebben a kategóriában nincs gyakorlat."}
+                      action={<Button variant="outline" onClick={() => setFilter({category: "all", open: false})}>Az összes mutatása</Button>}/>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" data-tour="practice-scenarios">
+          {shown.map((item, index) => (
+            <ScenarioCard key={item.id} item={item} index={index} canEdit={canEdit} onPlay={() => onScenario(item.id)} onEdit={() => onEdit(item.id)}/>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
 
 function ScenarioCard({item, index, canEdit, onPlay, onEdit}: {item: ScenarioSummary; index: number; canEdit: boolean; onPlay: () => void; onEdit: () => void}) {
   const result = item.result;

@@ -168,4 +168,46 @@ test.describe("recognition", () => {
     await page.waitForTimeout(1200);
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
+
+  test("many scenarios: filtered by category and to the ones not passed yet, the choice kept in the browser", async ({page}) => {
+    const card = (id: string, title: string, category: string, passed = false) => ({
+      id, title, summary: null, category, difficulty: 1, max_score: 5, pass_percent: 70, published: true, updated_at: "2026-10-01T00:00:00Z", steps: 3,
+      result: passed ? {scenario_id: id, user_id: "u", best_score: 5, max_score: 5, best_percent: 100, passed: true, attempts: 1, last_run_at: "2026-10-06T00:00:00Z"} : null,
+      stats: null,
+    });
+    const scenarios = [
+      card("t1", "Igazoltatás ADAM egységben", "traffic", true), card("t2", "Traffipax-ellenőrzés", "traffic"), card("t3", "Ittas sofőr", "traffic"),
+      card("r1", "Rádióetikett", "radio", true), card("r2", "Betörésjelzés", "radio"), card("a1", "PIT vagy nem PIT?", "arrest"),
+      card("a2", "Felony stop", "arrest", true),
+    ];
+    await mockSupabase(page, {
+      tables: {profiles: [testProfile({faction_rank: "Deputy Sheriff II.", system_role: "user"})]},
+      rpc: {get_practice_overview: overview({scenarios}), get_scenario: {...scenario, id: "t2", title: "Traffipax-ellenőrzés"}},
+    });
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/practice");
+    const grid = page.locator('[data-tour="practice-scenarios"] article');
+    await expect(page.getByText("3/7 teljesítve")).toBeVisible();
+    await expect(grid).toHaveCount(7);
+
+    await page.getByRole("button", {name: "Közlekedés 3"}).click();
+    await expect(grid).toHaveCount(3);
+    await page.getByRole("switch").click();
+    await expect(grid).toHaveCount(2);
+    await expect(grid.filter({hasText: "Igazoltatás ADAM egységben"})).toHaveCount(0);
+
+    // Back from a scenario: the same selection.
+    await grid.filter({hasText: "Traffipax-ellenőrzés"}).getByRole("button", {name: /Kezdés/}).click();
+    await page.getByRole("button", {name: /^Gyakorlás$/}).first().click();
+    await expect(grid).toHaveCount(2);
+    await expect(page.getByRole("button", {name: "Közlekedés 3"})).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByRole("button", {name: "Elfogás 2"}).click();
+    await expect(grid).toHaveCount(1);
+    await page.getByRole("button", {name: "Rádió 2"}).click();
+    await expect(grid).toHaveCount(1);
+    await page.getByRole("button", {name: "Mind 7"}).click();
+    await expect(grid).toHaveCount(4);
+  });
 });
