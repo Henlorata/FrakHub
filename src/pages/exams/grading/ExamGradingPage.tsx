@@ -285,7 +285,8 @@ export function ExamGradingPage() {
           )}
 
           {grader && (
-            <IntegrityPanel summary={sheet.integrity} log={sheet.integrity_log} legacyCount={sheet.tab_switch_count} questionNumbers={numbers}/>
+            <IntegrityPanel summary={sheet.integrity} log={sheet.integrity_log} tracked={sheet.deadline !== null}
+                            legacyCount={sheet.tab_switch_count} questionNumbers={numbers}/>
           )}
 
           {grader && details && (

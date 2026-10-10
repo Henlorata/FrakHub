@@ -43,6 +43,10 @@ from ids;
 insert into public.report_logs (user_id, occurred_on, title, forum_url)
 select deputy_id, month + 4, 'Rablás – Jane Roe', 'https://forum.hl-rpg.eu/posts/5002/' from ids;
 select is((select count(*)::int from public.report_logs r, ids where r.month = ids.month), 2, 'members log their own reports');
+-- A report counts for the payroll month it was written in; these stand for that month's reports.
+select pg_temp.act_postgres();
+update public.report_logs r set period = ids.month from ids where r.month = ids.month;
+select pg_temp.act_as((select deputy_id from ids));
 select is((select created_by from public.report_logs r, ids where r.month = ids.month limit 1), (select deputy_id from ids), 'the author is recorded');
 select throws_ok(format($$insert into public.report_logs (user_id, occurred_on, title, forum_url) values (%L, %L, 'Másolat', 'https://forum.hl-rpg.eu/posts/5001/')$$,
                         (select deputy_id from ids), (select month + 5 from ids)),
@@ -57,8 +61,8 @@ update public.report_logs set forum_url = 'https://forum.hl-rpg.eu/posts/5003/' 
 select is((select forum_post_id from public.report_logs where title like 'Rablás%' and month = (select month from ids)), 5003::bigint, 'the link can be added later');
 
 select pg_temp.act_as((select corporal_id from ids));
-select is((select count(*)::int from public.report_logs where user_id <> (select corporal_id from ids)), 0,
-  'members do not see the reports of others');
+select ok((select count(*)::int from public.report_logs where user_id <> (select corporal_id from ids)) > 0,
+  'members read the reports of others (as on the forum)');
 select pg_temp.act_as((select sergeant_id from ids));
 select is((select count(*)::int from public.report_logs r, ids where r.user_id = ids.deputy_id and r.month = ids.month), 2,
   'staff see every report');

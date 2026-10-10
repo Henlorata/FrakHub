@@ -130,7 +130,7 @@ export const ticketReasons = (cart: CartItem[]) => cart.map(reasonOf).join(", ")
 export function arrestCommand(cart: CartItem[], targetId: string, jail: number): string {
   const items = cart.filter(({item}) => hasJail(item));
   if (jail <= 0 || items.length === 0) return "";
-  return `arrest ${targetId.trim() || "[ID]"} ${jail} ${items.map(reasonOf).join(", ")}`;
+  return `arrest ${targetId.trim() || "[ID]"} ${jail} 0 0 ${items.map(reasonOf).join(", ")}`;
 }
 
 /**

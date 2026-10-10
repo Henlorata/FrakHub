@@ -29,16 +29,22 @@ function describe(event: IntegrityEvent, number: (id: string | undefined) => str
 interface IntegrityPanelProps {
   summary: Partial<IntegritySummary> | null;
   log: IntegrityEvent[] | null;
+  /**
+   * The attempt ran on the server (it has a deadline), so the log was kept all along: an empty one
+   * means nothing happened. Sheets from before the new exam system have neither.
+   */
+  tracked: boolean;
   /** Old sheets only have a counter. */
   legacyCount: number | null;
   questionNumbers: Map<string, number>;
 }
 
 /** What happened during the attempt, as facts on a timeline (no verdict). */
-export function IntegrityPanel({summary, log, legacyCount, questionNumbers}: IntegrityPanelProps) {
+export function IntegrityPanel({summary, log, tracked, legacyCount, questionNumbers}: IntegrityPanelProps) {
   const [showPages, setShowPages] = useState(false);
   const events = useMemo(() => [...(log ?? [])].sort((a, b) => a.at - b.at), [log]);
-  const hasLog = events.length > 0 || Object.keys(summary ?? {}).length > 0;
+  // The totals are written with the first event, so a clean attempt has none: it is still a log.
+  const hasLog = tracked || events.length > 0 || Object.keys(summary ?? {}).length > 0;
   const level = integrityLevel(summary);
   const meta = INTEGRITY_LEVEL_META[level];
   const facts = integrityFacts(summary);

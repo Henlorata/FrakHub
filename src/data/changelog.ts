@@ -24,6 +24,40 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    id: "2026-10-reports-on-site",
+    title: "A jelentések az oldalon is",
+    month: "2026-10",
+    summary: "A Jelentésíró elmenti a jelentéseidet: a nevedre kerülnek, beleszámítanak a havi elszámolásba, és mindenki láthatja őket.",
+    items: [
+      {area: "Jelentések", title: "Mentés másoláskor",
+        text: "A Másolás gomb el is menti a jelentést, nincs több külön rögzítés. Ha utána javítasz rajta, a Változások mentése ugyanazt a jelentést frissíti. A fórumra ugyanúgy fel kell töltened.",
+        link: "/reports"},
+      {area: "Jelentések", title: "Mindenki jelentései",
+        text: "A Jelentések fülön hónapról hónapra látod a frakció mentett jelentéseit, kereshetsz bennük, és bármelyiket megnyithatod. A sajátodat a fizetésig javíthatod vagy törölheted.",
+        link: "/reports?tab=list"},
+      {area: "Jelentések", title: "Elszámolási hónap",
+        text: "A jelentés abba a hónapba számít, amelyikben megírtad. A havi fizetéskor a hónap jelentései lezárulnak, onnantól az újak a következő hónapba számítanak.",
+        link: "/reports?tab=summary"},
+    ],
+  },
+  {
+    id: "2026-10-phone-ai-vehicles",
+    title: "Gyorsabb telefonon, AI segéd a jelentéshez",
+    month: "2026-10",
+    summary: "Telefonon kímélő megjelenítés, AI segéd az esetleírás átfogalmazásához, és a járműigénylés a valódi járműparkból válogat.",
+    items: [
+      {area: "Általános", title: "Kímélő megjelenítés",
+        text: "Telefonon és tableten az oldal magától kímélőbb: álló háttér, üveghatás nélkül, így sokkal gördülékenyebb. A profilod Fiók fülén eszközönként átállíthatod.",
+        link: "/profile?tab=settings"},
+      {area: "Jelentések", title: "AI segéd az esetleíráshoz",
+        text: "Az esetleírást továbbra is neked kell megírnod. Az Átfogalmazás hivatalos nyelvre teszi és kijavítja a helyesírást, de új eseményt, részletet nem írhat bele; ha valami kimaradt, megjelöli, és utána magától ellenőrzi is, mi hiányzik még. A Btk.-rövidítéseket (GV, KV, GYO/III. …) a Btk. szerinti névvel írja ki. Mindig olvasd át, mielőtt beküldöd.",
+        link: "/reports"},
+      {area: "Logisztika", title: "Igénylés a járműparkból",
+        text: "Az Új igénylés ablak a valódi járműparkot mutatja: látod, mit igényelhetsz, hány szabad kulcs van, és miért zárolt, amit nem kaphatsz meg.",
+        link: "/logistics?new=1"},
+    ],
+  },
+  {
     id: "2026-10-month-leaderboard",
     title: "Mindenki a ranglistán, beszédesebb havi kártya",
     month: "2026-10",

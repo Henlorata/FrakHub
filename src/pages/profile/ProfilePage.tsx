@@ -37,6 +37,7 @@ import {ReviewList} from "@/components/reviews/ReviewList";
 import {TwoFactorCard} from "./TwoFactorCard";
 import {SignatureCard} from "./SignatureCard";
 import {SessionsCard} from "./SessionsCard";
+import {DisplayCard} from "./DisplayCard";
 import {awardHref} from "@/lib/documents";
 import {MonthlyRecapDialog} from "@/components/recap/MonthlyRecapDialog";
 import {StrikeDots} from "@/components/hr/StrikeDots";
@@ -636,6 +637,7 @@ function AccountSettings({profile, bankAccount, onBankAccountChange, uploading, 
 
       <SignatureCard profile={profile}/>
       <TwoFactorCard profile={profile}/>
+      <DisplayCard/>
       <SessionsCard/>
     </div>
   );

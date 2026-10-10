@@ -23,8 +23,8 @@ test.describe("dashboard", () => {
     await expect(month.getByText("5 / 8")).toBeVisible();
     await expect(month.getByText("10 óra / 30 óra")).toBeVisible();
     await expect(month.getByText("Még 3 kell")).toBeVisible();
-    // Logged by the member, not recorded by the leadership yet.
-    await expect(month.getByText("(a naplód szerint)")).toBeVisible();
+    // Saved by the member, not recorded by the leadership yet.
+    await expect(month.getByText("(a mentett jelentéseid szerint)")).toBeVisible();
 
     const events = page.locator("[data-tour=dashboard-events]");
     await expect(events.getByText("Heti állománygyűlés")).toBeVisible();
@@ -50,7 +50,7 @@ test.describe("dashboard", () => {
     await login(page);
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.locator("[data-tour=dashboard-month]").getByText("Teljesítve").first()).toBeVisible();
-    await expect(page.locator("[data-tour=dashboard-month]").getByText("(a naplód szerint)")).toHaveCount(0);
+    await expect(page.locator("[data-tour=dashboard-month]").getByText("(a mentett jelentéseid szerint)")).toHaveCount(0);
     await expect(page.locator("[data-tour=dashboard-events]").getByText("Nincs esemény a következő két hétben.")).toBeVisible();
   });
 
@@ -67,7 +67,8 @@ test.describe("dashboard", () => {
     const month = page.locator("[data-tour=dashboard-month]");
     await expect(month.getByText("8 kell", {exact: true})).toBeVisible();
     await expect(month.getByText("30 óra kell", {exact: true})).toBeVisible();
-    await expect(month.getByText("A hónap végén rögzítik")).toHaveCount(2);
+    await expect(month.getByText("A hónap végén rögzítik")).toHaveCount(1);
+    await expect(month.getByText("A mentett jelentéseid ide számítanak")).toBeVisible();
     // No zeros and no warning before anything was recorded.
     await expect(month.getByText("0 / 8")).toHaveCount(0);
     await expect(month.getByText(/duty-minimum alatt/)).toHaveCount(0);
@@ -75,6 +76,22 @@ test.describe("dashboard", () => {
     await expect(previous).toContainText("szeptember");
     await expect(previous).toContainText("34 óra · 9 jelentés");
     await expect(previous.getByText("Teljesítve")).toBeVisible();
+  });
+
+  test("until last month is paid, the reports saved now count for it", async ({page}) => {
+    await mockSupabase(page, {rpc: {
+      get_dashboard_summary: summary({
+        my_month: {month: "2026-10-01", reports: 0, report_period: "2026-09-01", period_reports: 6, reports_recorded: false, duty_minutes: null,
+          duty_updated_at: null, min_reports: 8, min_duty_hours: 30, previous: null},
+      }),
+      get_announcements: [],
+    }});
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    const month = page.locator("[data-tour=dashboard-month]");
+    await expect(month.getByText("6 / 8")).toBeVisible();
+    await expect(month.getByText(/a fizetésig a szeptemberi elszámolásba számít/)).toBeVisible();
+    await expect(month.getByRole("link", {name: /Jelentések/})).toHaveAttribute("href", "/reports?tab=list&mine=1");
   });
 
   test("the member chooses and orders the quick access tiles", async ({page}) => {

@@ -109,6 +109,9 @@ export const MATRIX: MatrixGroup[] = [
       {label: "BOLO kiadása, eligazítás, rendszámkeresés", hint: "A személyeket a rendszámkereső csak az akták olvasóinak mutatja", check: () => true},
       {label: "BOLO lezárása, meghosszabbítása", hint: "A sajátodat mindig", check: (profile) => isStaff(profile) ? true : "a sajátodat"},
       {label: "Statisztika (bírságok, letartóztatások)", check: () => true},
+      {label: "Jelentések olvasása", hint: "Mindenki mindenkiét, mint a fórumon", check: () => true},
+      {label: "Jelentés javítása, törlése", hint: "A hónap kifizetéséig", check: () => "a sajátodat"},
+      {label: "Jelentés érvénytelenítése", hint: "Nem számít bele a havi számba; a szerzője értesítést kap", check: isStaff},
     ],
   },
   {
