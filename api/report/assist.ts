@@ -1,5 +1,5 @@
 import {
-  ASSIST_SCHEMA, ASSIST_SYSTEM, assistOutputLimit, assistPrompt, cleanAssistOutput, keepsTheFacts, parseAssistInput, withReportHints, type AssistResult,
+  ASSIST_SCHEMA, ASSIST_SYSTEM, assistOutputLimit, assistPrompt, checkAnswer, cleanAssistOutput, parseAssistInput, withReportHints, type AssistResult,
 } from "../../shared/report-assist.js";
 import {serverEnv} from "../_lib/env.js";
 import {GeminiError, generateJson} from "../_lib/gemini.js";
@@ -51,15 +51,20 @@ export const POST = handle("report/assist", async (request) => {
       maxOutputTokens: assistOutputLimit(input),
       attemptMs: 15_000,
       budgetMs: 26_000,
+      // A made-up name or step is a warning for the member when no model writes a clean answer.
       accept: (answer) => {
         const cleaned = cleanAssistOutput(input.mode, answer);
-        return cleaned !== null && keepsTheFacts(input, cleaned);
+        const verdict = cleaned && checkAnswer(input, cleaned).verdict;
+        return verdict === "ok" || (verdict === "warn" ? "fallback" : false);
       },
     });
-    const output = cleanAssistOutput(input.mode, value);
-    if (!output) throw new GeminiError("unavailable", "unusable answer");
+    const cleaned = cleanAssistOutput(input.mode, value);
+    if (!cleaned) throw new GeminiError("unusable", "unusable answer");
+    const checked = checkAnswer(input, cleaned);
+    const output = {...cleaned, ...(input.mode === "reword" ? {text: checked.text} : {}), ...(checked.added.length ? {added: checked.added} : {})};
     // Which model answered, how fast and why the earlier ones did not (never the texts).
-    console.info(`[api/report/assist] ${input.mode}: ${model}, ${Date.now() - started} ms, ${input.codes.length} abbreviations${skipped.length ? `; skipped ${skipped.join(", ")}` : ""}`);
+    console.info(`[api/report/assist] ${input.mode}: ${model}, ${Date.now() - started} ms, ${input.codes.length} abbreviations${
+      checked.added.length ? `, ${checked.added.length} added words` : ""}${skipped.length ? `; skipped ${skipped.join(", ")}` : ""}`);
     return json({...withReportHints(input, output), remaining: quota.remaining} satisfies AssistResult);
   } catch (failure) {
     if (!(failure instanceof GeminiError)) throw failure;
@@ -67,6 +72,7 @@ export const POST = handle("report/assist", async (request) => {
     if (failure.kind === "blocked") throw new HttpError(422, "Az AI segéd ezt a szöveget nem dolgozta fel. Fogalmazd át, vagy írd meg magad.");
     if (failure.kind === "exhausted") throw new HttpError(429, "Mára elfogyott az AI segéd ingyenes kerete. Reggel 9 körül újra használható, addig írd meg magad a leírást.");
     if (failure.kind === "quota") throw new HttpError(429, "Az AI segéd most túl sok kérést kapott. Próbáld újra egy perc múlva.");
+    if (failure.kind === "unusable") throw new HttpError(503, "Az AI segéd most nem adott használható átfogalmazást. Próbáld újra, vagy maradj a saját szövegednél.");
     throw new HttpError(503, "Az AI segéd most nem érhető el. Próbáld újra később.");
   }
 });

@@ -15,6 +15,13 @@ export interface PenalAbbreviation {
 /** Normalized abbreviation -> the offence(s). */
 export type AbbreviationIndex = Map<string, PenalAbbreviation>;
 
+/**
+ * The meaning the faction writes an ambiguous abbreviation for: "KV" in a report is Közúti
+ * Veszélyeztetés, a charge of almost every ticket, never Kiskorú Veszélyeztetése (the members' rule
+ * of 2026-10-10; given both, the model wrote "közúti veszélyeztetés vagy kiskorú veszélyeztetése").
+ */
+const USUAL_MEANING: Record<string, string> = {KV: "Közúti Veszélyeztetés"};
+
 interface RawItem {
   megnevezes?: unknown;
   rovidites?: unknown;
@@ -64,6 +71,10 @@ export function abbreviationIndex(data: unknown): AbbreviationIndex {
     }
   };
   for (const category of Array.isArray(data) ? data : []) walk((category as {tetelek?: unknown}).tetelek, null);
+  for (const [key, meaning] of Object.entries(USUAL_MEANING)) {
+    const entry = index.get(key);
+    if (entry?.names.includes(meaning)) entry.names = [meaning];
+  }
   return index;
 }
 

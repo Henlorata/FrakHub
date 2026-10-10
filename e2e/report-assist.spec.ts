@@ -2,14 +2,18 @@ import {readFileSync} from "node:fs";
 import {expect, test} from "@playwright/test";
 import {abbreviationIndex, normalizeAbbreviation, reportAbbreviations} from "../shared/penal-abbreviations";
 import {
-  ASSIST_SYSTEM, assistOutputLimit, assistPrompt, cleanAssistOutput, crewHint, formatMoney, keepsTheFacts, madeUpNames, MISSING_MARKER, normalizeMoney,
+  ASSIST_SYSTEM, assistOutputLimit, assistPrompt, checkAnswer, cleanAssistOutput, crewHint, dropMadeUpMakes, formatMoney, keepsTheFacts, madeUpNames,
+  MISSING_MARKER, normalizeMoney,
   parseAssistInput, unitLetters, withReportHints, type AssistInput,
 } from "../shared/report-assist";
 import {login, mockSupabase} from "./support/mock-supabase";
 
 const penalCode = JSON.parse(readFileSync(new URL("../src/data/penalcode.json", import.meta.url), "utf8")) as unknown;
 const GV = {abbr: "GV", names: ["Gondatlan Vezetés"]};
-const KV = {abbr: "KV", names: ["Közúti Veszélyeztetés", "Kiskorú Veszélyeztetése"]};
+// The faction's KV is Közúti Veszélyeztetés, never Kiskorú Veszélyeztetése (the members' rule).
+const KV = {abbr: "KV", names: ["Közúti Veszélyeztetés"]};
+// Still ambiguous in the penal code: the model gets both and picks one.
+const KM = {abbr: "KM", names: ["Közvagyon Megrongálása", "Közerkölcs megsértése"]};
 
 const input = (body: Record<string, unknown>) => {
   const parsed = parseAssistInput(body);
@@ -61,10 +65,14 @@ test.describe("report AI helper: what is sent and what comes back", () => {
     expect(reword).toContain("- Bírság: $1.500");
     expect(reword).toContain(`A rendvédelmi személy esetleírása (ezt kell átfogalmazni):\n<<<\n${DRAFT}\n>>>`);
     expect(reword).not.toContain("Rövidítések");
-    const check = assistPrompt(input({mode: "check", description: "A járművet a piros jelzés miatt állítottam meg a Downtownban.", codes: [GV, KV]}));
+    const check = assistPrompt(input({mode: "check", description: "A járművet a piros jelzés miatt állítottam meg a Downtownban.", codes: [GV, KV, KM]}));
     expect(check).toContain("Az ellenőrzendő esetleírás:");
     // Only the offences the report names by abbreviation, never the whole penal code.
-    expect(check).toContain("Rövidítések (a frakció büntető törvénykönyve szerint):\n- GV: Gondatlan Vezetés\n- KV: Közúti Veszélyeztetés vagy Kiskorú Veszélyeztetése\n\nAz ellenőrzendő");
+    expect(check).toContain("Rövidítések (a frakció büntető törvénykönyve szerint):\n- GV: Gondatlan Vezetés\n- KV: Közúti Veszélyeztetés\n"
+      + "- KM: 2 tétel, csak az esethez illő egyiket írd: Közvagyon Megrongálása | Közerkölcs megsértése\n\nAz ellenőrzendő");
+    // Every charge, the penalties and the seized items go into the reworded text, in the data's words only.
+    expect(ASSIST_SYSTEM.reword).toContain("every seized item of the report's data into the text");
+    expect(ASSIST_SYSTEM.reword).toContain('for "Glock 19(1db), Golck19 Tar(4db)"');
     expect(ASSIST_SYSTEM.reword).toContain('"gondatlan vezetés (GV)"');
     expect(ASSIST_SYSTEM.check).toContain("Never guess what an abbreviation not listed there means.");
     // The reword request checks its result too: the review never goes into the text.
@@ -119,6 +127,28 @@ test.describe("report AI helper: what is sent and what comes back", () => {
       description: "a groove streeten a cranberry stationnel futott el a sofor, mark davisszel utolertuk, de ford nem volt ott semmi"});
     expect(madeUpNames(gant, "A Grove Streeten, a Cranberry Stationnél futott el Marco Diaz, Mark Davisszel utolértük. Ezt követően [HIÁNYZIK: az eset vége] Utolértük.")).toEqual([]);
     expect(madeUpNames(gant, "A sofőr egy kék Ford Premier volt, a Doherty negyedben.")).toEqual(["Premier", "Doherty"]);
+  });
+
+  test("a made-up make is dropped; a person switch or both meanings are rejected; a made-up name or step is a warning", () => {
+    // The member's Golf VII example of 2026-10-10 (only "we" in the text) and what the models made of it.
+    const golf = input({mode: "reword", form: {unitId: "6-A-021", suspectName: "Cino Khai Lee", confiscatedItems: "Glock 19(1db), Golck19 Tar(4db)."},
+      codes: [GV, KV, KM],
+      description: "járőröztünk angel pine környékén, egy fekete golf VII-et akartunk igazoltatni GV és KV miatt de a felszólításunk ellenére tovább ment. elfogtuk és bevittük a fegyházba."});
+    const clean = "Angel Pine környékén járőröztünk, egy fekete Golf VII típusú járművet akartunk igazoltatni, de továbbhajtott. Elfogtuk és a fegyházba szállítottuk.";
+    expect(checkAnswer(golf, {text: clean})).toEqual({text: clean, verdict: "ok", added: []});
+    expect(dropMadeUpMakes(golf, "egy fekete Volkswagen Golf VII típusú járművet")).toBe("egy fekete Golf VII típusú járművet");
+    expect(checkAnswer(golf, {text: clean.replace("fekete Golf", "fekete Volkswagen Golf")})).toEqual({text: clean, verdict: "ok", added: []});
+    // "we" became "I" in part of the text.
+    expect(checkAnswer(golf, {text: "Angel Pine környékén járőröztem, egy fekete Golf VII-et kívántam igazoltatni, de továbbhajtott. Elfogtuk és a fegyházba szállítottuk."}).verdict).toBe("reject");
+    expect(checkAnswer(golf, {text: `${clean} Közvagyon megrongálása vagy közerkölcs megsértése (KM) miatt is.`}).verdict).toBe("reject");
+    expect(checkAnswer(golf, {text: `${clean} A bírság megfizetését követően elengedtük a Blueberry utcában.`}))
+      .toMatchObject({verdict: "warn", added: ["Blueberry", "a bírság megfizetése"]});
+    // The check mode lists gaps only: nothing to judge.
+    expect(checkAnswer(input({mode: "check", description: golf.description}), {}).verdict).toBe("ok");
+    // The person of the text is told to the model.
+    expect(assistPrompt(golf)).toContain("A szöveg személye: többes szám első személy („mi”");
+    expect(assistPrompt(input({mode: "reword", description: "Megállítottam a járművet, igazoltattam a sofőrt, megbírságoltam és továbbengedtem."})))
+      .toContain("A szöveg személye: egyes szám első személy („én”)");
   });
 
   test("money and jail time follow the report's format", () => {
@@ -193,9 +223,9 @@ test.describe("penal code abbreviations of a report", () => {
     expect(normalizeAbbreviation("GY/12")).toBe("GY/12");
   });
 
-  test("name the offence, both of an ambiguous one, a sub-point with its main offence", () => {
-    expect(find({description: 'közöltem vele a szabálysértést "GV,KV" majd IFB-ért előállítottam'})).toEqual([
-      GV, KV, {abbr: "IFB", names: ["Illegális Fegyver Birtoklása"]},
+  test("name the offence, KV as the faction uses it, both of an ambiguous one, a sub-point with its main offence", () => {
+    expect(find({description: 'közöltem vele a szabálysértést "GV,KV" majd IFB-ért előállítottam, KM'})).toEqual([
+      GV, KV, {abbr: "IFB", names: ["Illegális Fegyver Birtoklása"]}, KM,
     ]);
     const speeding = {abbr: "GYO/III.", names: ["Gyorshajtás Országúton (90km/h) – 100% (180km/h)"]};
     expect(find({description: "GYO/III. miatt"})).toEqual([speeding]);
@@ -228,7 +258,7 @@ test.describe("report AI helper on the report page", () => {
       calls.push(body);
       if (body.mode === "reword") {
         return route.fulfill({json: {text: "A járművet a piros jelzés miatt állítottam meg [HIÁNYZIK: a helyszín]. Helyszíni bírságot szabtam ki.",
-          missing: ["a helyszín"], review: ["Nem derül ki, hogyan viselkedett a személy."], remaining: 24}});
+          missing: ["a helyszín"], review: ["Nem derül ki, hogyan viselkedett a személy."], added: ["Volkswagen", "a bírság megfizetése"], remaining: 24}});
       }
       return route.fulfill({json: {missing: ["Nem derül ki, hogyan zárult az eset."], remaining: 23}});
     });
@@ -261,7 +291,9 @@ test.describe("report AI helper on the report page", () => {
     // The check ran with the rewording: the member does not have to press "Ellenőrzés".
     await expect(assist.getByText("Az ellenőrzés szerint még erre figyelj:")).toBeVisible();
     await expect(assist.getByText("Nem derül ki, hogyan viselkedett a személy.")).toBeVisible();
-    await expect(assist.getByText("Rövidítések a Btk. szerint: GV = Gondatlan Vezetés · KV = Közúti Veszélyeztetés vagy Kiskorú Veszélyeztetése")).toBeVisible();
+    await expect(assist.getByText("Rövidítések a Btk. szerint: GV = Gondatlan Vezetés · KV = Közúti Veszélyeztetés")).toBeVisible();
+    // What the AI added without a model writing a clean answer is pointed out.
+    await expect(assist.getByText("Az AI olyat is beleírt, ami nincs a leírásodban: „Volkswagen”, „a bírság megfizetése”.", {exact: false})).toBeVisible();
     await expect(assist.getByText(/Ma még 24 kérés/)).toBeVisible();
     // A placeholder left in the text: a warning, but copying stays possible.
     await expect(page.getByText(/Az esetleírásban maradt pótolandó rész/)).toBeVisible();

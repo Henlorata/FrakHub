@@ -10,9 +10,9 @@
 /**
  * quota: a per-minute limit (try again soon); exhausted: the free daily quota is used up (it starts
  * again at midnight Pacific time, 9:00 in Hungary); blocked: the safety filter refused the text;
- * unavailable: overloaded, too slow, refused or an unusable answer.
+ * unusable: an answer the caller could not use; unavailable: overloaded, too slow, refused or no JSON.
  */
-export type GeminiFailure = "quota" | "exhausted" | "blocked" | "unavailable";
+export type GeminiFailure = "quota" | "exhausted" | "blocked" | "unusable" | "unavailable";
 
 export class GeminiError extends Error {
   readonly kind: GeminiFailure;
@@ -40,8 +40,11 @@ export interface GeminiRequest {
   maxOutputTokens: number;
   /** Time for one model: a slow one passes the request to the next. */
   attemptMs: number;
-  /** Whether an answer is usable; an unusable one passes the request to the next model too. */
-  accept?: (value: unknown) => boolean;
+  /**
+   * Whether an answer is usable; an unusable one passes the request to the next model too, and a
+   * "fallback" one is returned only when no later model gives a usable one.
+   */
+  accept?: (value: unknown) => boolean | "fallback";
   /** Time for all attempts together (the function may run 30 s). */
   budgetMs: number;
 }
@@ -59,12 +62,14 @@ const BLOCKED = new Set(["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "R
 
 /**
  * Asks the models in turn for a JSON answer of the given shape; `skipped` says why the earlier ones
- * did not answer. When none does, the error is the last one worth retrying, "exhausted" only when
- * every model's daily quota is used up.
+ * did not answer. When none does, the first "fallback" answer comes back (`fallback: true`), and
+ * without one the error is the last one worth retrying, "exhausted" only when every model's daily
+ * quota is used up.
  */
-export async function generateJson(config: GeminiConfig, request: GeminiRequest): Promise<{value: unknown; model: string; skipped: string[]}> {
+export async function generateJson(config: GeminiConfig, request: GeminiRequest): Promise<{value: unknown; model: string; skipped: string[]; fallback?: true}> {
   const deadline = Date.now() + request.budgetMs;
   const failures: GeminiError[] = [];
+  let fallback: {value: unknown; model: string} | null = null;
   for (const entry of config.models) {
     const [model, thinkingLevel = "minimal"] = entry.split("@");
     const left = deadline - Date.now();
@@ -121,11 +126,18 @@ export async function generateJson(config: GeminiConfig, request: GeminiRequest)
       failures.push(new GeminiError("unavailable", `${model}: no JSON (${candidate?.finishReason ?? "?"})`));
       continue;
     }
-    if (request.accept && !request.accept(value)) {
-      failures.push(new GeminiError("unavailable", `${model}: unusable answer`));
+    const verdict = request.accept ? request.accept(value) : true;
+    if (verdict === "fallback") {
+      fallback ??= {value, model};
+      failures.push(new GeminiError("unusable", `${model}: answer with warnings`));
+      continue;
+    }
+    if (!verdict) {
+      failures.push(new GeminiError("unusable", `${model}: unusable answer`));
       continue;
     }
     return {value, model, skipped: failures.map((failure) => failure.message)};
   }
+  if (fallback) return {...fallback, skipped: failures.map((failure) => failure.message), fallback: true};
   throw failures.findLast((failure) => failure.kind !== "exhausted") ?? failures.at(-1) ?? new GeminiError("unavailable", "no model answered in time");
 }
