@@ -3,6 +3,8 @@
 -- Run with: bunx supabase test db
 begin;
 select plan(40);
+-- Errors a local browser reported while developing would change the counts (rolled back at the end).
+delete from private.client_errors;
 
 create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,        -- Commander, Bureau Manager

@@ -31,6 +31,7 @@ const PermissionsPage = lazyPage(() => import("@/pages/permissions/PermissionsPa
 const DashboardPage = lazyPage(() => import("@/pages/dashboard/DashboardPage"), "DashboardPage");
 const NotificationsPage = lazyPage(() => import("@/pages/notifications/NotificationsPage"), "NotificationsPage");
 const ReportsPage = lazyPage(() => import("@/pages/reports/ReportsPage"), "ReportsPage");
+const ReportPage = lazyPage(() => import("@/pages/reports/ReportPage"), "ReportPage");
 const HrPage = lazyPage(() => import("@/pages/hr/HrPage"), "HrPage");
 const ServiceRecordPage = lazyPage(() => import("@/pages/hr/ServiceRecordPage"), "ServiceRecordPage");
 const McbLayout = lazyPage(() => import("@/layouts/McbLayout"), "McbLayout");
@@ -114,6 +115,7 @@ function AppRoutes() {
           <Route path="/iab/case/:caseId" element={<IabCasePage/>}/>
           <Route path="/iab/case/:caseId/print" element={<IabCasePrintPage/>}/>
           <Route path="/reports" element={<ReportsPage/>}/>
+          <Route path="/reports/:reportId" element={<ReportPage/>}/>
           <Route path="/hr" element={<HrPage/>}/>
           <Route path="/hr/record/:userId" element={<ServiceRecordPage/>}/>
           <Route path="/hr/award/:kind/:id" element={<AwardCertificatePage/>}/>

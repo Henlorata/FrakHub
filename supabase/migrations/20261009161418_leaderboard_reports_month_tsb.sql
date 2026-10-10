@@ -17,7 +17,7 @@
 -- Compatible with the deployed frontend (same keys, new ones added).
 -- =============================================================================
 
-create function pg_temp.patch_function(_fn regprocedure, _done text, variadic _pairs text[])
+create or replace function pg_temp.patch_function(_fn regprocedure, _done text, variadic _pairs text[])
 returns void
 language plpgsql
 as $f$
@@ -285,3 +285,5 @@ set value = (select jsonb_agg(case when x.item ->> 'a' = 'A „Csatlakozz hozzá
 where c.key = 'faq' and jsonb_typeof(c.value) = 'array'
   and exists (select 1 from jsonb_array_elements(c.value) item
               where item ->> 'a' = 'A „Csatlakozz hozzánk” gombbal regisztrálhatsz. A Személyügy elbírálja a kérelmedet, és értesít a következő lépésekről.');
+
+drop function pg_temp.patch_function(regprocedure, text, text[]);

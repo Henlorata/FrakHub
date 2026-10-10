@@ -43,23 +43,39 @@ export function seedDashboard(world: World) {
   ];
   tables.notification_preferences = [];
 
+  // Saved reports (the report pages read them, the counts follow them); in the demo they count for their month.
   const today = world.day();
-  const report = (userId: string, title: string, daysAgo: number, forumPost: number | null): Row => {
+  let number = 100;
+  const report = (userId: string, suspect: string, charges: string, fine: string, jail: string, unit: string, description: string,
+                  daysAgo: number, forumPost: number | null): Row => {
     const occurred = addDaysKey(today, -daysAgo);
+    const author = world.person(userId);
+    const [year, monthPart, dayPart] = occurred.split("-");
+    number += 1;
     return {
-      id: world.id(), user_id: userId, occurred_on: occurred, month: `${occurred.slice(0, 7)}-01`, title,
-      forum_url: forumPost ? `https://forum.hl-rpg.eu/posts/${forumPost}/` : null, forum_post_id: forumPost, source: "generator",
-      created_at: ago(daysAgo * DAY + 30), created_by: userId,
+      id: world.id(), number, user_id: userId, occurred_on: occurred, month: `${occurred.slice(0, 7)}-01`, period: `${occurred.slice(0, 7)}-01`,
+      title: `${suspect} – ${charges}`.slice(0, 160), source: "report", officer_name: author?.full_name ?? null, officer_rank: author?.faction_rank ?? null,
+      badge_number: author?.badge_number ?? null, colleagues: null, unit_id: unit, suspect_name: suspect, suspect_id_card: null, suspect_license: null,
+      suspect_medical: null, report_date: `${year}. ${monthPart}. ${dayPart}.`, charges, fine, jail_time: jail, confiscated_items: "-", description,
+      forum_url: forumPost ? `https://forum.hl-rpg.eu/posts/${forumPost}/` : null, forum_post_id: forumPost,
+      created_at: ago(daysAgo * DAY + 30), created_by: userId, updated_at: null, voided_at: null, voided_by: null, void_reason: null,
     };
   };
   tables.report_logs = [
-    report(me.id, "Közúti ellenőrzés – Downtown", 1, 900001),
-    report(me.id, "Letartóztatás – fegyveres rablás", 3, 900002),
-    report(me.id, "Járőrjelentés – Angel Pine", 6, null),
-    report(person(9), "Közúti ellenőrzés – Fort Carson", 2, 900003),
-    report(person(6), "Helyszíni szemle – ékszerbolt", 2, 900004),
-    report(person(8), "SEB bevetés – kikötő", 4, 900005),
-    report(person(11), "Parkolási bírságok", 5, 900006),
+    report(person(11), "Tommy Vercetti", "Szabálytalan parkolás", "500", "-", "6-L-014",
+      "A Downtown parkolóházánál a mozgássérült helyen álló járművet és vezetőjét igazoltattam, helyszíni bírságot szabtam ki.", 5, 900006),
+    report(person(8), "Big Smoke", "Kábítószer birtoklása, Ellenszegülés", "8000", "40", "6-S-002",
+      "A kikötőben a bejelentés nyomán érkeztünk; a gyanúsított menekülni próbált, a motozáskor 30 g kokaint találtunk nála.", 4, 900005),
+    report(me.id, "Ryder Wilson", "Lőfegyver engedély nélküli birtoklása", "5000", "30", "6-L-005",
+      "Bejelentésre érkeztünk a Grove Streetre; a gyanúsítottnál a ruházat átvizsgálásakor engedély nélküli pisztolyt találtunk.", 6, null),
+    report(person(6), "Carl Johnson", "Betöréses lopás", "3000", "20", "6-M-003",
+      "Az ékszerbolt helyszíni szemléje után a térfigyelő felvételek alapján azonosítottuk és előállítottuk a gyanúsítottat.", 2, 900004),
+    report(person(9), "Claude Speed", "Gyorshajtás Lakott Területen (50km/h) – 25% (65km/h)", "1500", "-", "6-L-021",
+      "Fort Carsonban sebességmérés közben 65 km/h-val mértük be a járművet, félreállítottuk és helyszíni bírságot szabtunk ki.", 2, 900003),
+    report(me.id, "Victor Vance", "Fegyveres rablás", "15000", "60", "6-L-005",
+      "A benzinkút kirablásáról szóló riasztás után a menekülő járművet megállítottuk, a gyanúsítottat lefegyvereztük és előállítottuk.", 3, 900002),
+    report(me.id, "Mike Toreno", "Piros jelzés figyelmen kívül hagyása", "1000", "-", "6-L-005",
+      "A Downtown kereszteződésében a piros jelzésen áthajtó járművet megállítottam, a vezetőt igazoltattam és megbírságoltam.", 1, 900001),
   ];
 }
 
@@ -71,9 +87,12 @@ function myMonth(world: World) {
   const month = world.month();
   const duty = (tables.duty_time_entries ?? []).find((row) => row.user_id === me.id && String(row.month) === month);
   const settings = tables.payroll_settings?.[0];
+  const reports = count(tables.report_logs, (row) => row.user_id === me.id && String(row.period) === month && !row.voided_at);
   return {
     month,
-    reports: count(tables.report_logs, (row) => row.user_id === me.id && String(row.month) === month),
+    reports,
+    report_period: month,
+    period_reports: reports,
     duty_minutes: duty ? Number(duty.minutes) : null,
     duty_updated_at: duty?.updated_at ?? null,
     min_reports: settings?.min_reports ?? 8,
@@ -88,7 +107,7 @@ function previousMonth(world: World) {
   const {tables, me} = world;
   const month = world.month(-1);
   const duty = (tables.duty_time_entries ?? []).find((row) => row.user_id === me.id && String(row.month) === month);
-  const reports = count(tables.report_logs, (row) => row.user_id === me.id && String(row.month) === month);
+  const reports = count(tables.report_logs, (row) => row.user_id === me.id && String(row.period) === month && !row.voided_at);
   if (!duty && !reports) return null;
   const settings = tables.payroll_settings?.[0];
   return {month, duty_minutes: duty ? Number(duty.minutes) : null, reports, min_duty_hours: settings?.min_duty_hours ?? 30,

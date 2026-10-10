@@ -32,4 +32,25 @@ export const serverEnv = {
     apiSecret: required("CLOUDINARY_API_SECRET"),
   }),
   cronSecret: () => read("CRON_SECRET"),
+  /**
+   * Google Gemini for the report form's AI helper (a Google AI Studio key of a project without
+   * billing, so it stays on the free tier); null when not set. GEMINI_MODELS: comma separated,
+   * tried in order; "model@level" sets a model's thinking level (default "minimal").
+   */
+  gemini: () => {
+    const apiKey = read("GEMINI_API_KEY");
+    if (!apiKey) return null;
+    const models = (read("GEMINI_MODELS") ?? DEFAULT_GEMINI_MODELS).split(",").map((model) => model.trim()).filter(Boolean);
+    return {apiKey, models};
+  },
 };
+
+/**
+ * Free tier models, each with its own daily quota (3.6 Flash 20 requests a day, the Flash-Lite ones
+ * 500). Compared on sample reports on 2026-10-10: 3.6 Flash kept every fact and found the gaps best,
+ * in 2-6 s, but is often overloaded (503); 3.1 Flash-Lite writes fluent Hungarian (2-4 s) and keeps
+ * about 95 % of the facts; 3.5 Flash-Lite is the fastest (1-2 s) and keeps a few more facts of a long
+ * draft, but makes spelling and suffix mistakes in about every other text ("bekatve", "nálunk",
+ * "Jackson-t"). gemini-3.5-flash is served by 3.6 Flash (same quota); 3.7 and 3.8 Flash took 60-130 s.
+ */
+const DEFAULT_GEMINI_MODELS = "gemini-3.6-flash,gemini-3.1-flash-lite,gemini-3.5-flash-lite";

@@ -19,6 +19,7 @@ import {bureauRpc, seedBureaus} from "./bureaus";
 import {patrolRpc, seedPatrol} from "./patrol";
 import {communicationRpc, seedCommunication} from "./communication";
 import {graphRpc} from "./graph";
+import {reportsRpc} from "./reports";
 
 /** Foreign keys the app embeds (`owner:owner_id(...)`, `profiles!x_user_id_fkey(...)`, `holders:fleet_assignments(...)`). */
 const RELATIONS: Schema["relations"] = {
@@ -85,8 +86,9 @@ function withDefaults(world: World, table: string, row: Row): Row {
     case "report_logs": {
       const occurred = String(out.occurred_on ?? world.day());
       const post = typeof out.forum_url === "string" ? out.forum_url.match(/(?:\/posts\/|post-)(\d{1,18})/)?.[1] : undefined;
-      Object.assign(out, {month: `${occurred.slice(0, 7)}-01`, forum_post_id: post ? Number(post) : null, source: out.source ?? "manual",
-        created_by: out.created_by ?? world.me.id, forum_url: out.forum_url ?? null});
+      Object.assign(out, {month: `${occurred.slice(0, 7)}-01`, period: world.month(), forum_post_id: post ? Number(post) : null, source: out.source ?? "manual",
+        created_by: out.created_by ?? world.me.id, forum_url: out.forum_url ?? null,
+        number: Math.max(100, ...(world.tables.report_logs ?? []).map((row) => Number(row.number ?? 0))) + 1});
       break;
     }
     case "hr_records":
@@ -166,7 +168,7 @@ function visibility(me: Profile): Partial<Record<string, (row: Row) => boolean>>
     budget_requests: (row) => own(row) || admin,
     hr_records: (row) => staff || (own(row) && row.kind !== "note"),
     vehicle_warnings: (row) => own(row) || staff,
-    report_logs: (row) => own(row) || staff,
+    report_logs: () => true,
     member_bank_accounts: (row) => own(row) || staff,
     notifications: own,
     exam_submissions: (row) => own(row) || grader,
@@ -224,8 +226,9 @@ export function createSandbox(profile: Profile): SandboxBackend {
   seedCommunication(world);
 
   const rpc: Record<string, RpcHandler> = {...peopleRpc, ...dashboardRpc, ...mcbRpc, ...examsRpc, ...fleetRpc, ...financeRpc, ...academyRpc, ...eventsRpc,
-    ...progressionRpc, ...extrasRpc, ...bureauRpc, ...patrolRpc, ...communicationRpc, ...graphRpc};
-  const api: Record<string, (body: Row, world: World) => unknown> = {...peopleApi, ...mcbApi, "/api/delete-image": () => ({deleted: 0})};
+    ...progressionRpc, ...extrasRpc, ...bureauRpc, ...patrolRpc, ...communicationRpc, ...graphRpc, ...reportsRpc};
+  const api: Record<string, (body: Row, world: World) => unknown> = {...peopleApi, ...mcbApi, "/api/delete-image": () => ({deleted: 0}),
+    "/api/report/assist": demoAssist};
   const virtual: Record<string, () => Row[]> = {exam_submissions_view: () => examViewRows(world)};
   const visible = visibility(profile);
   const schema: Schema = {
@@ -289,4 +292,15 @@ export function createSandbox(profile: Profile): SandboxBackend {
       return structuredClone(handler((body ?? {}) as Row, world));
     },
   };
+}
+
+/** Practice mode: the report form's AI helper answers with a sample (nothing reaches Google). */
+function demoAssist(body: Row) {
+  if (body.mode === "check") {
+    return {missing: ["Gyakorló módban az AI nem ellenőriz: élesben itt látod, mi hiányzik a leírásodból."], remaining: 25};
+  }
+  return {text: `${String(body.description ?? "").trim()}
+
+(Gyakorló mód: élesben az AI itt hivatalos nyelvre fogalmazza át, amit írtál.)`.trim(), missing: [],
+  review: ["Gyakorló módban az AI nem ellenőriz: élesben az átfogalmazás után itt látod, mi hiányzik még a leírásodból."], remaining: 25};
 }

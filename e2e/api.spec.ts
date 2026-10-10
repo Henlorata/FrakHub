@@ -37,6 +37,7 @@ test.describe("api functions", () => {
       "/api/admin/update-password",
       "/api/case/delete",
       "/api/delete-image",
+      "/api/report/assist",
     ]) {
       const response = await request.post(path, {data: {}});
       expect(response.status(), path).toBe(401);

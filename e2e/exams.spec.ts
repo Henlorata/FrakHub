@@ -214,6 +214,40 @@ test.describe("exam centre and grading", () => {
       _scores: {q2: {points: 2}, q3: {points: 3}},
     });
   });
+
+  test("a clean attempt reads as clean; only a sheet from before the exam system has no log", async ({page}) => {
+    // A clean attempt sends no events, so the server never writes its totals (2026-10-10: the first one
+    // on prod was labelled as an old sheet).
+    const sheet = (overrides: Record<string, unknown>) => ({
+      server_now: new Date().toISOString(),
+      viewer: {grader: true, can_grade: true, can_trash: false, can_purge: false},
+      sheet: {
+        id: SHEET_ID, exam_id: EXAM_ID, user_id: null, candidate_name: "Vendég Viktor", applicant_name: "Vendég Viktor", badge_number: null,
+        avatar_url: null, status: "pending", start_time: "2026-10-01T10:00:00Z", end_time: "2026-10-01T10:20:00Z", deadline: "2026-10-01T10:30:00Z",
+        finish_reason: "submitted", last_seen_at: null, total_score: 0, max_score: 3, grading_notes: null, graded_at: null, graded_by_name: null,
+        feedback_visible: false, retry_allowed_at: null, deleted_at: null, tab_switch_count: 0, integrity: {}, integrity_log: [], claim_token: null,
+        ...overrides,
+      },
+      exam: {id: EXAM_ID, title: "SEB alapvizsga", type: "division_exam", division: "SEB", passing_percentage: 80, time_limit_minutes: 30, retry_cooldown_hours: 24},
+      pages: [],
+      questions: [{id: "q3", page_number: 1, question_text: "Miért szeretnél csatlakozni?", question_type: "text", points: 3, is_required: true, options: [],
+        answer: {text: "Szeretnék segíteni a városnak.", options: [], points: 0, comment: null, pasted: 0}, guide: null, auto_points: null}],
+    });
+    let current = sheet({});
+    await mockSupabase(page, {rpc: {get_exam_sheet: () => current, get_exam_hub: hub}});
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto(`/exams/grading/${SHEET_ID}`);
+
+    const panel = page.locator("[data-tour=grading-integrity]");
+    await expect(panel.getByText("Nincs eltérés")).toBeVisible();
+    await expect(panel.getByText("A vizsgázó végig az oldalon maradt, nem illesztett be szöveget.")).toBeVisible();
+    await expect(panel.getByText(/Régi vizsgalap/)).toHaveCount(0);
+
+    current = sheet({deadline: null, finish_reason: null, tab_switch_count: 2});
+    await page.reload();
+    await expect(panel.getByText("Régi vizsgalap: 2× fókuszvesztés, időpontok nélkül.")).toBeVisible();
+  });
 });
 
 test("long unbroken text wraps on the exam start page and in the runner (390px)", async ({page}) => {

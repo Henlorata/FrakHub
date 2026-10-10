@@ -1337,3 +1337,39 @@
 @media (prefers-reduced-motion: reduce) {
     ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+/* --- LIGHT RENDERING (src/lib/display-mode.ts: phones and tablets by themselves, or chosen) ---
+   The same look without what keeps a phone's graphics chip busy on every frame: no frosted blur
+   (the panels are nearly opaque anyway), the backdrop's glows and stars stand still and its grain
+   goes, the department star turns as one composited layer instead of redrawing its drawing, and the
+   decorations that redraw a picture on every frame (the light along the star, the turning border
+   light, the front page's windows, beacons, shimmer, searchlights and 120 twinkling stars) stand still. */
+html.lite *, html.lite *::before, html.lite *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+html.lite .app-backdrop *, html.lite .app-backdrop *::before, html.lite .app-backdrop *::after {
+    animation: none !important;
+}
+
+html.lite .app-backdrop .tex-noise, html.lite .emblem-glint {
+    display: none;
+}
+
+/* The whole drawing turns (its mask stays): a composited layer, nothing is redrawn. */
+html.lite .backdrop-emblem > svg {
+    animation: emblem-turn 160s linear infinite !important;
+    transform-origin: 50% 50%;
+    will-change: transform;
+}
+
+html.lite .glow-border::before,
+html.lite .hero-depth-stars > span,
+html.lite :is(.text-shimmer, .window-light, .beacon, .lightbar-red, .lightbar-blue, .star-glint, .searchlight, .orbit) {
+    animation: none !important;
+}
+
+html.lite .reveal-blur {
+    filter: none;
+}

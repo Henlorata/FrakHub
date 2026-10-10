@@ -139,7 +139,7 @@ select pg_temp.act_as((select deputy_id from ids));
 insert into t select 'recap', public.get_monthly_recap((date_trunc('month', now() at time zone 'Europe/Budapest'))::date)::text;
 select is((pg_temp.j('recap') ->> 'reports')::int,
   (select count(*)::int from public.report_logs r, ids where r.user_id = ids.deputy_id
-     and r.month = (date_trunc('month', now() at time zone 'Europe/Budapest'))::date), 'the recap counts the month''s reports');
+     and r.period = (date_trunc('month', now() at time zone 'Europe/Budapest'))::date), 'the recap counts the month''s reports');
 select ok(public.get_service_record((select deputy_id from ids)) -> 'member' ->> 'full_name' = 'Deputy Teszt', 'members print their own record');
 select throws_ok(format('select public.get_service_record(%L)', (select supervisor_id from ids)), '42501', null,
   'members cannot print the records of others');

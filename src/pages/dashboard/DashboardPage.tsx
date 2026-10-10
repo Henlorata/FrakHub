@@ -88,6 +88,9 @@ interface MonthProgress {
   reports: number;
   /** The leadership recorded the month's report count. */
   reports_recorded?: boolean;
+  /** The payroll month new reports count for (the previous month until it is paid) and the member's count in it. */
+  report_period?: string;
+  period_reports?: number;
   duty_minutes: number | null;
   duty_updated_at: string | null;
   min_reports: number | null;
@@ -480,14 +483,19 @@ function MyMonth({month, loading}: {month: MonthProgress | undefined; loading: b
   const minReports = month.min_reports ?? 0;
   const minHours = month.min_duty_hours ?? 0;
   const duty = month.duty_minutes ?? 0;
-  const reportsKnown = !!month.reports_recorded || month.reports > 0;
+  // Until last month is paid, the reports saved now still count for it.
+  const lastMonthOpen = !!month.report_period && month.report_period < month.month;
+  const reports = lastMonthOpen ? month.period_reports ?? 0 : month.reports;
+  const reportsKnown = lastMonthOpen || !!month.reports_recorded || reports > 0;
   const dutyKnown = month.duty_minutes !== null;
-  const reportsState = month.reports >= minReports ? "Teljesítve" : `Még ${minReports - month.reports} kell`;
+  const reportsState = reports >= minReports ? "Teljesítve" : `Még ${minReports - reports} kell`;
   const rows = [
     {
-      label: "Jelentések", icon: FileText, to: "/reports?tab=mine", known: reportsKnown, done: month.reports, goal: minReports,
-      value: reportsKnown ? `${month.reports} / ${minReports}` : minReports > 0 ? `${minReports} kell` : "–",
-      hint: !reportsKnown ? "A hónap végén rögzítik" : month.reports_recorded ? reportsState : `${reportsState} (a naplód szerint)`,
+      label: "Jelentések", icon: FileText, to: "/reports?tab=list&mine=1", known: reportsKnown, done: reports, goal: minReports,
+      value: reportsKnown ? `${reports} / ${minReports}` : minReports > 0 ? `${minReports} kell` : "–",
+      hint: lastMonthOpen ? `${reportsState} · a fizetésig a ${monthName(month.report_period ?? month.month)}i elszámolásba számít`
+        : !reportsKnown ? "A mentett jelentéseid ide számítanak"
+        : month.reports_recorded ? reportsState : `${reportsState} (a mentett jelentéseid szerint)`,
     },
     {
       label: "Duty idő", icon: Clock, to: "/profile", known: dutyKnown, done: duty, goal: minHours * 60,

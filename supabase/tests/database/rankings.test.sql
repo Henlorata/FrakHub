@@ -37,8 +37,8 @@ grant execute on function pg_temp.entry(json, text, uuid) to anon, authenticated
 
 -- The month's reports -----------------------------------------------------------------------
 select is(private.month_reports((select deputy_id from ids), (select this_month from ids)),
-  (select count(*)::int from public.report_logs r, ids where r.user_id = ids.deputy_id and r.month = ids.this_month),
-  'without a recorded number the logged reports count');
+  (select count(*)::int from public.report_logs r, ids where r.user_id = ids.deputy_id and r.period = ids.this_month),
+  'without a recorded number the month''s reports count');
 insert into public.payroll_entries (month, user_id, reports)
 select last_month, deputy_id, 17 from ids;
 insert into public.payroll_entries (month, user_id, reports)
@@ -46,8 +46,8 @@ select last_month, operator_id, null from ids;
 select is(private.month_reports((select deputy_id from ids), (select last_month from ids)), 17,
   'the number the leadership recorded in the payroll wins');
 select is(private.month_reports((select operator_id from ids), (select last_month from ids)),
-  (select count(*)::int from public.report_logs r, ids where r.user_id = ids.operator_id and r.month = ids.last_month),
-  'an automatic payroll row keeps the logged reports');
+  (select count(*)::int from public.report_logs r, ids where r.user_id = ids.operator_id and r.period = ids.last_month),
+  'an automatic payroll row keeps the month''s reports');
 
 -- Leaderboard: everyone unless they turn it off ------------------------------------------------
 select pg_temp.act_as((select captain_id from ids));
