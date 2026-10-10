@@ -70,6 +70,38 @@ test.describe("Gemini client", () => {
     }
   });
 
+  test("an answer with warnings comes back only when no later model writes a clean one", async () => {
+    const original = globalThis.fetch;
+    const answers: Record<string, string> = {};
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const model = /\/models\/([^:]+):generateContent$/.exec(String(input))?.[1] ?? "?";
+      if (!(model in answers)) return new Response("", {status: 503});
+      return new Response(JSON.stringify({candidates: [{content: {parts: [{text: JSON.stringify({text: answers[model], missing: []})}]}, finishReason: "STOP"}]}),
+        {status: 200, headers: {"Content-Type": "application/json"}});
+    }) as typeof fetch;
+    const ask = (models: string[]) => generateJson({apiKey: "test-key", models}, {
+      system: "Rendszer", prompt: "Adatok", schema: {type: "OBJECT"}, temperature: 0.3, maxOutputTokens: 512, attemptMs: 5000, budgetMs: 10_000,
+      accept: (value) => {
+        const text = String((value as {text: string}).text);
+        return text.includes("hibás") ? false : text.includes("kitalált") ? "fallback" : true;
+      },
+    });
+    try {
+      Object.assign(answers, {"model-a": "kitalált név", "model-b": "Tiszta szöveg."});
+      expect(await ask(["model-a", "model-b"])).toEqual({value: {text: "Tiszta szöveg.", missing: []}, model: "model-b", skipped: ["model-a: answer with warnings"]});
+      // The first answer with warnings, when every other model fails or writes a worse one.
+      Object.assign(answers, {"model-b": "hibás szöveg"});
+      expect(await ask(["model-a", "model-b", "model-c"])).toEqual({value: {text: "kitalált név", missing: []}, model: "model-a", fallback: true,
+        skipped: ["model-a: answer with warnings", "model-b: unusable answer", "model-c: HTTP 503"]});
+      // Only unusable answers: an "unusable" failure, unless a later model was merely unavailable.
+      Object.assign(answers, {"model-a": "hibás", "model-b": "hibás"});
+      const error = await ask(["model-a", "model-b"]).catch((failure: unknown) => failure);
+      expect((error as GeminiError).kind).toBe("unusable");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   test("a model that does not answer in time passes the request on; model@level sets its thinking", async () => {
     const {result, calls} = await run({"model-a": "hang", "model-b": ok({missing: []})}, ["model-a", "model-b@low"], 200);
     expect(result).toMatchObject({value: {missing: []}, model: "model-b"});

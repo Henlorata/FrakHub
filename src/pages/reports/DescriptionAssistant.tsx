@@ -43,6 +43,8 @@ interface Outcome {
   missing: string[];
   /** reword: the check that ran with it (absent from an older server). */
   review?: string[];
+  /** reword: what the AI added that the member never wrote (no model gave a clean answer). */
+  added?: string[];
   codes: PenalAbbreviation[];
 }
 
@@ -85,7 +87,7 @@ export function DescriptionAssistant({form, onReplace}: {form: ReportForm; onRep
         setPrevious(form.description);
         onReplace(answer.text);
       }
-      setResult({mode, missing: answer.missing, review: answer.review, codes});
+      setResult({mode, missing: answer.missing, review: answer.review, added: answer.added, codes});
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -102,7 +104,8 @@ export function DescriptionAssistant({form, onReplace}: {form: ReportForm; onRep
 
   const reworded = result?.mode === "reword";
   const review = result?.review ?? [];
-  const gaps = result ? result.missing.length + review.length : 0;
+  const added = result?.added ?? [];
+  const gaps = result ? result.missing.length + review.length + added.length : 0;
   const title = !result ? "" : reworded
     ? result.missing.length
       ? "Átfogalmaztam. Írd bele, ami hiányzik (a szövegben [HIÁNYZIK: …] jelöli):"
@@ -165,6 +168,11 @@ export function DescriptionAssistant({form, onReplace}: {form: ReportForm; onRep
           </div>
           {/* The lists use the whole width under the title (a phone has no room beside the buttons). */}
           <div className="min-w-0 space-y-1 pl-6">
+            {added.length > 0 && (
+              <p className="rounded-md bg-red-500/10 px-2 py-1.5 font-medium text-red-100 ring-1 ring-red-500/30 wrap-anywhere">
+                Az AI olyat is beleírt, ami nincs a leírásodban: {added.map((item) => `„${item}”`).join(", ")}. Töröld a szövegből, vagy vond vissza az átfogalmazást.
+              </p>
+            )}
             {result.missing.length > 0 && (
               <ul className="list-disc space-y-0.5 pl-4 wrap-anywhere">
                 {result.missing.map((item) => <li key={item}>{item}</li>)}
