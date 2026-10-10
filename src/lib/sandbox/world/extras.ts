@@ -198,12 +198,14 @@ export const extrasRpc: Record<string, RpcHandler> = {
   get_my_certificates: (_args, world) => [
     {code: "SFSD-DE00-0001", kind: "exam", ref: "demo", title: "Deputy I. vizsga (bemutató)", subtitle: "Sikeres vizsga", issued_at: world.ago(30 * DAY), revoked_at: null},
   ],
-  get_leaderboard: (_args, world) => ({month: world.month(), visible: false, participants: 4, categories: ["duty", "reports", "events", "practice"].map((key) => ({
-    key, entries: [1, 2, 3, 4].map((n) => ({user_id: person(n), full_name: world.person(person(n))?.full_name ?? "", badge_number: "", faction_rank: "",
-      avatar_url: null, value: 100 - n * 9, place: n, me: false})), me: {value: 40, place: 6, of: 9},
+  get_leaderboard: (_args, world) => ({month: world.month(), visible: true, participants: 5, categories: ["duty", "reports", "events", "practice"].map((key) => ({
+    key, entries: [...[1, 2, 3, 4].map((n) => ({user_id: person(n), full_name: world.person(person(n))?.full_name ?? "", badge_number: "", faction_rank: "",
+      avatar_url: null, value: 100 - n * 9, place: n, me: false})),
+      {user_id: world.me.id, full_name: world.me.full_name, badge_number: world.me.badge_number ?? "", faction_rank: world.me.faction_rank ?? "",
+        avatar_url: null, value: 40, place: 5, me: true}], me: {value: 40, place: 5, of: 5},
   }))}),
   set_leaderboard_visibility: (args) => ({visible: !!args._visible}),
   get_monthly_recap: (_args, world) => ({month: world.month(-1), duty_minutes: 2760, duty_avg: 2400, duty_better_than: 64, reports: 9, reports_avg: 6.5,
     reports_better_than: 70, events_attended: 2, events_total: 3, practice_correct: 48, practice_days: 4, pay: null, top_duty: null, top_report: 3,
-    promotions: [], awards: [], certificates: 0, leaderboard_visible: false}),
+    promotions: [], awards: [], certificates: 0, leaderboard_visible: true}),
 };

@@ -45,6 +45,24 @@ test.describe("public front page", () => {
     expect(mock.count("rpc", "get_public_site")).toBe(1);
   });
 
+  test("joining goes to the forum's application board", async ({page}) => {
+    const forum = "https://forum.hl-rpg.eu/forums/jelentkez%C3%A9sek.574/";
+    await mockSupabase(page, {rpc: {get_public_site: SITE}});
+    await page.goto("/");
+    const hero = page.getByRole("link", {name: /Csatlakozz hozzánk/});
+    await expect(hero).toHaveAttribute("href", forum);
+    await expect(hero).toHaveAttribute("target", "_blank");
+    // The recruitment section, the closing call and the footer.
+    const links = page.getByRole("link", {name: /Jelentkezés a fórumon/});
+    await expect(links).toHaveCount(3);
+    for (const link of await links.all()) await expect(link).toHaveAttribute("href", forum);
+    await expect(page.locator("a[href='/register']")).toHaveCount(0);
+
+    await page.goto("/register");
+    await expect(page.getByRole("heading", {name: "Regisztráció az intranetre"})).toBeVisible();
+    await expect(page.getByRole("link", {name: "fórum Jelentkezések rovatában"})).toHaveAttribute("href", forum);
+  });
+
   test("an unknown article shows a friendly page", async ({page}) => {
     await mockSupabase(page, {rpc: {get_public_site: SITE, get_news_post: null}});
     await page.goto("/news/nincs-ilyen");

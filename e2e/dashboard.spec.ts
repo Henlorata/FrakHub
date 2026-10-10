@@ -23,6 +23,8 @@ test.describe("dashboard", () => {
     await expect(month.getByText("5 / 8")).toBeVisible();
     await expect(month.getByText("10 óra / 30 óra")).toBeVisible();
     await expect(month.getByText("Még 3 kell")).toBeVisible();
+    // Logged by the member, not recorded by the leadership yet.
+    await expect(month.getByText("(a naplód szerint)")).toBeVisible();
 
     const events = page.locator("[data-tour=dashboard-events]");
     await expect(events.getByText("Heti állománygyűlés")).toBeVisible();
@@ -40,7 +42,7 @@ test.describe("dashboard", () => {
   test("a met requirement shows as done and missing data hides the widgets", async ({page}) => {
     await mockSupabase(page, {rpc: {
       get_dashboard_summary: summary({
-        my_month: {month: "2026-10-01", reports: 9, duty_minutes: 1900, duty_updated_at: null, min_reports: 8, min_duty_hours: 30},
+        my_month: {month: "2026-10-01", reports: 9, reports_recorded: true, duty_minutes: 1900, duty_updated_at: null, min_reports: 8, min_duty_hours: 30},
         upcoming_events: [],
       }),
       get_announcements: [],
@@ -48,7 +50,31 @@ test.describe("dashboard", () => {
     await login(page);
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.locator("[data-tour=dashboard-month]").getByText("Teljesítve").first()).toBeVisible();
+    await expect(page.locator("[data-tour=dashboard-month]").getByText("(a naplód szerint)")).toHaveCount(0);
     await expect(page.locator("[data-tour=dashboard-events]").getByText("Nincs esemény a következő két hétben.")).toBeVisible();
+  });
+
+  test("until the leadership records the month, the card shows what is required and last month's result", async ({page}) => {
+    await mockSupabase(page, {rpc: {
+      get_dashboard_summary: summary({
+        my_month: {month: "2026-10-01", reports: 0, reports_recorded: false, duty_minutes: null, duty_updated_at: null, min_reports: 8, min_duty_hours: 30,
+          previous: {month: "2026-09-01", duty_minutes: 2040, reports: 9, min_duty_hours: 30, min_reports: 8, closed: true}},
+      }),
+      get_announcements: [],
+    }});
+    await login(page);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    const month = page.locator("[data-tour=dashboard-month]");
+    await expect(month.getByText("8 kell", {exact: true})).toBeVisible();
+    await expect(month.getByText("30 óra kell", {exact: true})).toBeVisible();
+    await expect(month.getByText("A hónap végén rögzítik")).toHaveCount(2);
+    // No zeros and no warning before anything was recorded.
+    await expect(month.getByText("0 / 8")).toHaveCount(0);
+    await expect(month.getByText(/duty-minimum alatt/)).toHaveCount(0);
+    const previous = month.locator("[data-tour=dashboard-month-previous]");
+    await expect(previous).toContainText("szeptember");
+    await expect(previous).toContainText("34 óra · 9 jelentés");
+    await expect(previous.getByText("Teljesítve")).toBeVisible();
   });
 
   test("the member chooses and orders the quick access tiles", async ({page}) => {

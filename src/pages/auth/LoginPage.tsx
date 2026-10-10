@@ -211,7 +211,7 @@ export function LoginPage() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-white">Még nincs fiókod?</p>
-              <p className="text-xs text-slate-400">Regisztrációs kérelem benyújtása a frakcióba.</p>
+              <p className="text-xs text-slate-400">Fiók igénylése az intranetre. A frakcióba a fórumon lehet jelentkezni.</p>
             </div>
             <ArrowRight className="size-4 text-slate-500 transition-transform group-hover:translate-x-1 group-hover:text-white"/>
           </Link>

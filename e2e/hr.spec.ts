@@ -91,8 +91,13 @@ test.describe("HR", () => {
       id: "55555555-5555-4555-8555-555555555555", full_name: "Vezető Vera", badge_number: "2003", faction_rank: "Commander",
       system_role: "admin", is_bureau_manager: true,
     });
+    // A former SEB commander moved to the TSB: the TSB has no Bureau Commander.
+    const moved = testProfile({
+      id: "66666666-6666-4666-8666-666666666666", full_name: "Áthelyezett Ádám", badge_number: "2004", faction_rank: "Lieutenant I.",
+      system_role: "admin", division: "TSB", is_bureau_commander: true,
+    });
     // A member, not staff: the leaders are for everyone to see.
-    await mockSupabase(page, {tables: {profiles: [testProfile({faction_rank: "Deputy Sheriff II.", system_role: "user"}), commander, manager, deputy]}});
+    await mockSupabase(page, {tables: {profiles: [testProfile({faction_rank: "Deputy Sheriff II.", system_role: "user"}), commander, manager, moved, deputy]}});
     await login(page);
     await expect(page).toHaveURL(/\/dashboard$/);
     await page.goto("/hr");
@@ -106,6 +111,9 @@ test.describe("HR", () => {
     await expect(leaders.locator("li", {hasText: "Bureau Commander"}).filter({hasText: "SEB"})).toContainText("Parancsnok Péter");
     await expect(leaders.locator("li", {hasText: "Bureau Commander"}).filter({hasText: "MCB"})).toContainText("Nincs kinevezve");
     await expect(leaders.locator("li", {hasText: "Bureau Manager"})).toContainText("Vezető Vera");
+    await expect(leaders.locator("li", {hasText: "Bureau Commander"}).filter({hasText: "TSB"})).toHaveCount(0);
+    await expect(page.locator("tr", {hasText: "Áthelyezett Ádám"})).toBeVisible();
+    await expect(page.getByText("TSB Bureau Commander")).toHaveCount(0);
     await leaders.getByRole("button", {name: /Parancsnok Péter/}).first().click();
     await expect(page).toHaveURL(/member=44444444/);
   });

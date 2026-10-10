@@ -73,8 +73,8 @@ export function OrgChart({members, onOpen}: {members: HrMember[]; onOpen: (membe
         id: `division-${division}`, title: division, subtitle: getDepartmentLabel(division), icon: division === "TSB" ? Shield : Star,
         tone: division === "SEB" ? "text-red-300 bg-red-500/10 ring-red-500/30" : division === "MCB" ? "text-sky-300 bg-sky-500/10 ring-sky-500/30"
           : "text-slate-200 bg-slate-500/10 ring-slate-400/30",
-        // TSB has a commander slot only when someone leads it.
-        leaders: division === "TSB" && !commanders.length ? null : commanders, leaderLabel: "Bureau Commander",
+        // The TSB has no Bureau Commander.
+        leaders: division === "TSB" ? null : commanders, leaderLabel: "Bureau Commander",
         groups: divisionGroups(division, own.filter((member) => !member.is_bureau_commander), catalog),
       };
     });

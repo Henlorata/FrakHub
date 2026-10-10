@@ -1,6 +1,7 @@
 import {Fragment, memo, type CSSProperties, type ReactNode} from "react";
-import {ArrowDown, ArrowRight, CalendarClock, Newspaper, Users} from "lucide-react";
+import {ArrowDown, ArrowUpRight, CalendarClock, Newspaper, Users} from "lucide-react";
 import {SheriffStar, SHERIFF_STAR_OUTLINE} from "@/components/brand/SheriffStar";
+import {FORUM_APPLICATIONS_URL} from "@/lib/forum";
 import type {PublicSite, SiteContent} from "@/lib/site";
 import {cn} from "@/lib/utils";
 import {seeded, useTilt} from "./motion";
@@ -125,10 +126,11 @@ export function Hero({site, ticker}: {site: PublicSite | null; ticker?: ReactNod
             {hero.subtitle}
           </p>
           <div className="hero-gap mt-9 flex flex-wrap items-center justify-center gap-3 lg:justify-start" style={{animation: "fade-in-soft 1.2s ease-out 1.1s both"}}>
-            <a href="#csatlakozz" onClick={(event) => scrollToSection("csatlakozz", event)}
+            {/* Joining happens on the forum's application board. */}
+            <a href={FORUM_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer"
                className="group relative inline-flex h-12 items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 px-7 text-[15px] font-semibold text-black shadow-[0_18px_40px_-14px_rgb(234_179_8/0.9)] transition hover:brightness-110">
               <span aria-hidden className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/50 to-transparent transition-transform duration-700 group-hover:translate-x-full"/>
-              {hero.primary} <ArrowRight className="size-4 transition-transform group-hover:translate-x-1"/>
+              {hero.primary} <ArrowUpRight className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"/>
             </a>
             <a href="#hirek" onClick={(event) => scrollToSection("hirek", event)}
                className="inline-flex h-12 items-center gap-2 rounded-full bg-white/[0.06] px-6 text-[15px] font-medium text-white ring-1 ring-white/15 backdrop-blur transition hover:bg-white/10">

@@ -9,6 +9,7 @@ import {Button} from "@/components/ui/button";
 import {useSystemStatus} from "@/context/SystemStatusContext";
 import {FACTION_RANKS} from "@shared/ranks";
 import {postApi} from "@/lib/api";
+import {FORUM_APPLICATIONS_URL} from "@/lib/forum";
 import {cn, errorMessage} from "@/lib/utils";
 import {AuthShell, type AuthTone} from "./AuthShell";
 import {DIVISION_LOOK, IdCardPreview, type CardDivision} from "./IdCardPreview";
@@ -133,8 +134,14 @@ export function RegisterPage() {
           <div className="relative flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.25em]" style={{color: accent}}>Regisztrációs kérelem</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">Csatlakozás az SFSD-hez</h1>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">Regisztráció az intranetre</h1>
               <p className="mt-1 text-sm text-slate-400">Töltsd ki az IC adataiddal; a fiókod a Személyügy jóváhagyása után lesz aktív.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Még nem vagy a frakció tagja? Jelentkezni a{" "}
+                <a href={FORUM_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-amber-200 underline-offset-2 hover:underline">
+                  fórum Jelentkezések rovatában
+                </a>{" "}lehet.
+              </p>
             </div>
             <Link to="/login" className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-400 ring-1 ring-white/10 transition-colors hover:bg-white/5 hover:text-white">
               <ArrowLeft className="size-3.5"/> Belépés

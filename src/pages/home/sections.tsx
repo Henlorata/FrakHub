@@ -1,11 +1,12 @@
 import {useMemo, useRef, useState, type CSSProperties, type ReactNode} from "react";
 import {Link} from "react-router";
 import {
-  ArrowRight, BadgeCheck, Check, ChevronLeft, ChevronRight, Clock, FolderCheck, Gauge, GraduationCap, HeartPulse, Landmark, Megaphone, Network,
+  ArrowRight, ArrowUpRight, BadgeCheck, Check, ChevronLeft, ChevronRight, Clock, FolderCheck, Gauge, GraduationCap, HeartPulse, Landmark, Megaphone, Network,
   Newspaper, Plane, ScrollText, ShieldCheck, Siren, Trees, Users, X,
 } from "lucide-react";
 import {Accordion, AccordionContent, AccordionItem, AccordionTrigger} from "@/components/ui/accordion";
 import {Dialog, DialogContent, DialogTitle} from "@/components/ui/dialog";
+import {FORUM_APPLICATIONS_URL} from "@/lib/forum";
 import {SheriffStar} from "@/components/brand/SheriffStar";
 import {BRAND_IMAGES} from "@/lib/brand";
 import {getOptimizedAvatarUrl, getOptimizedImageUrl} from "@/lib/cloudinary";
@@ -195,7 +196,8 @@ export function Divisions({site}: {site: PublicSite | null}) {
           {codes.map((code, index) => (
             <DivisionCard key={code} code={code} info={content[code] ?? {}} index={index}
                           members={site?.stats?.divisions?.[code] ?? null}
-                          leader={site?.leadership?.find((leader) => leader.bureau_commander && leader.division === code) ?? null}/>
+                          // The TSB has no Bureau Commander.
+                          leader={code === "TSB" ? null : site?.leadership?.find((leader) => leader.bureau_commander && leader.division === code) ?? null}/>
           ))}
         </div>
       </div>
@@ -319,7 +321,7 @@ function initials(name: string) {
 
 function Leader({leader, large = false, index}: {leader: LeaderCard; large?: boolean; index: number}) {
   const title = leader.bureau_manager ? "Bureau Manager"
-    : leader.tier === 3 || (leader.bureau_commander && leader.tier > 1) ? `${leader.division ?? ""} Bureau Commander`.trim() : TIER_TITLE[leader.tier];
+    : leader.bureau_commander && leader.tier > 1 && leader.division !== "TSB" ? `${leader.division ?? ""} Bureau Commander`.trim() : TIER_TITLE[leader.tier];
   const avatar = getOptimizedAvatarUrl(leader.avatar_url, large ? 240 : 160);
   return (
     <Reveal delay={index * 70} variant="scale" className={cn("group flex flex-col items-center text-center", large && "md:flex-row md:text-left md:gap-8")}>
@@ -399,10 +401,11 @@ export function Recruitment({content, open}: {content: SiteContent; open: boolea
               </ul>
             )}
             <Reveal delay={420} className="mt-10 flex flex-wrap gap-3">
-              <Link to="/register" className="group relative inline-flex h-12 items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 px-7 text-[15px] font-semibold text-black shadow-[0_18px_40px_-14px_rgb(234_179_8/0.9)] transition hover:brightness-110">
+              <a href={FORUM_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer"
+                 className="group relative inline-flex h-12 items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 px-7 text-[15px] font-semibold text-black shadow-[0_18px_40px_-14px_rgb(234_179_8/0.9)] transition hover:brightness-110">
                 <span aria-hidden className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/50 to-transparent transition-transform duration-700 group-hover:translate-x-full"/>
-                Jelentkezés indítása <ArrowRight className="size-4 transition-transform group-hover:translate-x-1"/>
-              </Link>
+                Jelentkezés a fórumon <ArrowUpRight className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"/>
+              </a>
               {recruitment.exam_id && (
                 <Link to={`/exam/public/${recruitment.exam_id}`} className="inline-flex h-12 items-center gap-2 rounded-full bg-white/[0.06] px-6 text-[15px] font-medium text-white ring-1 ring-white/15 transition hover:bg-white/10">
                   <BadgeCheck className="size-4 text-amber-200"/> Felvételi vizsga
@@ -522,12 +525,13 @@ export function FinalCall({open}: {open: boolean}) {
         <SheriffStar className="size-20 drop-shadow-[0_10px_22px_rgb(0_0_0/0.55)] animate-float-y"/>
         <h2 className="mt-6 text-[clamp(1.9rem,4vw,3rem)] leading-tight font-bold tracking-tight text-white">Készen állsz a <span className="text-shimmer">jelvényre</span>?</h2>
         <p className="mt-4 max-w-xl text-lg text-slate-400">
-          {open ? "A jelentkezés nyitva: néhány perc, és elindulhatsz az akadémia felé." : "A jelentkezés most szünetel, de a következő toborzásról itt és a hírekben is szólunk."}
+          {open ? "A jelentkezés nyitva: add le a fórumon, és elindulhatsz az akadémia felé." : "A jelentkezés most szünetel, de a következő toborzásról itt és a hírekben is szólunk."}
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link to="/register" className="inline-flex h-12 items-center gap-2 rounded-full bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 px-7 text-[15px] font-semibold text-black transition hover:brightness-110">
-            Jelentkezés <ArrowRight className="size-4"/>
-          </Link>
+          <a href={FORUM_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer"
+             className="inline-flex h-12 items-center gap-2 rounded-full bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 px-7 text-[15px] font-semibold text-black transition hover:brightness-110">
+            Jelentkezés a fórumon <ArrowUpRight className="size-4"/>
+          </a>
           <Link to="/login" className="inline-flex h-12 items-center gap-2 rounded-full bg-white/[0.06] px-6 text-[15px] font-medium text-white ring-1 ring-white/15 transition hover:bg-white/10">
             <ShieldCheck className="size-4 text-amber-200"/> Belépés tagoknak
           </Link>

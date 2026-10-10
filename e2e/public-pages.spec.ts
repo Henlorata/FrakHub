@@ -25,7 +25,7 @@ test.describe("public pages", () => {
     });
     await page.goto("/register");
 
-    await expect(page.getByRole("heading", {name: /csatlakozás/i})).toBeVisible();
+    await expect(page.getByRole("heading", {name: /Regisztráció az intranetre/i})).toBeVisible();
     await expect(page.getByText(/létszámstop/i).first()).toBeVisible();
   });
 
