@@ -144,7 +144,7 @@ export function MonthlyRecapDialog({month, open, onOpenChange}: {month: string |
                 )}
                 <div className="animate-rise mt-6 flex flex-wrap items-center gap-2" style={{"--i": 8} as CSSProperties}>
                   {!recap.leaderboard_visible && (
-                    <p className="min-w-0 flex-1 text-xs text-slate-400"><Star className="mr-1 inline size-3.5 text-amber-300"/>Szerepelnél a ranglistán? A ranglista oldalán kapcsolhatod be.</p>
+                    <p className="min-w-0 flex-1 text-xs text-slate-400"><Star className="mr-1 inline size-3.5 text-amber-300"/>Nem szerepelsz a ranglistán; a ranglista oldalán visszakapcsolhatod.</p>
                   )}
                   <Button variant="outline" asChild className="ml-auto"><Link to="/leaderboard" onClick={() => onOpenChange(false)}><Trophy/> Ranglista</Link></Button>
                   <Button onClick={() => onOpenChange(false)}><Sparkles/> Szuper</Button>

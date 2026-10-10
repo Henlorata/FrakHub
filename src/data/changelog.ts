@@ -24,6 +24,23 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    id: "2026-10-month-leaderboard",
+    title: "Mindenki a ranglistán, beszédesebb havi kártya",
+    month: "2026-10",
+    summary: "A ranglistán alapból mindenki szerepel, és a vezetőség által rögzített jelentésszám számít; a havi követelmény nem mutat nullát, amíg nincs mit; új helyzetgyakorlatok.",
+    items: [
+      {area: "Ranglista", title: "Mindenki szerepel",
+        text: "A ranglistán alapból mindenki szerepel; ha nem szeretnéd, a ranglista oldalán kikapcsolhatod. A jelentéseknél a havi elszámolásban rögzített szám számít.",
+        link: "/leaderboard"},
+      {area: "Irányítópult", title: "Havi követelmény",
+        text: "A duty időt és a jelentések számát a vezetőség a hónap végén rögzíti: addig a kártya azt mutatja, mennyi kell, alatta pedig az előző hónap eredményét. A naplózott jelentéseid azonnal látszanak.",
+        link: "/dashboard"},
+      {area: "Gyakorlás", title: "41 helyzetgyakorlat",
+        text: "A szabályzatból és az akadémiából írt helyzetgyakorlatok kategóriánként szűrhetők, és elrejtheted azokat, amelyeket már teljesítettél.",
+        link: "/practice"},
+    ],
+  },
+  {
     id: "2026-10-navigation",
     title: "Rendezettebb menü, saját gyorsgombok",
     month: "2026-10",

@@ -78,7 +78,21 @@ function myMonth(world: World) {
     duty_updated_at: duty?.updated_at ?? null,
     min_reports: settings?.min_reports ?? 8,
     min_duty_hours: settings?.min_duty_hours ?? 30,
+    reports_recorded: false,
+    previous: previousMonth(world),
   };
+}
+
+/** Last month as recorded for the member (null: nothing recorded). */
+function previousMonth(world: World) {
+  const {tables, me} = world;
+  const month = world.month(-1);
+  const duty = (tables.duty_time_entries ?? []).find((row) => row.user_id === me.id && String(row.month) === month);
+  const reports = count(tables.report_logs, (row) => row.user_id === me.id && String(row.month) === month);
+  if (!duty && !reports) return null;
+  const settings = tables.payroll_settings?.[0];
+  return {month, duty_minutes: duty ? Number(duty.minutes) : null, reports, min_duty_hours: settings?.min_duty_hours ?? 30,
+    min_reports: settings?.min_reports ?? 8, closed: true};
 }
 
 export const dashboardRpc: Record<string, RpcHandler> = {

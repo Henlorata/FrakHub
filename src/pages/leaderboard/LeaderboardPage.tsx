@@ -27,7 +27,7 @@ const MEDAL = [
 
 /**
  * The monthly leaderboard, independent of the pay: duty time, reports, attended events and
- * practice days. Nobody is listed unless they choose to be; everyone sees their own place.
+ * practice days. Everyone is listed unless they turn it off; everyone sees their own place.
  */
 export function LeaderboardPage() {
   const [month, setMonth] = useState(monthKey());
@@ -65,7 +65,7 @@ export function LeaderboardPage() {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-6">
       <PageHeader icon={Trophy} tone="gold" eyebrow="Közösség" title="Ranglista"
-                  description="Havi ranglista a fizetéstől függetlenül. Csak az szerepel rajta, aki szeretne; a saját helyedet mindig látod."/>
+                  description="Havi ranglista a fizetéstől függetlenül. Mindenki szerepel rajta, aki nem kapcsolta ki; a saját helyedet mindig látod."/>
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10" role="tablist" aria-label="Hónap">
@@ -80,7 +80,7 @@ export function LeaderboardPage() {
           <label className="ml-auto flex items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/10" data-tour="leaderboard-optin">
             <span className="text-right text-xs">
               <span className="block font-medium text-white">Szerepelek a ranglistán</span>
-              <span className="block text-slate-500">{board.participants} tag vállalta</span>
+              <span className="block text-slate-500">{board.participants} tag szerepel</span>
             </span>
             <Switch checked={board.visible} disabled={switching} onCheckedChange={(value) => void toggle(value)}/>
           </label>

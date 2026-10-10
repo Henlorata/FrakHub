@@ -78,16 +78,34 @@ interface DashboardSummary {
   client_errors?: number | null;
 }
 
-/** The member's month against the requirements (duty time is recorded by staff at the meetings). */
+/**
+ * The member's month against the requirements, as the payroll counts it. The leadership records the
+ * duty time and the report count at the end of the month.
+ */
 interface MonthProgress {
   month: string;
+  /** The leadership's number once recorded, otherwise the reports the member logged. */
   reports: number;
+  /** The leadership recorded the month's report count. */
+  reports_recorded?: boolean;
   duty_minutes: number | null;
   duty_updated_at: string | null;
   min_reports: number | null;
   min_duty_hours: number | null;
   /** The next duty pay tier above the recorded time: its hours and the extra pay. */
   next_tier?: {hours: number; gain: number} | null;
+  /** Last month as recorded for the member (absent when nothing was recorded). */
+  previous?: PreviousMonth | null;
+}
+
+interface PreviousMonth {
+  month: string;
+  duty_minutes: number | null;
+  reports: number;
+  /** The requirement of the month (of its closed payroll). */
+  min_duty_hours: number;
+  min_reports: number;
+  closed: boolean;
 }
 
 interface FeedAnnouncement {
@@ -443,30 +461,44 @@ const durationLabel = (minutes: number) => {
   return rest ? `${hours} ó ${rest} p` : `${hours} óra`;
 };
 
-/** The member's month against the requirements: reports (live) and duty time (recorded at the meetings). */
+/** "október" */
+const monthName = (key: string) => {
+  const [year, monthIndex] = key.split("-").map(Number);
+  return new Intl.DateTimeFormat("hu-HU", {timeZone: "UTC", month: "long"}).format(new Date(Date.UTC(year, monthIndex - 1, 1)));
+};
+
+/**
+ * The member's month against the requirements. The duty time and the report count are recorded at
+ * the end of the month, so until then a row shows what is required instead of a zero (the reports
+ * the member logs count at once), and last month's recorded result stays underneath.
+ */
 function MyMonth({month, loading}: {month: MonthProgress | undefined; loading: boolean}) {
   if (!month) return loading ? <div className="skeleton h-44"/> : null;
   const [year, monthIndex] = month.month.split("-").map(Number);
   const lastDay = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
   const daysLeft = daysBetween(todayKey(), `${month.month.slice(0, 8)}${String(lastDay).padStart(2, "0")}`);
-  const monthName = new Intl.DateTimeFormat("hu-HU", {timeZone: "UTC", month: "long"}).format(new Date(Date.UTC(year, monthIndex - 1, 1)));
   const minReports = month.min_reports ?? 0;
-  const minMinutes = (month.min_duty_hours ?? 0) * 60;
+  const minHours = month.min_duty_hours ?? 0;
+  const duty = month.duty_minutes ?? 0;
+  const reportsKnown = !!month.reports_recorded || month.reports > 0;
+  const dutyKnown = month.duty_minutes !== null;
+  const reportsState = month.reports >= minReports ? "Teljesítve" : `Még ${minReports - month.reports} kell`;
   const rows = [
     {
-      label: "Jelentések", icon: FileText, done: month.reports, goal: minReports, to: "/reports?tab=mine",
-      value: `${month.reports} / ${minReports}`, hint: month.reports >= minReports ? "Teljesítve" : `Még ${minReports - month.reports} kell`,
+      label: "Jelentések", icon: FileText, to: "/reports?tab=mine", known: reportsKnown, done: month.reports, goal: minReports,
+      value: reportsKnown ? `${month.reports} / ${minReports}` : minReports > 0 ? `${minReports} kell` : "–",
+      hint: !reportsKnown ? "A hónap végén rögzítik" : month.reports_recorded ? reportsState : `${reportsState} (a naplód szerint)`,
     },
     {
-      label: "Duty idő", icon: Clock, done: month.duty_minutes ?? 0, goal: minMinutes, to: "/profile",
-      value: `${durationLabel(month.duty_minutes ?? 0)} / ${month.min_duty_hours ?? 0} óra`,
-      hint: (month.duty_minutes ?? 0) >= minMinutes ? "Teljesítve"
-        : month.duty_updated_at ? `Utoljára rögzítve: ${formatDate(month.duty_updated_at)}` : "A gyűlésen rögzítik",
+      label: "Duty idő", icon: Clock, to: "/profile", known: dutyKnown, done: duty, goal: minHours * 60,
+      value: dutyKnown ? `${durationLabel(duty)} / ${minHours} óra` : minHours > 0 ? `${minHours} óra kell` : "–",
+      hint: !dutyKnown ? "A hónap végén rögzítik"
+        : duty >= minHours * 60 ? "Teljesítve" : month.duty_updated_at ? `Utoljára rögzítve: ${formatDate(month.duty_updated_at)}` : "Rögzítve",
     },
   ];
   const tier = month.next_tier;
-  const tierHours = tier ? Math.max(0, tier.hours - (month.duty_minutes ?? 0) / 60) : 0;
-  const complete = rows.every((row) => row.done >= row.goal);
+  const tierHours = tier ? Math.max(0, tier.hours - duty / 60) : 0;
+  const complete = rows.every((row) => row.known && row.done >= row.goal);
 
   return (
     <section data-tour="dashboard-month" className="panel animate-rise p-4" style={{"--i": 3} as CSSProperties}>
@@ -477,26 +509,28 @@ function MyMonth({month, loading}: {month: MonthProgress | undefined; loading: b
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-white">Havi követelmény</h2>
-          <p className="text-xs text-slate-500">{monthName} · {daysLeft > 0 ? `még ${daysLeft} nap` : "a hónap utolsó napja"}</p>
+          <p className="text-xs text-slate-500">{monthName(month.month)} · {daysLeft > 0 ? `még ${daysLeft} nap` : "a hónap utolsó napja"}</p>
         </div>
         {complete && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-200 ring-1 ring-emerald-500/30">Teljesítve</span>}
       </header>
       <ul className="space-y-2.5">
         {rows.map((row) => {
           const ratio = row.goal > 0 ? Math.min(1, row.done / row.goal) : 1;
-          const met = row.done >= row.goal;
+          const met = row.known && row.done >= row.goal;
           return (
             <li key={row.label}>
               <Link to={row.to} className="-mx-1.5 block rounded-lg px-1.5 py-1 transition-colors hover:bg-white/[0.03]">
                 <div className="flex items-center gap-2 text-xs">
                   <row.icon className="size-3.5 text-slate-500"/>
                   <span className="font-medium text-slate-200">{row.label}</span>
-                  <span className="ml-auto font-mono text-slate-100 tabular-nums">{row.value}</span>
+                  <span className={cn("ml-auto font-mono tabular-nums", row.known ? "text-slate-100" : "text-slate-400")}>{row.value}</span>
                 </div>
                 <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/5">
-                  <div className={cn("h-full rounded-full bg-gradient-to-r transition-[width] duration-700",
-                    met ? "from-emerald-400 to-teal-500" : ratio >= 0.5 ? "from-sky-400 to-indigo-500" : "from-amber-400 to-orange-500")}
-                       style={{width: `${Math.max(3, ratio * 100)}%`}}/>
+                  {row.known && (
+                    <div className={cn("h-full rounded-full bg-gradient-to-r transition-[width] duration-700",
+                      met ? "from-emerald-400 to-teal-500" : ratio >= 0.5 ? "from-sky-400 to-indigo-500" : "from-amber-400 to-orange-500")}
+                         style={{width: `${Math.max(3, ratio * 100)}%`}}/>
+                  )}
                 </div>
                 <p className={cn("mt-1 text-[11px]", met ? "text-emerald-300/80" : "text-slate-500")}>{row.hint}</p>
               </Link>
@@ -504,18 +538,39 @@ function MyMonth({month, loading}: {month: MonthProgress | undefined; loading: b
           );
         })}
       </ul>
-      {tier && tier.gain > 0 && (month.duty_minutes ?? 0) >= minMinutes && (
+      {tier && tier.gain > 0 && dutyKnown && duty >= minHours * 60 && (
         <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/5 pt-2.5 text-[11px] text-emerald-200/90">
           <Target className="size-3.5 shrink-0 text-emerald-300"/>
           Még {String(Math.round(tierHours * 10) / 10).replace(".", ",")} óra a(z) {tier.hours} órás sávig: +{new Intl.NumberFormat("hu-HU").format(tier.gain)} $
         </p>
       )}
-      {!complete && (
+      {dutyKnown && duty < minHours * 60 && (
         <p className="mt-2.5 border-t border-white/5 pt-2.5 text-[11px] text-slate-500">
           A duty-minimum alatt nem jár alapfizetés és rangfelvétel.
         </p>
       )}
+      {month.previous && <PreviousMonthLine previous={month.previous}/>}
     </section>
+  );
+}
+
+/** Last month as recorded: the duty time, the reports and whether they met its requirement. */
+function PreviousMonthLine({previous}: {previous: PreviousMonth}) {
+  const dutyRecorded = previous.duty_minutes !== null;
+  const met = (previous.duty_minutes ?? 0) >= previous.min_duty_hours * 60 && previous.reports >= previous.min_reports;
+  return (
+    <p data-tour="dashboard-month-previous" className="mt-2.5 flex items-center gap-2 border-t border-white/5 pt-2.5 text-[11px]">
+      <span className="shrink-0 font-medium text-slate-400 first-letter:uppercase">{monthName(previous.month)}</span>
+      <span className="min-w-0 flex-1 truncate text-slate-300">
+        {dutyRecorded ? durationLabel(previous.duty_minutes ?? 0) : "a duty még nincs rögzítve"} · {previous.reports} jelentés
+      </span>
+      {(dutyRecorded || previous.closed) && (
+        <span className={cn("shrink-0 rounded-full px-2 py-0.5 font-semibold ring-1",
+          met ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30" : "bg-amber-500/10 text-amber-200 ring-amber-500/25")}>
+          {met ? "Teljesítve" : "Nem teljesült"}
+        </span>
+      )}
+    </p>
   );
 }
 

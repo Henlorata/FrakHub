@@ -44,9 +44,10 @@ select s.id, s.email, s.full_name, s.badge_number, s.faction_rank, s.division, s
 from seed_users s
 join inserted_users u on u.id = s.id;
 
--- The admin account also holds the bureau-level flags, so every feature is reachable locally.
+-- The admin account is also the Bureau Manager, so every feature is reachable locally (it is in
+-- the TSB, which has no Bureau Commander).
 update public.profiles
-set is_bureau_commander = true, is_bureau_manager = true
+set is_bureau_manager = true
 where id = '00000000-0000-4000-8000-000000000001';
 update public.profiles set commanded_divisions = array['MU']
 where id = '00000000-0000-4000-8000-000000000007';

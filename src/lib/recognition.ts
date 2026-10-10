@@ -3,8 +3,8 @@ import {UNIT_LABELS} from "@/lib/fleet";
 import type {SignatureData} from "@/lib/signature/geometry";
 
 /**
- * Certificates (issued by the database, checked by code), the opt-in leaderboard, the monthly
- * recap and the printable service record.
+ * Certificates (issued by the database, checked by code), the leaderboard (everyone unless they
+ * turn it off), the monthly recap and the printable service record.
  */
 
 export type CertificateKind = "exam" | "qualification" | "rank" | "scenario";
@@ -145,7 +145,7 @@ export const recognitionApi = {
 
 export const LEADERBOARD_CATEGORIES: Record<LeaderboardCategory, {label: string; hint: string}> = {
   duty: {label: "Duty idő", hint: "A gyűlésen rögzített havi idő"},
-  reports: {label: "Jelentések", hint: "A jelentésnaplóba felvett jelentések"},
+  reports: {label: "Jelentések", hint: "A havi elszámolás szerinti jelentések"},
   events: {label: "Események", hint: "Ahol a szervező jelenlétet rögzített"},
   practice: {label: "Gyakorlás", hint: "Napok legalább tíz gyakorló kérdéssel"},
 };

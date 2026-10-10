@@ -24,7 +24,8 @@ export function leadershipRoles(member: LeaderSubject): LeadershipRole[] {
     roles.push({key: "manager", label: "Bureau Manager", title: "Bureau Manager: az állomány legfőbb vezetője, teljes jogkörrel.", icon: Crown,
       tone: "bg-violet-500/15 text-violet-200 ring-violet-400/40"});
   }
-  if (member.is_bureau_commander && member.division) {
+  // The TSB has no Bureau Commander.
+  if (member.is_bureau_commander && member.division && member.division !== "TSB") {
     roles.push({key: "commander", label: `${member.division} Bureau Commander`, title: `Bureau Commander: a(z) ${member.division} divízió vezetője.`,
       icon: Star, tone: "bg-sky-500/15 text-sky-200 ring-sky-400/40"});
   }

@@ -1,4 +1,4 @@
--- Practice decks and scenarios, certificates and their public check, the opt-in leaderboard,
+-- Practice decks and scenarios, certificates and their public check, the leaderboard,
 -- the monthly recap, the service record, the penal code announcement and the new dashboard and
 -- payslip keys. Run with: bunx supabase test db
 begin;
@@ -8,7 +8,7 @@ create temporary table ids as select
   '00000000-0000-4000-8000-000000000001'::uuid as admin_id,        -- Commander (academy instructor)
   '00000000-0000-4000-8000-000000000002'::uuid as supervisor_id,   -- Sergeant I. (staff)
   '00000000-0000-4000-8000-000000000003'::uuid as deputy_id,       -- Deputy Sheriff II. (four-day practice streak)
-  '00000000-0000-4000-8000-000000000005'::uuid as captain_id,      -- Captain II. (not on the leaderboard)
+  '00000000-0000-4000-8000-000000000005'::uuid as captain_id,      -- Captain II. (turns the leaderboard off)
   '00000000-0000-4000-8000-000000000006'::uuid as investigator_id, -- Corporal, GW
   '20000000-0000-4000-8000-000000000002'::uuid as exam_id;         -- the seeded SEB exam
 grant select on ids to anon, authenticated, service_role;
@@ -124,13 +124,13 @@ select is((select count(*)::int from public.certificates c, ids where c.user_id 
 
 -- Leaderboard --------------------------------------------------------------------------------
 select pg_temp.act_as((select captain_id from ids));
+select is((public.set_leaderboard_visibility(false) ->> 'visible')::boolean, false, 'a member turns the leaderboard off');
 insert into t select 'board', public.get_leaderboard(null)::text;
-select is((pg_temp.j('board') ->> 'visible')::boolean, false, 'the leaderboard is opt-in');
 select ok(not exists (select 1 from json_array_elements(pg_temp.j('board') -> 'categories') c, json_array_elements(c -> 'entries') e
-                      where (e ->> 'user_id')::uuid = (select captain_id from ids)), 'members who did not opt in are not listed');
+                      where (e ->> 'user_id')::uuid = (select captain_id from ids)), 'members who turned it off are not listed');
 select ok((select c -> 'me' ->> 'value' from json_array_elements(pg_temp.j('board') -> 'categories') c where c ->> 'key' = 'duty') is not null,
   'they still see their own place');
-select is((public.set_leaderboard_visibility(true) ->> 'visible')::boolean, true, 'a member opts in');
+select is((public.set_leaderboard_visibility(true) ->> 'visible')::boolean, true, 'a member turns it on again');
 select ok(exists (select 1 from json_array_elements(public.get_leaderboard(null) -> 'categories') c, json_array_elements(c -> 'entries') e
                   where (e ->> 'user_id')::uuid = (select captain_id from ids) and (e ->> 'me')::boolean), 'then they are listed');
 

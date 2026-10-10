@@ -315,6 +315,8 @@ function ProfileTab({member, viewer, onUpdate, onRemove}: {
               <Label>Osztály</Label>
               <Select value={form.division} disabled={!divisionRight}
                       onValueChange={(value) => setForm({...form, division: value,
+                        // The TSB has no Bureau Commander (the database clears it as well).
+                        is_bureau_commander: value === "TSB" ? false : form.is_bureau_commander,
                         // The bureau rank and titles of another division do not move with the member.
                         division_rank: divisionRanks(value, catalog).some((rank) => rank.name === form.division_rank) ? form.division_rank : "",
                         division_titles: form.division_titles.filter((id) => divisionTitles(value, catalog).some((title) => title.id === id))})}>

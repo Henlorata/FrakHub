@@ -1,9 +1,10 @@
 import {useEffect, useRef, useState, type MouseEvent, type ReactNode} from "react";
 import {Link, useLocation} from "react-router";
-import {ArrowRight, BadgeCheck, LogIn, Menu, MessageSquareText, Newspaper, ShieldHalf, X} from "lucide-react";
+import {ArrowUpRight, BadgeCheck, LogIn, Menu, MessageSquareText, Newspaper, ShieldHalf, X} from "lucide-react";
 import {SheriffStar} from "@/components/brand/SheriffStar";
 import {useAuth} from "@/context/AuthContext";
 import {ALERT_LEVELS} from "@/lib/alert-levels";
+import {FORUM_APPLICATIONS_URL} from "@/lib/forum";
 import {cn} from "@/lib/utils";
 
 export const HOME_SECTIONS = [
@@ -154,7 +155,9 @@ export function PublicFooter({links = []}: {links?: {label: string; url: string}
         <div className="space-y-3 text-sm">
           <p className="text-xs font-semibold tracking-[0.25em] text-slate-500 uppercase">Oldalak</p>
           <Link to="/news" className="flex items-center gap-2 text-slate-300 hover:text-white"><Newspaper className="size-4 text-slate-500"/> Hírek és közlemények</Link>
-          <Link to="/register" className="flex items-center gap-2 text-slate-300 hover:text-white"><ArrowRight className="size-4 text-slate-500"/> Jelentkezés</Link>
+          <a href={FORUM_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-slate-300 hover:text-white">
+            <ArrowUpRight className="size-4 text-slate-500"/> Jelentkezés a fórumon
+          </a>
           <Link to="/contact" className="flex items-center gap-2 text-slate-300 hover:text-white"><MessageSquareText className="size-4 text-slate-500"/> Panasz, bejelentés, kérdés</Link>
           <Link to="/certificates" className="flex items-center gap-2 text-slate-300 hover:text-white"><BadgeCheck className="size-4 text-slate-500"/> Oklevél ellenőrzése</Link>
           <Link to="/login" className="flex items-center gap-2 text-slate-300 hover:text-white"><LogIn className="size-4 text-slate-500"/> Belépés az intranetre</Link>

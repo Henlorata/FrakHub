@@ -87,8 +87,10 @@ on conflict (user_id) do update set joined_on = excluded.joined_on;
 select pg_temp.act_as('00000000-0000-4000-8000-000000000008');
 select is(public.get_dashboard_summary() ->> 'recap_month', null, 'no recap for a member who joined this month');
 
--- 7. A member who did not opt in but leads the month does not push the listed members down.
+-- 7. A member who turned the leaderboard off but leads the month does not push the listed members down.
 select pg_temp.reset_role();
+insert into public.member_settings (user_id, leaderboard_visible) values ((select captain_id from ids), false)
+on conflict (user_id) do update set leaderboard_visible = excluded.leaderboard_visible;
 insert into public.duty_time_entries (user_id, month, minutes)
 values ((select captain_id from ids), (date_trunc('month', now() at time zone 'Europe/Budapest'))::date, 40000)
 on conflict (user_id, month) do update set minutes = excluded.minutes;

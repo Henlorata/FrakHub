@@ -116,8 +116,8 @@ test.describe("recognition", () => {
     await expect(page.getByText(/Visszavont oklevél/)).toBeVisible();
   });
 
-  test("the leaderboard lists only those who opt in, and the member can join", async ({page}) => {
-    let visible = false;
+  test("everyone is on the leaderboard, and a member can turn it off", async ({page}) => {
+    let visible = true;
     const board = () => ({month: "2026-10-01", visible, participants: visible ? 3 : 2, categories: ["duty", "reports", "events", "practice"].map((key) => ({
       key, me: {value: 600, place: 2, of: 5},
       entries: [{user_id: "a", full_name: "Első Elek", badge_number: "1", faction_rank: "Corporal", avatar_url: null, value: 900, place: 1, me: false},
@@ -136,10 +136,12 @@ test.describe("recognition", () => {
     await login(page);
     await expect(page).toHaveURL(/\/dashboard$/);
     await page.goto("/leaderboard");
-    await expect(page.getByText("Ha szerepelnél:").first()).toBeVisible();
-    await page.getByRole("switch").click();
     await expect(page.getByText("A helyed:").first()).toBeVisible();
-    expect(mock.requests.find((request) => request.name === "set_leaderboard_visibility")?.body).toEqual({_visible: true});
+    await expect(page.getByText("3 tag szerepel")).toBeVisible();
+    await page.getByRole("switch").click();
+    await expect(page.getByText("Levettünk a ranglistáról.")).toBeVisible();
+    await expect(page.getByText("Ha szerepelnél:").first()).toBeVisible();
+    expect(mock.requests.find((request) => request.name === "set_leaderboard_visibility")?.body).toEqual({_visible: false});
   });
 
   test("the monthly recap opens once at the start of a month", async ({page}) => {
